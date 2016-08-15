@@ -1,0 +1,11 @@
+S .
+S lib
+B _build/lib
+B _build/test
+PKG ppx_deriving
+PKG ppx_sexp_conv
+PKG cstruct
+PKG cstruct.ppx
+PKG ipaddr
+PKG tcpip
+PKG rresult
