@@ -18,23 +18,23 @@ let version_banner = "SSH-2.0-awa_ssh_0.1\r\n"
 
 type conn_state =
   | NEW                         (* TCP established *)
-  | VERXCHG                	(* We received and sent version_banner *)
+  | VERXCHG                     (* We received and sent version_banner *)
 
 type t = {
   state : conn_state;
   buffer : Cstruct.t;
-  peer_version : string;
+  peer_client : string;
 }
 
 let add_buf t buf =
   {state = t.state;
    buffer = Cstruct.append t.buffer buf;
-   peer_version = t.peer_version}
+   peer_client = t.peer_client}
 
 let make () =
   ({state = NEW;
     buffer = Cstruct.create 0;
-    peer_version = "unknown"},
+    peer_client = "unknown"},
    Cstruct.of_string version_banner)
 
 let find_some f = try Some (f ()) with Not_found -> None
@@ -59,7 +59,7 @@ let process_new t =
     if List.length tokens <> 3 then
       failwith "Can't parse version line";
     let version = List.nth tokens 1 in
-    let peer_version = List.nth tokens 2 in
+    let peer_client = List.nth tokens 2 in
     if version <> "2.0" then
       failwith ("Bad version " ^ version);
     (* Now calculate how much we need to shift *)
@@ -70,9 +70,8 @@ let process_new t =
     in
     {state = VERXCHG;
      buffer = Cstruct.shift t.buffer n;
-     peer_version}
+     peer_client}
 
 let process t = match t.state with
   | NEW -> process_new t  (* We're waiting for the banner *)
   | _ -> failwith "todo"
-  
