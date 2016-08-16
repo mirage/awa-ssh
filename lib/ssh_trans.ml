@@ -63,10 +63,8 @@ let process_new t =
     if version <> "2.0" then
       failwith ("Bad version " ^ version);
     (* Now calculate how much we need to shift *)
-    let n = List.fold_left
-        (fun n line -> n + (String.length line))
-        (((List.length lines) - 1) * 2) (* account for \r\n *)
-        lines
+    let n = 2 + (String.length line) +
+            Str.search_forward (Str.regexp_string (line ^ "\r\n")) s 0
     in
     {state = VERXCHG;
      buffer = Cstruct.shift t.buffer n;
