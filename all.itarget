@@ -1,2 +1,3 @@
 lib/ssh_trans.cma
 lib/ssh_trans.cmxa
+test/test.native

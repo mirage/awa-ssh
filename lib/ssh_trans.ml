@@ -40,19 +40,25 @@ let make () =
 let find_some f = try Some (f ()) with Not_found -> None
 
 let process_new t =
-  (* SSH-2.0-billsSSH_3.6.3q3<CR><LF> *)
   assert (t.state = NEW);
   let s = Cstruct.to_string t.buffer in
-  let lines = Str.split_delim (Str.regexp "\r\n") s in
-  let line = find_some @@ fun () ->
-    List.find (fun line ->
-        String.length line >= 4 &&
-        String.sub line 0 4 = "SSH-")
-      lines
+  let rec findver s start =
+    let lf = String.index_from s start '\n' in
+    if lf = 1 ||
+       String.get s (lf - 1) <> '\r'
+    then
+      findver s (succ lf)
+    else
+      let line = String.sub s start (lf - 1 - start) in
+      if String.length line >= 4 &&
+         String.sub line 0 4 = "SSH-" then
+        (line, start)
+      else
+        findver s (succ lf)
   in
-  match line with
+  match (find_some @@ fun () -> findver s 0) with
   | None -> t
-  | Some line ->
+  | Some (line, start) ->
     if String.length line < 9 then
       failwith "Version line is too short";
     let tokens = Str.split_delim (Str.regexp "-") line in
@@ -62,10 +68,7 @@ let process_new t =
     let peer_client = List.nth tokens 2 in
     if version <> "2.0" then
       failwith ("Bad version " ^ version);
-    (* Now calculate how much we need to shift *)
-    let n = 2 + (String.length line) +
-            Str.search_forward (Str.regexp_string (line ^ "\r\n")) s 0
-    in
+    let n = start + (String.length line) + 2 in
     {state = VERXCHG;
      buffer = Cstruct.shift t.buffer n;
      peer_client}
