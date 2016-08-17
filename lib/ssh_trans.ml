@@ -43,9 +43,11 @@ let process_new t =
   assert (t.state = NEW);
   let s = Cstruct.to_string t.buffer in
   let rec findver s start =
+    if start >= (String.length s) then
+      raise Not_found;
     let lf = String.index_from s start '\n' in
     if lf = 1 ||
-       String.get s (lf - 1) <> '\r'
+       String.get s (pred lf) <> '\r'
     then
       findver s (succ lf)
     else
