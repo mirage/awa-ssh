@@ -42,38 +42,38 @@ let find_some f = try Some (f ()) with Not_found -> None
 let process_new t =
   assert (t.state = NEW);
   let s = Cstruct.to_string t.buffer in
-  let rec findver s start =
-    if start >= (String.length s) then
-      raise Not_found;
-    let lf = String.index_from s start '\n' in
-    if lf = 1 ||
-       String.get s (pred lf) <> '\r'
-    then
-      findver s (succ lf)
+  let len = String.length s in
+  let rec scan start off =
+    if off = len then
+      {state = t.state;
+       buffer = Cstruct.shift t.buffer start;
+       peer_client = t.peer_client}
     else
-      let line = String.sub s start (lf - 1 - start) in
-      if String.length line >= 4 &&
-         String.sub line 0 4 = "SSH-" then
-        (line, start)
-      else
-        findver s (succ lf)
+      match (String.get s (pred off), String.get s off) with
+      | ('\r', '\n') ->
+        let line = String.sub s start (off - start - 1) in
+        if String.length line < 4 ||
+           String.sub line 0 4 <> "SSH-" then
+          scan (succ off) (succ off)
+        else if (String.length line < 9) then
+          failwith "Version line is too short"
+        else
+          let tokens = Str.split_delim (Str.regexp "-") line in
+          if List.length tokens <> 3 then
+            failwith "Can't parse version line";
+          let version = List.nth tokens 1 in
+          let peer_client = List.nth tokens 2 in
+          if version <> "2.0" then
+            failwith ("Bad version " ^ version);
+          {state = VERXCHG;
+           buffer = Cstruct.shift t.buffer (succ off);
+           peer_client}
+      | _ -> scan start (succ off)
   in
-  match (find_some @@ fun () -> findver s 0) with
-  | None -> t
-  | Some (line, start) ->
-    if String.length line < 9 then
-      failwith "Version line is too short";
-    let tokens = Str.split_delim (Str.regexp "-") line in
-    if List.length tokens <> 3 then
-      failwith "Can't parse version line";
-    let version = List.nth tokens 1 in
-    let peer_client = List.nth tokens 2 in
-    if version <> "2.0" then
-      failwith ("Bad version " ^ version);
-    let n = start + (String.length line) + 2 in
-    {state = VERXCHG;
-     buffer = Cstruct.shift t.buffer n;
-     peer_client}
+  if len < 2 then
+    t
+  else
+    scan 0 1
 
 let process t = match t.state with
   | NEW -> process_new t  (* We're waiting for the banner *)
