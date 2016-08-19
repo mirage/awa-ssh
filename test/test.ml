@@ -40,7 +40,7 @@ let t_banner () =
   in
   List.iter (fun s ->
       let c = add_buf c (Cstruct.of_string s) |> process in
-      assert (c.state = Ssh_trans.VERXCHG))
+      assert (c.state = Ssh_trans.Version_exchanged))
     good_strings;
   let bad_strings = [
     "SSH-2.0\r\n";
