@@ -62,18 +62,18 @@ let t_banner () =
     bad_strings;
   (* Check if we can extract client_version *)
   let cx = add_buf c (Cstruct.of_string "SSH-2.0-OpenSSH_6.9\r\n") |> process in
-  assert (cx.peer_client = "OpenSSH_6.9");
+  assert (cx.peer_version = "OpenSSH_6.9");
   assert (Cstruct.len (cx.buffer) = 0);
   (* If we have multiple lines, check if we consume the buffer correctly *)
   let cx = add_buf c
       (Cstruct.of_string "Foo bar\r\nSSH-2.0-OpenSSH_6.9\r\n") |> process
   in
-  assert (cx.peer_client = "OpenSSH_6.9");
+  assert (cx.peer_version = "OpenSSH_6.9");
   assert (Cstruct.len (cx.buffer) = 0);
   let cx = add_buf c
       (Cstruct.of_string "Foo bar\r\nSSH-2.0-OpenSSH_6.9\r\nLALA") |> process
   in
-  assert (cx.peer_client = "OpenSSH_6.9");
+  assert (cx.peer_version = "OpenSSH_6.9");
   assert (Cstruct.len (cx.buffer) = 4)
 
 let run_test test =

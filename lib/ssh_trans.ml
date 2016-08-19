@@ -23,18 +23,18 @@ type state =
 type t = {
   state : state;
   buffer : Cstruct.t;
-  peer_client : string;
+  peer_version : string;
 }
 
 let add_buf t buf =
   { state = t.state;
     buffer = Cstruct.append t.buffer buf;
-    peer_client = t.peer_client }
+    peer_version = t.peer_version }
 
 let make () =
   ({ state = New;
      buffer = Cstruct.create 0;
-     peer_client = "unknown" },
+     peer_version = "unknown" },
    Cstruct.of_string version_banner)
 
 let find_some f = try Some (f ()) with Not_found -> None
@@ -60,12 +60,12 @@ let process_new t =
           if List.length tokens <> 3 then
             failwith "Can't parse version line";
           let version = List.nth tokens 1 in
-          let peer_client = List.nth tokens 2 in
+          let peer_version = List.nth tokens 2 in
           if version <> "2.0" then
             failwith ("Bad version " ^ version);
           { state = Version_exchanged;
             buffer = Cstruct.shift t.buffer (succ off);
-            peer_client }
+            peer_version }
       | _ -> scan start (succ off)
   in
   if len < 2 then
