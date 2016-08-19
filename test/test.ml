@@ -31,6 +31,7 @@ let t_banner () =
   let c, _ = make () in
   let good_strings = [
     "SSH-2.0-foobar lalal\r\n";
+    "\r\n\r\nSSH-2.0-foobar lalal\r\n";
     "SSH-2.0-foobar lalal lololo\r\n";
     "SSH-2.0-OpenSSH_6.9\r\n";
     "Some crap before\r\nSSH-2.0-OpenSSH_6.9\r\n";
@@ -45,6 +46,8 @@ let t_banner () =
     "SSH-2.0\r\n";
     "SSH-1.0-foobar lalal lololo\r\n";
     "SSH-2.0-Open-SSH_6.9\r\n";
+    "Some crap before\r\nSSH-2.0-Open-SSH_6.9\r\n";
+    "\r\nSSH-2.0-Open-SSH_6.9\r\nSom crap after";
   ]
   in
   List.iter (fun s ->
