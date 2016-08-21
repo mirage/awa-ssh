@@ -17,8 +17,8 @@
 let version_banner = "SSH-2.0-awa_ssh_0.1\r\n"
 
 type state =
-  | New                         (* TCP established *)
-  | Version_exchanged           (* We received theirs version_banner *)
+  | Version_exchange       (* Handling client version *)
+  | Key_exchange           (* Exchanging keys *)
 
 type t = {
   state : state;
@@ -32,15 +32,15 @@ let add_buf t buf =
     peer_version = t.peer_version }
 
 let make () =
-  ({ state = New;
+  ({ state = Version_exchange;
      buffer = Cstruct.create 0;
      peer_version = "unknown" },
    Cstruct.of_string version_banner)
 
 let find_some f = try Some (f ()) with Not_found -> None
 
-let process_new t =
-  assert (t.state = New);
+let handle_version_exchange t =
+  assert (t.state = Version_exchange);
   let s = Cstruct.to_string t.buffer in
   let len = String.length s in
   let rec scan start off =
@@ -63,7 +63,7 @@ let process_new t =
           let peer_version = List.nth tokens 2 in
           if version <> "2.0" then
             failwith ("Bad version " ^ version);
-          { state = Version_exchanged;
+          { state = Key_exchange;
             buffer = Cstruct.shift t.buffer (succ off);
             peer_version }
       | _ -> scan start (succ off)
@@ -73,6 +73,6 @@ let process_new t =
   else
     scan 0 1
 
-let process t = match t.state with
-  | New -> process_new t  (* We're waiting for the banner *)
+let handle t = match t.state with
+  | Version_exchange -> handle_version_exchange t  (* We're waiting for the banner *)
   | _ -> failwith "todo"

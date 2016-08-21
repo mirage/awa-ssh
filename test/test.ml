@@ -39,8 +39,8 @@ let t_banner () =
   ]
   in
   List.iter (fun s ->
-      let c = add_buf c (Cstruct.of_string s) |> process in
-      assert (c.state = Ssh_trans.Version_exchanged))
+      let c = add_buf c (Cstruct.of_string s) |> handle in
+      assert (c.state = Ssh_trans.Key_exchange))
     good_strings;
   let bad_strings = [
     "SSH-2.0\r\n";
@@ -52,7 +52,7 @@ let t_banner () =
   in
   List.iter (fun s ->
       let ok = try
-          ignore @@ (add_buf c (Cstruct.of_string s) |> process);
+          ignore @@ (add_buf c (Cstruct.of_string s) |> handle);
           false
         with
           Failure _ -> true
@@ -61,17 +61,17 @@ let t_banner () =
         failwith ("bad string " ^ s ^ " should have failed"))
     bad_strings;
   (* Check if we can extract client_version *)
-  let cx = add_buf c (Cstruct.of_string "SSH-2.0-OpenSSH_6.9\r\n") |> process in
+  let cx = add_buf c (Cstruct.of_string "SSH-2.0-OpenSSH_6.9\r\n") |> handle in
   assert (cx.peer_version = "OpenSSH_6.9");
   assert (Cstruct.len (cx.buffer) = 0);
   (* If we have multiple lines, check if we consume the buffer correctly *)
   let cx = add_buf c
-      (Cstruct.of_string "Foo bar\r\nSSH-2.0-OpenSSH_6.9\r\n") |> process
+      (Cstruct.of_string "Foo bar\r\nSSH-2.0-OpenSSH_6.9\r\n") |> handle
   in
   assert (cx.peer_version = "OpenSSH_6.9");
   assert (Cstruct.len (cx.buffer) = 0);
   let cx = add_buf c
-      (Cstruct.of_string "Foo bar\r\nSSH-2.0-OpenSSH_6.9\r\nLALA") |> process
+      (Cstruct.of_string "Foo bar\r\nSSH-2.0-OpenSSH_6.9\r\nLALA") |> handle
   in
   assert (cx.peer_version = "OpenSSH_6.9");
   assert (Cstruct.len (cx.buffer) = 4)
