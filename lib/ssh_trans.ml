@@ -26,6 +26,14 @@ type t = {
   peer_version : string;
 }
 
+[%%cstruct
+type pkt_hdr = {
+  pkt_len: uint32_t;
+  pad_len: uint8_t;
+} [@@big_endian]]
+
+let max_pkt_len = Int32.of_int 64000    (* 64KB should be enough *)
+
 let add_buf t buf =
   { state = t.state;
     buffer = Cstruct.append t.buffer buf;
@@ -73,6 +81,24 @@ let handle_version_exchange t =
   else
     scan 0 1
 
+let handle_key_exchange t =
+  if (Cstruct.len t.buffer) < 2 then
+    t
+  else
+    (* Using pad_len as int32 saves us a lot of conversions. *)
+    let pkt_len = get_pkt_hdr_pkt_len t.buffer in
+    let pad_len = Int32.of_int (get_pkt_hdr_pad_len t.buffer) in
+    (* Remember, ocaml has no unsigned, so we must cmp <= Int32.zero *)
+    if pkt_len <= Int32.zero || pkt_len > max_pkt_len then
+      failwith (Printf.sprintf "Bad pkt_len %ld\n" pkt_len)
+    else if pad_len >= pkt_len then
+      failwith (Printf.sprintf "Bad pad_len %ld\n" pad_len);
+    let payload_len = Int32.sub (Int32.sub pkt_len pad_len) Int32.one in
+    (* There is no way for payload_len to be less than zero, but be paranoid. *)
+    if payload_len <= Int32.zero then
+      failwith (Printf.sprintf "Bad payload_len %ld\n" payload_len);
+    t
+
 let handle t = match t.state with
   | Version_exchange -> handle_version_exchange t  (* We're waiting for the banner *)
-  | _ -> failwith "todo"
+  | Key_exchange -> handle_key_exchange t          (* We're negotiatiating cipher/mac *)
