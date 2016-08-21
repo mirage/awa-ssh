@@ -82,7 +82,7 @@ let handle_version_exchange t =
     scan 0 1
 
 let handle_key_exchange t =
-  if (Cstruct.len t.buffer) < 2 then
+  if Cstruct.len t.buffer < 2 then
     t
   else
     (* Using pad_len as int32 saves us a lot of conversions. *)
@@ -93,11 +93,17 @@ let handle_key_exchange t =
       failwith (Printf.sprintf "Bad pkt_len %ld\n" pkt_len)
     else if pad_len >= pkt_len then
       failwith (Printf.sprintf "Bad pad_len %ld\n" pad_len);
-    let payload_len = Int32.sub (Int32.sub pkt_len pad_len) Int32.one in
-    (* There is no way for payload_len to be less than zero, but be paranoid. *)
-    if payload_len <= Int32.zero then
-      failwith (Printf.sprintf "Bad payload_len %ld\n" payload_len);
-    t
+    let buffer = Cstruct.shift t.buffer sizeof_pkt_hdr in
+    (* This is a partial packet, hold onto t *)
+    (* XXX Remember pkt_len doesn't include mac *)
+    if pkt_len < (Int32.of_int (Cstruct.len buffer)) then
+      t
+    else
+      let payload_len = Int32.sub (Int32.sub pkt_len pad_len) Int32.one in
+      (* There is no way for payload_len to be less than zero, but be paranoid. *)
+      if payload_len <= Int32.zero then
+        failwith (Printf.sprintf "Bad payload_len %ld\n" payload_len);
+      t
 
 let handle t = match t.state with
   | Version_exchange -> handle_version_exchange t  (* We're waiting for the banner *)
