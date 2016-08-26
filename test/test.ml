@@ -26,6 +26,16 @@ let green fmt  = colored_or_not ("\027[32m"^^fmt^^"\027[m") fmt
 let yellow fmt = colored_or_not ("\027[33m"^^fmt^^"\027[m") fmt
 let blue fmt   = colored_or_not ("\027[36m"^^fmt^^"\027[m") fmt
 
+let assert_failure x =
+  let ok = try
+      ignore @@ x ();
+      false
+    with
+      Failure _ -> true
+  in
+  if not ok then
+    failwith "Expected failure exception."
+
 let t_banner () =
   let open Ssh_trans in
   let c = make () in
@@ -51,14 +61,8 @@ let t_banner () =
   ]
   in
   List.iter (fun s ->
-      let ok = try
-          ignore @@ (add_buf c (Cstruct.of_string s) |> handle);
-          false
-        with
-          Failure _ -> true
-      in
-      if not ok then
-        failwith ("bad string " ^ s ^ " should have failed"))
+      assert_failure @@
+      fun () -> add_buf c (Cstruct.of_string s) |> handle)
     bad_strings;
   (* Check if we can extract client_version *)
   let cx = add_buf c (Cstruct.of_string "SSH-2.0-OpenSSH_6.9\r\n") |> handle in
