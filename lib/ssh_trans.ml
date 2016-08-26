@@ -34,11 +34,6 @@ type pkt_hdr = {
 
 let max_pkt_len = Int32.of_int 64000    (* 64KB should be enough *)
 
-let add_buf t buf =
-  { state = t.state;
-    buffer = Cstruct.append t.buffer buf;
-    peer_version = t.peer_version }
-
 let make () =
   ({ state = Version_exchange;
      buffer = Cstruct.create 0;
@@ -105,6 +100,8 @@ let handle_key_exchange t =
         failwith (Printf.sprintf "Bad payload_len %ld\n" payload_len);
       t
 
-let handle t = match t.state with
+let handle t buffer =
+  let t = { t with buffer = Cstruct.append t.buffer buffer } in
+  match t.state with
   | Version_exchange -> handle_version_exchange t  (* We're waiting for the banner *)
   | Key_exchange -> handle_key_exchange t          (* We're negotiatiating cipher/mac *)
