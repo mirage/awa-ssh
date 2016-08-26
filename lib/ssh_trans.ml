@@ -93,7 +93,7 @@ let handle_key_exchange t =
       failwith (Printf.sprintf "Bad pad_len %ld\n" pad_len);
     let buffer = Cstruct.shift t.buffer sizeof_pkt_hdr in
     (* This is a partial packet, hold onto t *)
-    if Uint32.(pkt_len < (of_int (Cstruct.len buffer))) then
+    if Uint32.(pkt_len > (of_int (Cstruct.len buffer))) then
       t
     else
       let payload_len, u1 = Uint32.(sub pkt_len pad_len) in
