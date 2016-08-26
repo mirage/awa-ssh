@@ -100,7 +100,8 @@ let handle_key_exchange t =
       let payload_len, u2 = Uint32.pred payload_len in
       if u1 || u2 then
         failwith (Printf.sprintf "Bad payload_len %ld\n" payload_len);
-      t
+      (* Safe since we know pkt_len is < max_pkt_len and > 0 *)
+      { t with buffer = Cstruct.shift buffer (Int32.to_int pkt_len) }
 
 let handle t = match t.state with
   | Version_exchange -> handle_version_exchange t  (* We're waiting for the banner *)

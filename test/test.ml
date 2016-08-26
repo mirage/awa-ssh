@@ -83,9 +83,31 @@ let t_banner () =
 let t_key_exchange () =
   let open Ssh_trans in
   let c = { (make ()) with state = Key_exchange } in
+
   (* Make sure nothing happens if packet is incomplete *)
-  let cx = add_buf (make ()) (Cstruct.of_string "1") in
+  let cx = add_buf c (Cstruct.of_string "1") in
   assert (cx = (cx |> handle));
+  (*
+   * Case 1: A buffer with 64 bytes and payload with 60 bytes;
+   * The header is 5 bytes, so a payload of 60 + 5 requires 65 bytes,
+   * which means, this is an incomplete packet, nothing changes.
+   *)
+  let buf = Cstruct.create 64 in
+  set_pkt_hdr_pkt_len buf 60l;
+  set_pkt_hdr_pad_len buf 0;
+  let cx = add_buf c buf in
+  assert (cx = (cx |> handle));
+  (*
+   * Case 2: Same thing as 1, but with a 65 byte buffer,
+   * this should consume the whole buffer
+   *)
+  let buf = Cstruct.create 65 in
+  set_pkt_hdr_pkt_len buf 60l;
+  set_pkt_hdr_pad_len buf 0;
+  let cx = add_buf c buf in
+  let cy = handle cx in
+  assert (cx <> cy);
+  assert ((Cstruct.len cy.buffer) = 0);
 
   (* Test a zero pkt_len *)
   let () = assert_failure @@ fun () ->
