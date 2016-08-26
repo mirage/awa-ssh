@@ -76,6 +76,12 @@ let t_banner () =
   assert (cx.peer_version = "OpenSSH_6.9");
   assert (Cstruct.len (cx.buffer) = 4)
 
+let t_key_exchange () =
+  let open Ssh_trans in
+  (* Make sure nothing happens if packet is incomplete *)
+  let cx = add_buf (make ()) (Cstruct.of_string "1") in
+  assert (cx = (cx |> handle))
+
 let run_test test =
   let f = fst test in
   let name = snd test in
@@ -88,6 +94,7 @@ let run_test test =
 
 let all_tests = [
   (t_banner, "version banner");
+  (t_key_exchange, "key exchange");
 ]
 
 let _ =
