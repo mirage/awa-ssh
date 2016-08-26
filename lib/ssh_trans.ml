@@ -35,9 +35,7 @@ type pkt_hdr = {
 let max_pkt_len = Int32.of_int 64000    (* 64KB should be enough *)
 
 let add_buf t buf =
-  { state = t.state;
-    buffer = Cstruct.append t.buffer buf;
-    peer_version = t.peer_version }
+  { t with buffer = Cstruct.append t.buffer buf }
 
 let make () =
   ({ state = Version_exchange;
