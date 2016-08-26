@@ -14,8 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-let version_banner = "SSH-2.0-awa_ssh_0.1\r\n"
-
 type state =
   | Version_exchange       (* Handling client version *)
   | Key_exchange           (* Exchanging keys *)
@@ -34,14 +32,16 @@ type pkt_hdr = {
 
 let max_pkt_len = Int32.of_int 64000    (* 64KB should be enough *)
 
+let version_banner = "SSH-2.0-awa_ssh_0.1\r\n"
+let version_banner_buf = Cstruct.of_string version_banner
+
 let add_buf t buf =
   { t with buffer = Cstruct.append t.buffer buf }
 
 let make () =
-  ({ state = Version_exchange;
-     buffer = Cstruct.create 0;
-     peer_version = "unknown" },
-   Cstruct.of_string version_banner)
+  { state = Version_exchange;
+    buffer = Cstruct.create 0;
+    peer_version = "unknown" }
 
 let find_some f = try Some (f ()) with Not_found -> None
 

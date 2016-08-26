@@ -28,7 +28,7 @@ let blue fmt   = colored_or_not ("\027[36m"^^fmt^^"\027[m") fmt
 
 let t_banner () =
   let open Ssh_trans in
-  let c, _ = make () in
+  let c = make () in
   let good_strings = [
     "SSH-2.0-foobar lalal\r\n";
     "\r\n\r\nSSH-2.0-foobar lalal\r\n";
