@@ -82,9 +82,27 @@ let t_banner () =
 
 let t_key_exchange () =
   let open Ssh_trans in
+  let c = { (make ()) with state = Key_exchange } in
   (* Make sure nothing happens if packet is incomplete *)
   let cx = add_buf (make ()) (Cstruct.of_string "1") in
-  assert (cx = (cx |> handle))
+  assert (cx = (cx |> handle));
+
+  (* Test a zero pkt_len *)
+  let () = assert_failure @@ fun () ->
+    let buf = Cstruct.create 64 in
+    set_pkt_hdr_pkt_len buf 0l;
+    ignore @@ (add_buf c buf |> handle)
+  in
+
+  (* Test a pad_len equal/greater than pkt_len *)
+  let () = assert_failure @@ fun () ->
+    let buf = Cstruct.create 64 in
+    set_pkt_hdr_pkt_len buf 20l;
+    set_pkt_hdr_pad_len buf 20;
+    ignore @@ (add_buf c buf |> handle);
+    ignore @@ (add_buf c buf |> handle);
+  in
+  ()
 
 let run_test test =
   let f = fst test in
