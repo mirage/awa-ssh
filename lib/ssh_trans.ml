@@ -80,26 +80,25 @@ let handle_version_exchange t =
     scan 0 1
 
 let handle_key_exchange t =
+  let open Usane in
   if Cstruct.len t.buffer < 2 then
     t
   else
     (* Using pad_len as int32 saves us a lot of conversions. *)
     let pkt_len = get_pkt_hdr_pkt_len t.buffer in
     let pad_len = Int32.of_int (get_pkt_hdr_pad_len t.buffer) in
-    (* Remember, ocaml has no unsigned, so we must cmp <= Int32.zero *)
-    if pkt_len <= Int32.zero || pkt_len > max_pkt_len then
+    if pkt_len = Int32.zero || Uint32.(pkt_len >= max_pkt_len) then
       failwith (Printf.sprintf "Bad pkt_len %ld\n" pkt_len)
-    else if pad_len >= pkt_len then
+    else if Uint32.(pad_len >= pkt_len) then
       failwith (Printf.sprintf "Bad pad_len %ld\n" pad_len);
     let buffer = Cstruct.shift t.buffer sizeof_pkt_hdr in
     (* This is a partial packet, hold onto t *)
-    (* XXX Remember pkt_len doesn't include mac *)
-    if pkt_len < (Int32.of_int (Cstruct.len buffer)) then
+    if Uint32.(pkt_len < (of_int (Cstruct.len buffer))) then
       t
     else
-      let payload_len = Int32.sub (Int32.sub pkt_len pad_len) Int32.one in
-      (* There is no way for payload_len to be less than zero, but be paranoid. *)
-      if payload_len <= Int32.zero then
+      let payload_len, u1 = Uint32.(sub pkt_len pad_len) in
+      let payload_len, u2 = Uint32.pred payload_len in
+      if u1 || u2 then
         failwith (Printf.sprintf "Bad payload_len %ld\n" payload_len);
       t
 
