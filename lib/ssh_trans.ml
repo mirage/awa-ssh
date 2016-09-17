@@ -30,6 +30,37 @@ type pkt_hdr = {
   pad_len: uint8_t;
 } [@@big_endian]]
 
+[%%cenum
+type message_id =
+  | SSH_MSG_DISCONNECT                [@id 1]
+  | SSH_MSG_IGNORE                    [@id 2]
+  | SSH_MSG_UNIMPLEMENTED             [@id 3]
+  | SSH_MSG_DEBUG                     [@id 4]
+  | SSH_MSG_SERVICE_REQUEST           [@id 5]
+  | SSH_MSG_SERVICE_ACCEPT            [@id 6]
+  | SSH_MSG_KEXINIT                   [@id 20]
+  | SSH_MSG_NEWKEYS                   [@id 21]
+  | SSH_MSG_USERAUTH_REQUEST          [@id 50]
+  | SSH_MSG_USERAUTH_FAILURE          [@id 51]
+  | SSH_MSG_USERAUTH_SUCCESS          [@id 52]
+  | SSH_MSG_USERAUTH_BANNER           [@id 53]
+  | SSH_MSG_GLOBAL_REQUEST            [@id 80]
+  | SSH_MSG_REQUEST_SUCCESS           [@id 81]
+  | SSH_MSG_REQUEST_FAILURE           [@id 82]
+  | SSH_MSG_CHANNEL_OPEN              [@id 90]
+  | SSH_MSG_CHANNEL_OPEN_CONFIRMATION [@id 91]
+  | SSH_MSG_CHANNEL_OPEN_FAILURE      [@id 92]
+  | SSH_MSG_CHANNEL_WINDOW_ADJUST     [@id 93]
+  | SSH_MSG_CHANNEL_DATA              [@id 94]
+  | SSH_MSG_CHANNEL_EXTENDED_DATA     [@id 95]
+  | SSH_MSG_CHANNEL_EOF               [@id 96]
+  | SSH_MSG_CHANNEL_CLOSE             [@id 97]
+  | SSH_MSG_CHANNEL_REQUEST           [@id 98]
+  | SSH_MSG_CHANNEL_SUCCESS           [@id 99]
+  | SSH_MSG_CHANNEL_FAILURE           [@id 100]
+[@@uint8_t][@@sexp]]
+
+
 let max_pkt_len = Int32.of_int 64000    (* 64KB should be enough *)
 
 let version_banner = "SSH-2.0-awa_ssh_0.1\r\n"
@@ -79,6 +110,80 @@ let handle_version_exchange t =
   else
     scan 0 1
 
+type kex_pkt = {
+  cookie : string;
+  kex_algorithms : string list;
+  server_host_key_algorithms : string list;
+  encryption_algorithms_client_to_server : string list;
+  encryption_algorithms_server_to_client : string list;
+  mac_algorithms_client_to_server : string list;
+  mac_algorithms_server_to_client : string list;
+  compression_algorithms_client_to_server : string list;
+  compression_algorithms_server_to_client : string list;
+  languages_client_to_server : string list;
+  languages_server_to_client : string list;
+  first_kex_packet_follows : bool
+}
+
+      (* byte         SSH_MSG_KEXINIT *)
+      (* byte[16]     cookie (random bytes) *)
+      (* name-list    kex_algorithms *)
+      (* name-list    server_host_key_algorithms *)
+      (* name-list    encryption_algorithms_client_to_server *)
+      (* name-list    encryption_algorithms_server_to_client *)
+      (* name-list    mac_algorithms_client_to_server *)
+      (* name-list    mac_algorithms_server_to_client *)
+      (* name-list    compression_algorithms_client_to_server *)
+      (* name-list    compression_algorithms_server_to_client *)
+      (* name-list    languages_client_to_server *)
+      (* name-list    languages_server_to_client *)
+      (* boolean      first_kex_packet_follows *)
+      (* uint32       0 (reserved for future extension) *)
+
+(* Parse a name list as in RFC4251 5. *)
+let buf_of_namelist nl =
+  let s = String.concat "," nl in
+  let slen = String.length s in
+  let buf = Cstruct.create (2 + slen) in
+  Cstruct.BE.set_uint32 buf 0 (Int32.of_int slen);
+  Cstruct.blit_from_string s 0 buf 2 slen;
+  buf
+
+let namelist_of_buf buf =
+  let open Usane in
+  let len = Cstruct.BE.get_uint32 buf 0 in
+  let buf = Cstruct.shift buf 4 in
+  if Uint32.(Int32.of_int (Cstruct.len buf) < len) then
+    failwith "Buffer len doesn't match name-list len";
+  Str.split (Str.regexp ",") (Cstruct.to_string buf)
+
+let pkt_of_kex buf =
+  let rec loop buf l =
+    if (List.length l) = 10 then
+      List.rev l
+    else
+      let len = Int32.to_int (Cstruct.BE.get_uint32 buf 0) in
+      let nl = namelist_of_buf (Cstruct.set_len buf len) in
+      loop (Cstruct.shift buf (len + 4)) (nl :: l)
+  in
+  (* XXX need some checks on len of buf *)
+  if (Cstruct.get_uint8 buf 0) <> (message_id_to_int SSH_MSG_KEXINIT) then
+    failwith "message id is not SSH_MSG_KEXINIT";
+  (* Jump over msg id and cookie *)
+  let nll = loop (Cstruct.shift buf 17) [] in
+  { cookie = Cstruct.copy buf 1 16;
+    kex_algorithms = List.nth nll 0;
+    server_host_key_algorithms = List.nth nll 1;
+    encryption_algorithms_client_to_server = List.nth nll 2;
+    encryption_algorithms_server_to_client = List.nth nll 3;
+    mac_algorithms_client_to_server = List.nth nll 4;
+    mac_algorithms_server_to_client = List.nth nll 5;
+    compression_algorithms_client_to_server = List.nth nll 6;
+    compression_algorithms_server_to_client = List.nth nll 7;
+    languages_client_to_server = List.nth nll 8;
+    languages_server_to_client = List.nth nll 9;
+    first_kex_packet_follows = false; (* XXX TODO *) }
+
 let handle_key_exchange t =
   let open Usane in
   if Cstruct.len t.buffer < 2 then
@@ -100,6 +205,7 @@ let handle_key_exchange t =
       let payload_len, u2 = Uint32.pred payload_len in
       if u1 || u2 then
         failwith (Printf.sprintf "Bad payload_len %ld\n" payload_len);
+      let kex_pkt = pkt_of_kex (Cstruct.set_len buffer (Int32.to_int payload_len)) in
       (* Safe since we know pkt_len is < max_pkt_len and > 0 *)
       { t with buffer = Cstruct.shift buffer (Int32.to_int pkt_len) }
 
