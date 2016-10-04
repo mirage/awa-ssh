@@ -144,9 +144,9 @@ type kex_pkt = {
 let buf_of_namelist nl =
   let s = String.concat "," nl in
   let slen = String.length s in
-  let buf = Cstruct.create (2 + slen) in
+  let buf = Cstruct.create (4 + slen) in
   Cstruct.BE.set_uint32 buf 0 (Int32.of_int slen);
-  Cstruct.blit_from_string s 0 buf 2 slen;
+  Cstruct.blit_from_string s 0 buf 4 slen;
   buf
 
 let namelist_of_buf buf =
