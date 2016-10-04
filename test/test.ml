@@ -138,6 +138,13 @@ let t_key_exchange () =
   in
   ()
 
+let t_namelist () =
+  let open Ssh_trans in
+  let s = ["uncle";"henry";"is";"evil"] in
+  let buf = buf_of_namelist s in
+  assert (Cstruct.len buf = (4 + String.length (String.concat "," s)));
+  assert (s = namelist_of_buf buf)
+
 let run_test test =
   let f = fst test in
   let name = snd test in
@@ -151,6 +158,7 @@ let run_test test =
 let all_tests = [
   (t_banner, "version banner");
   (t_key_exchange, "key exchange");
+  (t_namelist, "namelist conversions");
 ]
 
 let _ =
