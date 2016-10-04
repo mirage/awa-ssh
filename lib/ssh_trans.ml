@@ -91,15 +91,15 @@ let handle_version_exchange t =
            String.sub line 0 4 <> "SSH-" then
           scan (succ off) (succ off)
         else if (String.length line < 9) then
-          failwith "Version line is too short"
+          invalid_arg "Version line is too short"
         else
           let tokens = Str.split_delim (Str.regexp "-") line in
           if List.length tokens <> 3 then
-            failwith "Can't parse version line";
+            invalid_arg "Can't parse version line";
           let version = List.nth tokens 1 in
           let peer_version = List.nth tokens 2 in
           if version <> "2.0" then
-            failwith ("Bad version " ^ version);
+            invalid_arg ("Bad version " ^ version);
           { state = Key_exchange;
             buffer = Cstruct.shift t.buffer (succ off);
             peer_version }
@@ -154,8 +154,29 @@ let namelist_of_buf buf =
   let len = Cstruct.BE.get_uint32 buf 0 in
   let buf = Cstruct.shift buf 4 in
   if Uint32.(Int32.of_int (Cstruct.len buf) < len) then
-    failwith "Buffer len doesn't match name-list len";
+    invalid_arg "Buffer len doesn't match name-list len";
   Str.split (Str.regexp ",") (Cstruct.to_string buf)
+
+let buf_of_kex kex =
+  let f = buf_of_namelist in
+  let nll = Cstruct.concat
+    [ f kex.kex_algorithms;
+      f kex.server_host_key_algorithms;
+      f kex.encryption_algorithms_client_to_server;
+      f kex.encryption_algorithms_server_to_client;
+      f kex.mac_algorithms_client_to_server;
+      f kex.mac_algorithms_server_to_client;
+      f kex.compression_algorithms_client_to_server;
+      f kex.compression_algorithms_server_to_client;
+      f kex.languages_client_to_server;
+      f kex.languages_server_to_client; ]
+  in
+  let head = Cstruct.create 17 in (* message code + cookie *)
+  Cstruct.set_uint8 head 0 (message_id_to_int SSH_MSG_KEXINIT);
+  Cstruct.blit_from_string kex.cookie 0 head 1 (String.length kex.cookie);
+  let tail = Cstruct.create 5 in  (* first_kex_packet_follows + reserved *)
+  Cstruct.set_uint8 tail 0 (if kex.first_kex_packet_follows then 1 else 0);
+  Cstruct.concat [head; nll; tail]
 
 let pkt_of_kex buf =
   let rec loop buf l =
@@ -168,7 +189,7 @@ let pkt_of_kex buf =
   in
   (* XXX need some checks on len of buf *)
   if (Cstruct.get_uint8 buf 0) <> (message_id_to_int SSH_MSG_KEXINIT) then
-    failwith "message id is not SSH_MSG_KEXINIT";
+    invalid_arg "message id is not SSH_MSG_KEXINIT";
   (* Jump over msg id and cookie *)
   let nll = loop (Cstruct.shift buf 17) [] in
   { cookie = Cstruct.copy buf 1 16;
@@ -193,9 +214,9 @@ let handle_key_exchange t =
     let pkt_len = get_pkt_hdr_pkt_len t.buffer in
     let pad_len = Int32.of_int (get_pkt_hdr_pad_len t.buffer) in
     if pkt_len = Int32.zero || Uint32.(pkt_len >= max_pkt_len) then
-      failwith (Printf.sprintf "Bad pkt_len %ld\n" pkt_len)
+      invalid_arg (Printf.sprintf "Bad pkt_len %ld\n" pkt_len)
     else if Uint32.(pad_len >= pkt_len) then
-      failwith (Printf.sprintf "Bad pad_len %ld\n" pad_len);
+      invalid_arg (Printf.sprintf "Bad pad_len %ld\n" pad_len);
     let buffer = Cstruct.shift t.buffer sizeof_pkt_hdr in
     (* This is a partial packet, hold onto t *)
     if Uint32.(pkt_len > (of_int (Cstruct.len buffer))) then
@@ -204,7 +225,7 @@ let handle_key_exchange t =
       let payload_len, u1 = Uint32.(sub pkt_len pad_len) in
       let payload_len, u2 = Uint32.pred payload_len in
       if u1 || u2 then
-        failwith (Printf.sprintf "Bad payload_len %ld\n" payload_len);
+        invalid_arg (Printf.sprintf "Bad payload_len %ld\n" payload_len);
       let kex_pkt = pkt_of_kex (Cstruct.set_len buffer (Int32.to_int payload_len)) in
       (* Safe since we know pkt_len is < max_pkt_len and > 0 *)
       { t with buffer = Cstruct.shift buffer (Int32.to_int pkt_len) }
