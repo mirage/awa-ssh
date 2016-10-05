@@ -137,12 +137,10 @@ let buf_of_namelist nl =
   buf
 
 let namelist_of_buf buf =
-  let open Usane in
   let len = Cstruct.BE.get_uint32 buf 0 in
-  let buf = Cstruct.shift buf 4 in
-  if Uint32.(Int32.of_int (Cstruct.len buf) < len) then
+  if Usane.Uint32.(Int32.of_int (Cstruct.len buf) < len) then
     invalid_arg "Buffer len doesn't match name-list len";
-  Str.split (Str.regexp ",") (Cstruct.to_string buf)
+  Str.split (Str.regexp ",") (Cstruct.copy buf 4 (Int32.to_int len))
 
 let buf_of_kex kex =
   let f = buf_of_namelist in
