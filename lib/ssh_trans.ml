@@ -14,6 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+open Sexplib.Conv
+
 type state =
   | Version_exchange       (* Handling client version *)
   | Key_exchange           (* Exchanging keys *)
@@ -123,7 +125,7 @@ type kex_pkt = {
   languages_client_to_server : string list;
   languages_server_to_client : string list;
   first_kex_packet_follows : bool
-}
+} [@@deriving sexp]
 
 (* Parse a name list as in RFC4251 5. *)
 let buf_of_namelist nl =
@@ -163,13 +165,13 @@ let buf_of_kex kex =
   Cstruct.set_uint8 tail 0 (if kex.first_kex_packet_follows then 1 else 0);
   Cstruct.concat [head; nll; tail]
 
-let pkt_of_kex buf =
+let kex_of_buf buf =
   let rec loop buf l tlen =
     if (List.length l) = 10 then
       (List.rev l, tlen)
     else
       let len = Int32.to_int (Cstruct.BE.get_uint32 buf 0) in
-      let nl = namelist_of_buf (Cstruct.set_len buf len) in
+      let nl = namelist_of_buf buf in
       loop (Cstruct.shift buf (len + 4)) (nl :: l) (len + tlen + 4)
   in
   if (Cstruct.get_uint8 buf 0) <> (message_id_to_int SSH_MSG_KEXINIT) then
@@ -211,7 +213,7 @@ let handle_key_exchange t =
       let payload_len, u2 = Uint32.pred payload_len in
       if u1 || u2 then
         invalid_arg (Printf.sprintf "Bad payload_len %ld\n" payload_len);
-      let kex_pkt = pkt_of_kex (Cstruct.set_len buffer (Int32.to_int payload_len)) in
+      let kex_pkt = kex_of_buf (Cstruct.set_len buffer (Int32.to_int payload_len)) in
       (* Safe since we know pkt_len is < max_pkt_len and > 0 *)
       { t with buffer = Cstruct.shift buffer (Int32.to_int pkt_len) }
 

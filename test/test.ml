@@ -121,6 +121,14 @@ let t_key_exchange () =
   (* assert (cx <> cy); *)
   (* assert ((Cstruct.len cy.buffer) = 0); *)
 
+  (* Read a pcap file and see if it makes sense. *)
+  let file = "test/kex.packet" in
+  let fd = Unix.(openfile file [O_RDONLY] 0) in
+  let buf = Unix_cstruct.of_fd fd in
+  let pkt = Cstruct.shift buf 5 |> kex_of_buf in
+  (* printf "%s\n%!" (Sexplib.Sexp.to_string_hum (sexp_of_kex_pkt pkt)); *)
+  Unix.close fd;
+
   (* Test a zero pkt_len *)
   let () = assert_invalid @@ fun () ->
     let buf = Cstruct.create 64 in
