@@ -164,19 +164,19 @@ let buf_of_kex kex =
   Cstruct.concat [head; nll; tail]
 
 let pkt_of_kex buf =
-  let rec loop buf l =
+  let rec loop buf l tlen =
     if (List.length l) = 10 then
-      List.rev l
+      (List.rev l, tlen)
     else
       let len = Int32.to_int (Cstruct.BE.get_uint32 buf 0) in
       let nl = namelist_of_buf (Cstruct.set_len buf len) in
-      loop (Cstruct.shift buf (len + 4)) (nl :: l)
+      loop (Cstruct.shift buf (len + 4)) (nl :: l) (len + tlen + 4)
   in
-  (* XXX need some checks on len of buf *)
   if (Cstruct.get_uint8 buf 0) <> (message_id_to_int SSH_MSG_KEXINIT) then
     invalid_arg "message id is not SSH_MSG_KEXINIT";
   (* Jump over msg id and cookie *)
-  let nll = loop (Cstruct.shift buf 17) [] in
+  let nll, nll_len = loop (Cstruct.shift buf 17) [] 0 in
+  let first_kex_packet_follows = (Cstruct.get_uint8 buf nll_len) <> 0 in
   { cookie = Cstruct.copy buf 1 16;
     kex_algorithms = List.nth nll 0;
     server_host_key_algorithms = List.nth nll 1;
@@ -188,7 +188,7 @@ let pkt_of_kex buf =
     compression_algorithms_server_to_client = List.nth nll 7;
     languages_client_to_server = List.nth nll 8;
     languages_server_to_client = List.nth nll 9;
-    first_kex_packet_follows = false; (* XXX TODO *) }
+    first_kex_packet_follows; }
 
 let handle_key_exchange t =
   let open Usane in
