@@ -77,6 +77,7 @@ let make () =
     peer_version = "unknown" }
 
 let find_some f = try Some (f ()) with Not_found -> None
+let find_some_list f l = try Some (List.find f l)  with Not_found -> None
 
 let handle_version_exchange t =
   assert (t.state = Version_exchange);
@@ -141,6 +142,9 @@ let namelist_of_buf buf =
   if Usane.Uint32.(Int32.of_int (Cstruct.len buf) < len) then
     invalid_arg "Buffer len doesn't match name-list len";
   Str.split (Str.regexp ",") (Cstruct.copy buf 4 (Int32.to_int len))
+
+let pick_common ~server ~client =
+  find_some_list (fun x -> List.mem x server) client
 
 let buf_of_kex kex =
   let f = buf_of_namelist in
