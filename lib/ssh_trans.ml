@@ -66,7 +66,6 @@ type message_id =
 let max_pkt_len = Int32.of_int 64000    (* 64KB should be enough *)
 
 let version_banner = "SSH-2.0-awa_ssh_0.1\r\n"
-let version_banner_buf = Cstruct.of_string version_banner
 
 let add_buf t buf =
   { t with buffer = Cstruct.append t.buffer buf }
@@ -167,7 +166,11 @@ let buf_of_kex kex =
   Cstruct.set_uint8 tail 0 (if kex.first_kex_packet_follows then 1 else 0);
   Cstruct.concat [head; nll; tail]
 
+let message_id_of_buf buf =
+  int_to_message_id (Cstruct.get_uint8 buf 0)
+
 let kex_of_buf buf =
+  assert ((message_id_of_buf buf) = Some SSH_MSG_KEXINIT);
   let rec loop buf l tlen =
     if (List.length l) = 10 then
       (List.rev l, tlen)
@@ -176,8 +179,6 @@ let kex_of_buf buf =
       let nl = namelist_of_buf buf in
       loop (Cstruct.shift buf (len + 4)) (nl :: l) (len + tlen + 4)
   in
-  if (Cstruct.get_uint8 buf 0) <> (message_id_to_int SSH_MSG_KEXINIT) then
-    invalid_arg "message id is not SSH_MSG_KEXINIT";
   (* Jump over msg id and cookie *)
   let nll, nll_len = loop (Cstruct.shift buf 17) [] 0 in
   let first_kex_packet_follows = (Cstruct.get_uint8 buf nll_len) <> 0 in
@@ -194,10 +195,11 @@ let kex_of_buf buf =
     languages_server_to_client = List.nth nll 9;
     first_kex_packet_follows; }
 
-let handle_key_exchange t =
+(* Pick into buffer.buffer and try to pop a packet *)
+let extract_pkt t =
   let open Usane in
   if Cstruct.len t.buffer < 2 then
-    t
+    None
   else
     (* Using pad_len as int32 saves us a lot of conversions. *)
     let pkt_len = get_pkt_hdr_pkt_len t.buffer in
@@ -209,16 +211,24 @@ let handle_key_exchange t =
     let buffer = Cstruct.shift t.buffer sizeof_pkt_hdr in
     (* This is a partial packet, hold onto t *)
     if Uint32.(pkt_len > (of_int (Cstruct.len buffer))) then
-      t
+      None
     else
       let payload_len, u1 = Uint32.(sub pkt_len pad_len) in
       let payload_len, u2 = Uint32.pred payload_len in
       if u1 || u2 then
         invalid_arg (Printf.sprintf "Bad payload_len %ld\n" payload_len);
-      let kex_pkt = kex_of_buf (Cstruct.set_len buffer (Int32.to_int payload_len)) in
-      (* Safe since we know pkt_len is < max_pkt_len and > 0 *)
-      { t with buffer = Cstruct.shift buffer (Int32.to_int pkt_len) }
+      Some
+        ((Cstruct.set_len buffer (Int32.to_int payload_len)),
+         {t with buffer = Cstruct.shift buffer (Int32.to_int pkt_len)})
+
+let handle_key_exchange t pkt =
+  t
 
 let handle t = match t.state with
   | Version_exchange -> handle_version_exchange t  (* We're waiting for the banner *)
-  | Key_exchange -> handle_key_exchange t          (* We're negotiatiating cipher/mac *)
+  | Key_exchange -> match extract_pkt t with (* We're negotiatiating cipher/mac *)
+    | None -> t
+    | Some (buf, t) ->
+      if (message_id_of_buf buf) <> (Some SSH_MSG_KEXINIT) then
+        invalid_arg "Not SSH_MSG_KEXINIT";
+      handle_key_exchange t (kex_of_buf buf)
