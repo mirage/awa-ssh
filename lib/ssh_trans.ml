@@ -142,6 +142,17 @@ let namelist_of_buf buf =
     invalid_arg "Buffer len doesn't match name-list len";
   Str.split (Str.regexp ",") (Cstruct.copy buf 4 (Int32.to_int len))
 
+let namelistlist_of_buf buf n =
+  let rec loop buf l tlen =
+    if (List.length l) = n then
+      (List.rev l, tlen)
+    else
+      let len = Int32.to_int (Cstruct.BE.get_uint32 buf 0) in
+      let nl = namelist_of_buf buf in
+      loop (Cstruct.shift buf (len + 4)) (nl :: l) (len + tlen + 4)
+  in
+  loop buf [] 0
+
 let pick_common ~server ~client =
   find_some_list (fun x -> List.mem x server) client
 
@@ -171,16 +182,8 @@ let message_id_of_buf buf =
 
 let kex_of_buf buf =
   assert ((message_id_of_buf buf) = Some SSH_MSG_KEXINIT);
-  let rec loop buf l tlen =
-    if (List.length l) = 10 then
-      (List.rev l, tlen)
-    else
-      let len = Int32.to_int (Cstruct.BE.get_uint32 buf 0) in
-      let nl = namelist_of_buf buf in
-      loop (Cstruct.shift buf (len + 4)) (nl :: l) (len + tlen + 4)
-  in
   (* Jump over msg id and cookie *)
-  let nll, nll_len = loop (Cstruct.shift buf 17) [] 0 in
+  let nll, nll_len = namelistlist_of_buf (Cstruct.shift buf 17) 10 in
   let first_kex_packet_follows = (Cstruct.get_uint8 buf nll_len) <> 0 in
   { cookie = Cstruct.copy buf 1 16;
     kex_algorithms = List.nth nll 0;
@@ -226,7 +229,7 @@ let handle_key_exchange t pkt =
 
 let handle t = match t.state with
   | Version_exchange -> handle_version_exchange t  (* We're waiting for the banner *)
-  | Key_exchange -> match extract_pkt t with (* We're negotiatiating cipher/mac *)
+  | Key_exchange -> match extract_pkt t with       (* We're negotiatiating cipher/mac *)
     | None -> t
     | Some (buf, t) ->
       if (message_id_of_buf buf) <> (Some SSH_MSG_KEXINIT) then
