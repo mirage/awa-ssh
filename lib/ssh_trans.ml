@@ -116,14 +116,14 @@ type kex_pkt = {
   cookie : string;
   kex_algorithms : string list;
   server_host_key_algorithms : string list;
-  encryption_algorithms_client_to_server : string list;
-  encryption_algorithms_server_to_client : string list;
-  mac_algorithms_client_to_server : string list;
-  mac_algorithms_server_to_client : string list;
-  compression_algorithms_client_to_server : string list;
-  compression_algorithms_server_to_client : string list;
-  languages_client_to_server : string list;
-  languages_server_to_client : string list;
+  encryption_algorithms_ctos : string list;
+  encryption_algorithms_stoc : string list;
+  mac_algorithms_ctos : string list;
+  mac_algorithms_stoc : string list;
+  compression_algorithms_ctos : string list;
+  compression_algorithms_stoc : string list;
+  languages_ctos : string list;
+  languages_stoc : string list;
   first_kex_packet_follows : bool
 } [@@deriving sexp]
 
@@ -161,14 +161,14 @@ let buf_of_kex kex =
   let nll = Cstruct.concat
     [ f kex.kex_algorithms;
       f kex.server_host_key_algorithms;
-      f kex.encryption_algorithms_client_to_server;
-      f kex.encryption_algorithms_server_to_client;
-      f kex.mac_algorithms_client_to_server;
-      f kex.mac_algorithms_server_to_client;
-      f kex.compression_algorithms_client_to_server;
-      f kex.compression_algorithms_server_to_client;
-      f kex.languages_client_to_server;
-      f kex.languages_server_to_client; ]
+      f kex.encryption_algorithms_ctos;
+      f kex.encryption_algorithms_stoc;
+      f kex.mac_algorithms_ctos;
+      f kex.mac_algorithms_stoc;
+      f kex.compression_algorithms_ctos;
+      f kex.compression_algorithms_stoc;
+      f kex.languages_ctos;
+      f kex.languages_stoc; ]
   in
   let head = Cstruct.create 17 in (* message code + cookie *)
   Cstruct.set_uint8 head 0 (message_id_to_int SSH_MSG_KEXINIT);
@@ -188,14 +188,14 @@ let kex_of_buf buf =
   { cookie = Cstruct.copy buf 1 16;
     kex_algorithms = List.nth nll 0;
     server_host_key_algorithms = List.nth nll 1;
-    encryption_algorithms_client_to_server = List.nth nll 2;
-    encryption_algorithms_server_to_client = List.nth nll 3;
-    mac_algorithms_client_to_server = List.nth nll 4;
-    mac_algorithms_server_to_client = List.nth nll 5;
-    compression_algorithms_client_to_server = List.nth nll 6;
-    compression_algorithms_server_to_client = List.nth nll 7;
-    languages_client_to_server = List.nth nll 8;
-    languages_server_to_client = List.nth nll 9;
+    encryption_algorithms_ctos = List.nth nll 2;
+    encryption_algorithms_stoc = List.nth nll 3;
+    mac_algorithms_ctos = List.nth nll 4;
+    mac_algorithms_stoc = List.nth nll 5;
+    compression_algorithms_ctos = List.nth nll 6;
+    compression_algorithms_stoc = List.nth nll 7;
+    languages_ctos = List.nth nll 8;
+    languages_stoc = List.nth nll 9;
     first_kex_packet_follows; }
 
 (* Pick into buffer.buffer and try to pop a packet *)
@@ -223,6 +223,26 @@ let extract_pkt t =
       Some
         ((Cstruct.set_len buffer (Int32.to_int payload_len)),
          {t with buffer = Cstruct.shift buffer (Int32.to_int pkt_len)})
+
+let supported_kex = {
+  cookie = "";
+  kex_algorithms = [ "diffie-hellman-group1-sha1";
+                     "diffie-hellman-group14-sha1" ];
+  server_host_key_algorithms = [];
+  encryption_algorithms_ctos = [ "aes128-ctr" ];
+  encryption_algorithms_stoc = [ "aes128-ctr" ];
+  mac_algorithms_ctos = [ "hmac-sha1" ];
+  mac_algorithms_stoc = [ "hmac-sha1" ];
+  compression_algorithms_ctos = [ "none" ];
+  compression_algorithms_stoc = [ "none" ];
+  languages_ctos = [];
+  languages_stoc = [];
+  first_kex_packet_follows = false;
+}
+
+let make_kex_pkt cookie =
+  if (String.length cookie) <> 16 then invalid_arg "Bad cookie len";
+  { supported_kex with cookie }
 
 let handle_key_exchange t pkt =
   t
