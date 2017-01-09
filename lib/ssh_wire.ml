@@ -64,7 +64,7 @@ let buf_of_message_id m =
 
 let string_of_buf buf off =
   let len = Cstruct.BE.get_uint32 buf off |> Int32.to_int in
-  Cstruct.copy buf (off + 4) len
+  (Cstruct.copy buf (off + 4) len), len
 
 let buf_of_string s =
   let len = String.length s in
@@ -95,16 +95,16 @@ let buf_of_bool b =
 let buf_of_nl nl =
   buf_of_string (String.concat "," nl)
 
-let nl_of_buf buf =
-  Str.split (Str.regexp ",") (string_of_buf buf 0)
+let nl_of_buf buf off =
+  let s, len = string_of_buf buf off in
+  (Str.split (Str.regexp ",") s), len
 
 let nll_of_buf buf n =
   let rec loop buf l tlen =
     if (List.length l) = n then
       (List.rev l, tlen)
     else
-      let len = Int32.to_int (Cstruct.BE.get_uint32 buf 0) in
-      let nl = nl_of_buf buf in
+      let nl, len = nl_of_buf buf 0 in
       loop (Cstruct.shift buf (len + 4)) (nl :: l) (len + tlen + 4)
   in
   loop buf [] 0
@@ -134,8 +134,8 @@ let buf_of_disconnect disc =
 let disconnect_of_buf buf =
   assert ((message_id_of_buf buf) = Some SSH_MSG_DISCONNECT);
   let code = uint32_of_buf buf 1 in
-  let desc = string_of_buf buf 5 in
-  let lang = string_of_buf buf ((String.length desc) + 9) in
+  let desc, len = string_of_buf buf 5 in
+  let lang, _ = string_of_buf buf (len + 9) in
   { code; desc; lang }
 
 (** {2 SSH_MSG_IGNORE RFC4253 11.2.} *)
@@ -164,8 +164,8 @@ type debug_pkt = {
 let debug_of_buf buf =
   assert ((message_id_of_buf buf) = Some SSH_MSG_DEBUG);
   let always_display = bool_of_buf buf 1 in
-  let message = string_of_buf buf 2 in
-  let lang = string_of_buf buf ((String.length message) + 6) in
+  let message, len = string_of_buf buf 2 in
+  let lang, _ = string_of_buf buf (len + 6) in
   { always_display; message; lang }
 
 (** {2 SSH_MSG_SERVICE_REQUEST RFC 4253 10.} *)

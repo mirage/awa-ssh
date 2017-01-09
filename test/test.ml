@@ -153,7 +153,7 @@ let t_namelist () =
   let s = ["uncle";"henry";"is";"evil"] in
   let buf = buf_of_nl s in
   assert (Cstruct.len buf = (4 + String.length (String.concat "," s)));
-  assert (s = nl_of_buf buf)
+  assert (s = fst (nl_of_buf buf 0))
 
 let run_test test =
   let f = fst test in
