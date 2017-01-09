@@ -92,6 +92,7 @@ let t_banner () =
 
 let t_key_exchange () =
   let open Ssh_trans in
+  let open Ssh_wire in
   let c = { (make ()) with state = Key_exchange } in
 
   (* Make sure nothing happens if packet is incomplete *)
@@ -148,6 +149,7 @@ let t_key_exchange () =
 
 let t_namelist () =
   let open Ssh_trans in
+  let open Ssh_wire in
   let s = ["uncle";"henry";"is";"evil"] in
   let buf = buf_of_namelist s in
   assert (Cstruct.len buf = (4 + String.length (String.concat "," s)));
