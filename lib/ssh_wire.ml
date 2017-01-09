@@ -117,6 +117,75 @@ let nll_of_buf buf n =
   in
   loop buf [] 0
 
+(** {2 Generic messages with a string only.} *)
+
+let gen_string_of_buf msgid buf =
+  assert ((message_id_of_buf buf) = Some msgid);
+  string_of_buf buf 1
+
+let gen_buf_of_string msgid s =
+  Cstruct.concat [buf_of_message_id msgid; buf_of_string s]
+
+(** {2 SSH_MSG_DISCONNECT RFC4253 11.1.} *)
+
+type disconnect_pkt = {
+  code : int32;
+  desc : string;
+  lang : string;
+}
+
+let buf_of_disconnect disc =
+  let desc = buf_of_string disc.desc in
+  let lang = buf_of_string disc.lang in
+  Cstruct.concat [buf_of_message_id SSH_MSG_KEXINIT; desc; lang]
+
+let disconnect_of_buf buf =
+  assert ((message_id_of_buf buf) = Some SSH_MSG_DISCONNECT);
+  let code = uint32_of_buf buf 1 in
+  let desc = string_of_buf buf 5 in
+  let lang = string_of_buf buf ((String.length desc) + 9) in
+  { code; desc; lang }
+
+(** {2 SSH_MSG_IGNORE RFC4253 11.2.} *)
+
+let ignore_of_buf = gen_string_of_buf SSH_MSG_IGNORE
+let buf_of_ignore = gen_buf_of_string SSH_MSG_IGNORE
+
+(** {2 SSH_MSG_UNIMPLEMENTED RFC 4253 11.4} *)
+
+let buf_of_unimplemented v =
+  Cstruct.concat [buf_of_message_id SSH_MSG_UNIMPLEMENTED; buf_of_uint32 v]
+
+let unimplemented_of_buf buf =
+  assert ((message_id_of_buf buf) = Some SSH_MSG_UNIMPLEMENTED);
+  uint32_of_buf buf 1
+
+
+(** {2 SSH_MSG_DEBUG RFC 4253 11.3} *)
+
+type debug_pkt = {
+  always_display : bool;
+  message : string;
+  lang : string
+}
+
+let debug_of_buf buf =
+  assert ((message_id_of_buf buf) = Some SSH_MSG_DEBUG);
+  let always_display = bool_of_buf buf 1 in
+  let message = string_of_buf buf 2 in
+  let lang = string_of_buf buf ((String.length message) + 6) in
+  { always_display; message; lang }
+
+(** {2 SSH_MSG_SERVICE_REQUEST RFC 4253 10.} *)
+
+let service_request_of_buf = gen_string_of_buf SSH_MSG_SERVICE_REQUEST
+let buf_of_service_request = gen_buf_of_string SSH_MSG_SERVICE_REQUEST
+
+(** {2 SSH_MSG_SERVICE_ACCEPT RFC 4253 10.} *)
+
+let service_accept_of_buf = gen_string_of_buf SSH_MSG_SERVICE_ACCEPT
+let buf_of_service_accept = gen_buf_of_string SSH_MSG_SERVICE_ACCEPT
+
 (** {2 SSH_MSG_KEXINIT RFC4253 7.1.} *)
 
 type kex_pkt = {
@@ -172,57 +241,3 @@ let kex_of_buf buf =
     languages_ctos = List.nth nll 8;
     languages_stoc = List.nth nll 9;
     first_kex_packet_follows; }
-
-(** {2 SSH_MSG_DISCONNECT RFC4253 11.1.} *)
-
-type disconnect_pkt = {
-  code : int32;
-  desc : string;
-  lang : string;
-}
-
-let buf_of_disconnect disc =
-  let desc = buf_of_string disc.desc in
-  let lang = buf_of_string disc.lang in
-  Cstruct.concat [buf_of_message_id SSH_MSG_KEXINIT; desc; lang]
-
-let disconnect_of_buf buf =
-  assert ((message_id_of_buf buf) = Some SSH_MSG_DISCONNECT);
-  let code = uint32_of_buf buf 1 in
-  let desc = string_of_buf buf 5 in
-  let lang = string_of_buf buf ((String.length desc) + 9) in
-  { code; desc; lang }
-
-(** {2 SSH_MSG_IGNORE RFC4253 11.2.} *)
-
-let ignore_of_buf buf =
-  assert ((message_id_of_buf buf) = Some SSH_MSG_IGNORE);
-  string_of_buf buf 1
-
-let buf_of_ignore s =
-  Cstruct.concat [buf_of_message_id SSH_MSG_IGNORE; buf_of_string s]
-
-(** {2 SSH_MSG_UNIMPLEMENTED RFC 4253 11.4} *)
-
-let buf_of_unimplemented v =
-  Cstruct.concat [buf_of_message_id SSH_MSG_UNIMPLEMENTED; buf_of_uint32 v]
-
-let unimplemented_of_buf buf =
-  assert ((message_id_of_buf buf) = Some SSH_MSG_UNIMPLEMENTED);
-  uint32_of_buf buf 1
-
-
-(** {2 SSH_MSG_DEBUG RFC 4253 11.3} *)
-
-type debug_pkt = {
-  always_display : bool;
-  message : string;
-  lang : string
-}
-
-let debug_of_buf buf =
-  assert ((message_id_of_buf buf) = Some SSH_MSG_DEBUG);
-  let always_display = bool_of_buf buf 1 in
-  let message = string_of_buf buf 2 in
-  let lang = string_of_buf buf ((String.length message) + 6) in
-  { always_display; message; lang }
