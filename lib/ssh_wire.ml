@@ -123,6 +123,15 @@ let gen_string_of_buf msgid buf =
 let gen_buf_of_string msgid s =
   Cstruct.concat [buf_of_message_id msgid; buf_of_string s]
 
+let gen_2strings_of_buf msgid buf =
+  assert_message_id buf msgid;
+  let s1, len1 = string_of_buf buf 1 in
+  let s2, _ = string_of_buf buf (len1 + 5) in
+  s1, s2
+
+let gen_buf_of_2strings msgid s1 s2 =
+  Cstruct.concat [buf_of_message_id msgid; buf_of_string s1; buf_of_string s2]
+
 (** {2 SSH_MSG_DISCONNECT RFC4253 11.1.} *)
 
 type disconnect_pkt = {
@@ -247,7 +256,7 @@ let kex_of_buf buf =
 (** {2 SSH_MSG_USERAUTH_FAILURE RFC4252 5.1} *)
 
 let userauth_failure_of_buf buf =
-  assert ((message_id_of_buf buf) = Some SSH_MSG_USERAUTH_FAILURE);
+  assert_message_id buf SSH_MSG_USERAUTH_FAILURE;
   let nl, len = nl_of_buf buf 1 in
   let psucc = bool_of_buf buf len in
   (nl, psucc)
@@ -255,3 +264,12 @@ let userauth_failure_of_buf buf =
 let buf_of_userauth_failure nl psucc =
   let head = buf_of_message_id SSH_MSG_USERAUTH_FAILURE in
   Cstruct.concat [head; buf_of_nl nl; buf_of_bool psucc]
+
+(** {2 SSH_MSG_USERAUTH_BANNER RFC4252 5.4.} *)
+
+let userauth_banner_of_buf = gen_2strings_of_buf SSH_MSG_USERAUTH_BANNER
+let userauth_buf_of_banner = gen_buf_of_2strings SSH_MSG_USERAUTH_BANNER
+
+(** {2 SSH_MSG_GLOBAL_REQUEST RFC4254 4.} *)
+
+(* TODO, variable len *)
