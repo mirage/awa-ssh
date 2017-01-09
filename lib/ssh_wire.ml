@@ -93,18 +93,10 @@ let buf_of_bool b =
 (** {2 Name lists as in RFC4251 5.} *)
 
 let buf_of_nl nl =
-  let s = String.concat "," nl in
-  let slen = String.length s in
-  let buf = Cstruct.create (4 + slen) in
-  Cstruct.BE.set_uint32 buf 0 (Int32.of_int slen);
-  Cstruct.blit_from_string s 0 buf 4 slen;
-  buf
+  buf_of_string (String.concat "," nl)
 
 let nl_of_buf buf =
-  let len = Cstruct.BE.get_uint32 buf 0 in
-  if Usane.Uint32.(Int32.of_int (Cstruct.len buf) < len) then
-    invalid_arg "Buffer len doesn't match name-list len";
-  Str.split (Str.regexp ",") (Cstruct.copy buf 4 (Int32.to_int len))
+  Str.split (Str.regexp ",") (string_of_buf buf 0)
 
 let nll_of_buf buf n =
   let rec loop buf l tlen =
@@ -217,18 +209,19 @@ let buf_of_kex kex =
       f kex.languages_ctos;
       f kex.languages_stoc; ]
   in
-  let head = Cstruct.create 17 in (* message code + cookie *)
-  Cstruct.set_uint8 head 0 (message_id_to_int SSH_MSG_KEXINIT);
-  Cstruct.blit_from_string kex.cookie 0 head 1 (String.length kex.cookie);
+  let head = buf_of_message_id SSH_MSG_KEXINIT in
+  let cookie = Cstruct.create 16 in
+  assert ((String.length kex.cookie) = 16);
+  Cstruct.blit_from_string kex.cookie 0 cookie 0 16;
   let tail = Cstruct.create 5 in  (* first_kex_packet_follows + reserved *)
   Cstruct.set_uint8 tail 0 (if kex.first_kex_packet_follows then 1 else 0);
-  Cstruct.concat [head; nll; tail]
+  Cstruct.concat [head; cookie; nll; tail]
 
 let kex_of_buf buf =
   assert ((message_id_of_buf buf) = Some SSH_MSG_KEXINIT);
   (* Jump over msg id and cookie *)
   let nll, nll_len = nll_of_buf (Cstruct.shift buf 17) 10 in
-  let first_kex_packet_follows = (Cstruct.get_uint8 buf nll_len) <> 0 in
+  let first_kex_packet_follows = bool_of_buf buf nll_len in
   { cookie = Cstruct.copy buf 1 16;
     kex_algorithms = List.nth nll 0;
     server_host_key_algorithms = List.nth nll 1;
