@@ -62,6 +62,11 @@ let buf_of_message_id m =
   Cstruct.set_uint8 buf 0 (message_id_to_int m);
   buf
 
+let assert_message_id buf msgid =
+  assert ((message_id_of_buf buf) = Some msgid)
+
+(** {2 Conversions on primitives.} *)
+
 let string_of_buf buf off =
   let len = Cstruct.BE.get_uint32 buf off |> Int32.to_int in
   (Cstruct.copy buf (off + 4) len), len
@@ -112,7 +117,7 @@ let nll_of_buf buf n =
 (** {2 Generic messages with a string only.} *)
 
 let gen_string_of_buf msgid buf =
-  assert ((message_id_of_buf buf) = Some msgid);
+  assert_message_id buf msgid;
   string_of_buf buf 1
 
 let gen_buf_of_string msgid s =
@@ -132,7 +137,7 @@ let buf_of_disconnect disc =
   Cstruct.concat [buf_of_message_id SSH_MSG_KEXINIT; desc; lang]
 
 let disconnect_of_buf buf =
-  assert ((message_id_of_buf buf) = Some SSH_MSG_DISCONNECT);
+  assert_message_id buf SSH_MSG_DISCONNECT;
   let code = uint32_of_buf buf 1 in
   let desc, len = string_of_buf buf 5 in
   let lang, _ = string_of_buf buf (len + 9) in
@@ -149,7 +154,7 @@ let buf_of_unimplemented v =
   Cstruct.concat [buf_of_message_id SSH_MSG_UNIMPLEMENTED; buf_of_uint32 v]
 
 let unimplemented_of_buf buf =
-  assert ((message_id_of_buf buf) = Some SSH_MSG_UNIMPLEMENTED);
+  assert_message_id buf SSH_MSG_UNIMPLEMENTED;
   uint32_of_buf buf 1
 
 
@@ -162,7 +167,7 @@ type debug_pkt = {
 }
 
 let debug_of_buf buf =
-  assert ((message_id_of_buf buf) = Some SSH_MSG_DEBUG);
+  assert_message_id buf SSH_MSG_DEBUG;
   let always_display = bool_of_buf buf 1 in
   let message, len = string_of_buf buf 2 in
   let lang, _ = string_of_buf buf (len + 6) in
@@ -218,7 +223,7 @@ let buf_of_kex kex =
   Cstruct.concat [head; cookie; nll; tail]
 
 let kex_of_buf buf =
-  assert ((message_id_of_buf buf) = Some SSH_MSG_KEXINIT);
+  assert_message_id buf SSH_MSG_KEXINIT;
   (* Jump over msg id and cookie *)
   let nll, nll_len = nll_of_buf (Cstruct.shift buf 17) 10 in
   let first_kex_packet_follows = bool_of_buf buf nll_len in
