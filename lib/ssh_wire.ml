@@ -59,7 +59,7 @@ let message_id_of_buf buf =
 
 (** {2 Name lists as in RFC4251 5.} *)
 
-let buf_of_namelist nl =
+let buf_of_nl nl =
   let s = String.concat "," nl in
   let slen = String.length s in
   let buf = Cstruct.create (4 + slen) in
@@ -67,19 +67,19 @@ let buf_of_namelist nl =
   Cstruct.blit_from_string s 0 buf 4 slen;
   buf
 
-let namelist_of_buf buf =
+let nl_of_buf buf =
   let len = Cstruct.BE.get_uint32 buf 0 in
   if Usane.Uint32.(Int32.of_int (Cstruct.len buf) < len) then
     invalid_arg "Buffer len doesn't match name-list len";
   Str.split (Str.regexp ",") (Cstruct.copy buf 4 (Int32.to_int len))
 
-let namelistlist_of_buf buf n =
+let nll_of_buf buf n =
   let rec loop buf l tlen =
     if (List.length l) = n then
       (List.rev l, tlen)
     else
       let len = Int32.to_int (Cstruct.BE.get_uint32 buf 0) in
-      let nl = namelist_of_buf buf in
+      let nl = nl_of_buf buf in
       loop (Cstruct.shift buf (len + 4)) (nl :: l) (len + tlen + 4)
   in
   loop buf [] 0
@@ -102,7 +102,7 @@ type kex_pkt = {
 } [@@deriving sexp]
 
 let buf_of_kex kex =
-  let f = buf_of_namelist in
+  let f = buf_of_nl in
   let nll = Cstruct.concat
     [ f kex.kex_algorithms;
       f kex.server_host_key_algorithms;
@@ -125,7 +125,7 @@ let buf_of_kex kex =
 let kex_of_buf buf =
   assert ((message_id_of_buf buf) = Some SSH_MSG_KEXINIT);
   (* Jump over msg id and cookie *)
-  let nll, nll_len = namelistlist_of_buf (Cstruct.shift buf 17) 10 in
+  let nll, nll_len = nll_of_buf (Cstruct.shift buf 17) 10 in
   let first_kex_packet_follows = (Cstruct.get_uint8 buf nll_len) <> 0 in
   { cookie = Cstruct.copy buf 1 16;
     kex_algorithms = List.nth nll 0;

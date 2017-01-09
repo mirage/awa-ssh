@@ -151,9 +151,9 @@ let t_namelist () =
   let open Ssh_trans in
   let open Ssh_wire in
   let s = ["uncle";"henry";"is";"evil"] in
-  let buf = buf_of_namelist s in
+  let buf = buf_of_nl s in
   assert (Cstruct.len buf = (4 + String.length (String.concat "," s)));
-  assert (s = namelist_of_buf buf)
+  assert (s = nl_of_buf buf)
 
 let run_test test =
   let f = fst test in
