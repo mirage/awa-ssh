@@ -57,6 +57,39 @@ type message_id =
 let message_id_of_buf buf =
   int_to_message_id (Cstruct.get_uint8 buf 0)
 
+let buf_of_message_id m =
+  let buf = Cstruct.create 1 in
+  Cstruct.set_uint8 buf 0 (message_id_to_int m);
+  buf
+
+let string_of_buf buf off =
+  let len = Cstruct.BE.get_uint32 buf off |> Int32.to_int in
+  Cstruct.copy buf (off + 4) len
+
+let buf_of_string s =
+  let len = String.length s in
+  (* XXX string cant be longer than uint8  *)
+  let buf = Cstruct.create (len + 4) in
+  Cstruct.BE.set_uint32 buf 0 (Int32.of_int len);
+  Cstruct.blit_from_string s 0 buf 4 len;
+  buf
+
+let uint32_of_buf buf off =
+  Cstruct.BE.get_uint32 buf off
+
+let buf_of_uint32 v =
+  let buf = Cstruct.create 4 in
+  Cstruct.BE.set_uint32 buf 0 v;
+  buf
+
+let bool_of_buf buf off =
+  (Cstruct.get_uint8 buf 0) <> 0
+
+let buf_of_bool b =
+  let buf = Cstruct.create 1 in
+  Cstruct.set_uint8 buf 0 (if b then 1 else 0);
+  buf
+
 (** {2 Name lists as in RFC4251 5.} *)
 
 let buf_of_nl nl =
@@ -84,7 +117,7 @@ let nll_of_buf buf n =
   in
   loop buf [] 0
 
-(** {2 SSH Key-exchange types and operations.} *)
+(** {2 SSH_MSG_KEXINIT RFC4253 7.1.} *)
 
 type kex_pkt = {
   cookie : string;
@@ -139,3 +172,57 @@ let kex_of_buf buf =
     languages_ctos = List.nth nll 8;
     languages_stoc = List.nth nll 9;
     first_kex_packet_follows; }
+
+(** {2 SSH_MSG_DISCONNECT RFC4253 11.1.} *)
+
+type disconnect_pkt = {
+  code : int32;
+  desc : string;
+  lang : string;
+}
+
+let buf_of_disconnect disc =
+  let desc = buf_of_string disc.desc in
+  let lang = buf_of_string disc.lang in
+  Cstruct.concat [buf_of_message_id SSH_MSG_KEXINIT; desc; lang]
+
+let disconnect_of_buf buf =
+  assert ((message_id_of_buf buf) = Some SSH_MSG_DISCONNECT);
+  let code = uint32_of_buf buf 1 in
+  let desc = string_of_buf buf 5 in
+  let lang = string_of_buf buf ((String.length desc) + 9) in
+  { code; desc; lang }
+
+(** {2 SSH_MSG_IGNORE RFC4253 11.2.} *)
+
+let ignore_of_buf buf =
+  assert ((message_id_of_buf buf) = Some SSH_MSG_IGNORE);
+  string_of_buf buf 1
+
+let buf_of_ignore s =
+  Cstruct.concat [buf_of_message_id SSH_MSG_IGNORE; buf_of_string s]
+
+(** {2 SSH_MSG_UNIMPLEMENTED RFC 4253 11.4} *)
+
+let buf_of_unimplemented v =
+  Cstruct.concat [buf_of_message_id SSH_MSG_UNIMPLEMENTED; buf_of_uint32 v]
+
+let unimplemented_of_buf buf =
+  assert ((message_id_of_buf buf) = Some SSH_MSG_UNIMPLEMENTED);
+  uint32_of_buf buf 1
+
+
+(** {2 SSH_MSG_DEBUG RFC 4253 11.3} *)
+
+type debug_pkt = {
+  always_display : bool;
+  message : string;
+  lang : string
+}
+
+let debug_of_buf buf =
+  assert ((message_id_of_buf buf) = Some SSH_MSG_DEBUG);
+  let always_display = bool_of_buf buf 1 in
+  let message = string_of_buf buf 2 in
+  let lang = string_of_buf buf ((String.length message) + 6) in
+  { always_display; message; lang }
