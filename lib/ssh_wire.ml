@@ -239,3 +239,19 @@ let kex_of_buf buf =
     languages_ctos = List.nth nll 8;
     languages_stoc = List.nth nll 9;
     first_kex_packet_follows; }
+
+(** {2 SSH_MSG_USERAUTH_REQUEST RFC4252 5.} *)
+
+(* TODO, variable len *)
+
+(** {2 SSH_MSG_USERAUTH_FAILURE RFC4252 5.1} *)
+
+let userauth_failure_of_buf buf =
+  assert ((message_id_of_buf buf) = Some SSH_MSG_USERAUTH_FAILURE);
+  let nl, len = nl_of_buf buf 1 in
+  let psucc = bool_of_buf buf len in
+  (nl, psucc)
+
+let buf_of_userauth_failure nl psucc =
+  let head = buf_of_message_id SSH_MSG_USERAUTH_FAILURE in
+  Cstruct.concat [head; buf_of_nl nl; buf_of_bool psucc]
