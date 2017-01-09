@@ -23,6 +23,52 @@ type pkt_hdr = {
   pad_len: uint8_t;
 } [@@big_endian]]
 
+(** {2 Version exchange parser.} *)
+
+let scan_version buf =
+  (* if (Cstruct.len buf) > (1024 * 64) then *)
+  (*   error "Buffer is too big." *)
+  (* else *)
+  let s = Cstruct.to_string buf in
+  let len = String.length s in
+  let not_found =
+    if len < (1024 * 64) then
+      ok None
+    else
+      error "Buffer is too big"
+  in
+  let rec scan start off =
+    if off = len then
+      not_found
+    else
+      match (String.get s (pred off), String.get s off) with
+      | ('\r', '\n') ->
+        let line = String.sub s start (off - start - 1) in
+        let line_len = String.length line in
+        if line_len < 4 ||
+           String.sub line 0 4 <> "SSH-" then
+          scan (succ off) (succ off)
+        else if (line_len < 9) then
+          error "Version line is too short"
+        else
+          let tokens = Str.split_delim (Str.regexp "-") line in
+          if List.length tokens <> 3 then
+            error "Can't parse version line"
+          else
+            let version = List.nth tokens 1 in
+            let peer_version = List.nth tokens 2 in
+            if version <> "2.0" then
+              error ("Bad version " ^ version)
+            else
+              ok (Some (Cstruct.shift buf (succ off), peer_version))
+      | _ -> scan start (succ off)
+  in
+  if len < 2 then
+    not_found
+  else
+    scan 0 1
+
+
 (** {2 Message ID.} *)
 
 [%%cenum

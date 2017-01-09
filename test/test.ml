@@ -49,8 +49,6 @@ let assert_invalid x =
     invalid_arg "Expected failure exception."
 
 let t_banner () =
-  let open Ssh_trans in
-  let c = make () in
   let good_strings = [
     "SSH-2.0-foobar lalal\r\n";
     "\r\n\r\nSSH-2.0-foobar lalal\r\n";
@@ -61,36 +59,29 @@ let t_banner () =
   ]
   in
   List.iter (fun s ->
-      let c = add_buf c (Cstruct.of_string s) |> handle in
-      assert (c.state = Ssh_trans.Key_exchange))
+      let buf = Cstruct.of_string s in
+      match (Ssh_wire.scan_version buf) with
+      | Result.Ok Some _ -> ()
+      | Result.Ok None -> failwith "expected some"
+      | Result.Error e -> failwith e)
     good_strings;
+
   let bad_strings = [
     "SSH-2.0\r\n";
     "SSH-1.0-foobar lalal lololo\r\n";
     "SSH-2.0-Open-SSH_6.9\r\n";
     "Some crap before\r\nSSH-2.0-Open-SSH_6.9\r\n";
     "\r\nSSH-2.0-Open-SSH_6.9\r\nSom crap after";
+    "SSH-2.0-partiallineomg";
   ]
   in
   List.iter (fun s ->
-      assert_invalid @@
-      fun () -> add_buf c (Cstruct.of_string s) |> handle)
-    bad_strings;
-  (* Check if we can extract client_version *)
-  let cx = add_buf c (Cstruct.of_string "SSH-2.0-OpenSSH_6.9\r\n") |> handle in
-  assert (cx.peer_version = "OpenSSH_6.9");
-  assert (Cstruct.len (cx.buffer) = 0);
-  (* If we have multiple lines, check if we consume the buffer correctly *)
-  let cx = add_buf c
-      (Cstruct.of_string "Foo bar\r\nSSH-2.0-OpenSSH_6.9\r\n") |> handle
-  in
-  assert (cx.peer_version = "OpenSSH_6.9");
-  assert (Cstruct.len (cx.buffer) = 0);
-  let cx = add_buf c
-      (Cstruct.of_string "Foo bar\r\nSSH-2.0-OpenSSH_6.9\r\nLALA") |> handle
-  in
-  assert (cx.peer_version = "OpenSSH_6.9");
-  assert (Cstruct.len (cx.buffer) = 4)
+      let buf = Cstruct.of_string s in
+      match (Ssh_wire.scan_version buf) with
+      | Result.Ok Some _ -> failwith "expected none or error"
+      | Result.Ok None -> ()
+      | Result.Error e -> ())
+    bad_strings
 
 let t_key_exchange () =
   let open Ssh_trans in

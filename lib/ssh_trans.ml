@@ -42,40 +42,6 @@ let make () =
 let find_some f = try Some (f ()) with Not_found -> None
 let find_some_list f l = try Some (List.find f l)  with Not_found -> None
 
-let handle_version_exchange t =
-  assert (t.state = Version_exchange);
-  let s = Cstruct.to_string t.buffer in
-  let len = String.length s in
-  let rec scan start off =
-    if off = len then
-      { t with buffer = Cstruct.shift t.buffer start }
-    else
-      match (String.get s (pred off), String.get s off) with
-      | ('\r', '\n') ->
-        let line = String.sub s start (off - start - 1) in
-        if String.length line < 4 ||
-           String.sub line 0 4 <> "SSH-" then
-          scan (succ off) (succ off)
-        else if (String.length line < 9) then
-          invalid_arg "Version line is too short"
-        else
-          let tokens = Str.split_delim (Str.regexp "-") line in
-          if List.length tokens <> 3 then
-            invalid_arg "Can't parse version line";
-          let version = List.nth tokens 1 in
-          let peer_version = List.nth tokens 2 in
-          if version <> "2.0" then
-            invalid_arg ("Bad version " ^ version);
-          { state = Key_exchange;
-            buffer = Cstruct.shift t.buffer (succ off);
-            peer_version }
-      | _ -> scan start (succ off)
-  in
-  if len < 2 then
-    t
-  else
-    scan 0 1
-
 let pick_common ~server ~client =
   find_some_list (fun x -> List.mem x server) client
 
@@ -129,7 +95,7 @@ let handle_key_exchange t pkt =
   t
 
 let handle t = match t.state with
-  | Version_exchange -> handle_version_exchange t  (* We're waiting for the banner *)
+  | Version_exchange -> failwith "TODO"
   | Key_exchange -> match extract_pkt t with       (* We're negotiatiating cipher/mac *)
     | None -> t
     | Some (buf, t) ->
