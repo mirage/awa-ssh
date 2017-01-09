@@ -15,6 +15,7 @@
  *)
 
 open Sexplib.Conv
+open Rresult.R
 
 [%%cstruct
 type pkt_hdr = {
@@ -118,19 +119,23 @@ let nll_of_buf buf n =
 
 let gen_string_of_buf msgid buf =
   assert_message_id buf msgid;
-  string_of_buf buf 1
+  trap_exn (fun () -> string_of_buf buf 1) ()
 
 let gen_buf_of_string msgid s =
-  Cstruct.concat [buf_of_message_id msgid; buf_of_string s]
+  trap_exn (fun () ->
+      Cstruct.concat [buf_of_message_id msgid; buf_of_string s]) ()
 
 let gen_2strings_of_buf msgid buf =
   assert_message_id buf msgid;
-  let s1, len1 = string_of_buf buf 1 in
-  let s2, _ = string_of_buf buf (len1 + 5) in
-  s1, s2
+  trap_exn (fun () ->
+      let s1, len1 = string_of_buf buf 1 in
+      let s2, _ = string_of_buf buf (len1 + 5) in
+      s1, s2) ()
 
 let gen_buf_of_2strings msgid s1 s2 =
-  Cstruct.concat [buf_of_message_id msgid; buf_of_string s1; buf_of_string s2]
+  trap_exn (fun () ->
+      Cstruct.concat
+        [buf_of_message_id msgid; buf_of_string s1; buf_of_string s2]) ()
 
 (** {2 SSH_MSG_DISCONNECT RFC4253 11.1.} *)
 
@@ -141,16 +146,18 @@ type disconnect_pkt = {
 }
 
 let buf_of_disconnect disc =
-  let desc = buf_of_string disc.desc in
-  let lang = buf_of_string disc.lang in
-  Cstruct.concat [buf_of_message_id SSH_MSG_KEXINIT; desc; lang]
+  trap_exn (fun () ->
+      let desc = buf_of_string disc.desc in
+      let lang = buf_of_string disc.lang in
+      Cstruct.concat [buf_of_message_id SSH_MSG_KEXINIT; desc; lang]) ()
 
 let disconnect_of_buf buf =
   assert_message_id buf SSH_MSG_DISCONNECT;
-  let code = uint32_of_buf buf 1 in
-  let desc, len = string_of_buf buf 5 in
-  let lang, _ = string_of_buf buf (len + 9) in
-  { code; desc; lang }
+  trap_exn (fun () ->
+      let code = uint32_of_buf buf 1 in
+      let desc, len = string_of_buf buf 5 in
+      let lang, _ = string_of_buf buf (len + 9) in
+      { code; desc; lang }) ()
 
 (** {2 SSH_MSG_IGNORE RFC4253 11.2.} *)
 
@@ -160,11 +167,13 @@ let buf_of_ignore = gen_buf_of_string SSH_MSG_IGNORE
 (** {2 SSH_MSG_UNIMPLEMENTED RFC 4253 11.4} *)
 
 let buf_of_unimplemented v =
-  Cstruct.concat [buf_of_message_id SSH_MSG_UNIMPLEMENTED; buf_of_uint32 v]
+  trap_exn (fun () ->
+      Cstruct.concat
+        [buf_of_message_id SSH_MSG_UNIMPLEMENTED; buf_of_uint32 v]) ()
 
 let unimplemented_of_buf buf =
   assert_message_id buf SSH_MSG_UNIMPLEMENTED;
-  uint32_of_buf buf 1
+  trap_exn (fun () -> uint32_of_buf buf 1) ()
 
 
 (** {2 SSH_MSG_DEBUG RFC 4253 11.3} *)
@@ -177,10 +186,11 @@ type debug_pkt = {
 
 let debug_of_buf buf =
   assert_message_id buf SSH_MSG_DEBUG;
-  let always_display = bool_of_buf buf 1 in
-  let message, len = string_of_buf buf 2 in
-  let lang, _ = string_of_buf buf (len + 6) in
-  { always_display; message; lang }
+  trap_exn (fun () ->
+      let always_display = bool_of_buf buf 1 in
+      let message, len = string_of_buf buf 2 in
+      let lang, _ = string_of_buf buf (len + 6) in
+      { always_display; message; lang }) ()
 
 (** {2 SSH_MSG_SERVICE_REQUEST RFC 4253 10.} *)
 
@@ -210,44 +220,48 @@ type kex_pkt = {
 } [@@deriving sexp]
 
 let buf_of_kex kex =
-  let f = buf_of_nl in
-  let nll = Cstruct.concat
-    [ f kex.kex_algorithms;
-      f kex.server_host_key_algorithms;
-      f kex.encryption_algorithms_ctos;
-      f kex.encryption_algorithms_stoc;
-      f kex.mac_algorithms_ctos;
-      f kex.mac_algorithms_stoc;
-      f kex.compression_algorithms_ctos;
-      f kex.compression_algorithms_stoc;
-      f kex.languages_ctos;
-      f kex.languages_stoc; ]
-  in
-  let head = buf_of_message_id SSH_MSG_KEXINIT in
-  let cookie = Cstruct.create 16 in
-  assert ((String.length kex.cookie) = 16);
-  Cstruct.blit_from_string kex.cookie 0 cookie 0 16;
-  let tail = Cstruct.create 5 in  (* first_kex_packet_follows + reserved *)
-  Cstruct.set_uint8 tail 0 (if kex.first_kex_packet_follows then 1 else 0);
-  Cstruct.concat [head; cookie; nll; tail]
+  trap_exn
+    (fun () ->
+       let f = buf_of_nl in
+       let nll = Cstruct.concat
+           [ f kex.kex_algorithms;
+             f kex.server_host_key_algorithms;
+             f kex.encryption_algorithms_ctos;
+             f kex.encryption_algorithms_stoc;
+             f kex.mac_algorithms_ctos;
+             f kex.mac_algorithms_stoc;
+             f kex.compression_algorithms_ctos;
+             f kex.compression_algorithms_stoc;
+             f kex.languages_ctos;
+             f kex.languages_stoc; ]
+       in
+       let head = buf_of_message_id SSH_MSG_KEXINIT in
+       let cookie = Cstruct.create 16 in
+       assert ((String.length kex.cookie) = 16);
+       Cstruct.blit_from_string kex.cookie 0 cookie 0 16;
+       let tail = Cstruct.create 5 in  (* first_kex_packet_follows + reserved *)
+       Cstruct.set_uint8 tail 0 (if kex.first_kex_packet_follows then 1 else 0);
+       Cstruct.concat [head; cookie; nll; tail]) ()
 
 let kex_of_buf buf =
   assert_message_id buf SSH_MSG_KEXINIT;
-  (* Jump over msg id and cookie *)
-  let nll, nll_len = nll_of_buf (Cstruct.shift buf 17) 10 in
-  let first_kex_packet_follows = bool_of_buf buf nll_len in
-  { cookie = Cstruct.copy buf 1 16;
-    kex_algorithms = List.nth nll 0;
-    server_host_key_algorithms = List.nth nll 1;
-    encryption_algorithms_ctos = List.nth nll 2;
-    encryption_algorithms_stoc = List.nth nll 3;
-    mac_algorithms_ctos = List.nth nll 4;
-    mac_algorithms_stoc = List.nth nll 5;
-    compression_algorithms_ctos = List.nth nll 6;
-    compression_algorithms_stoc = List.nth nll 7;
-    languages_ctos = List.nth nll 8;
-    languages_stoc = List.nth nll 9;
-    first_kex_packet_follows; }
+  trap_exn
+    (fun () ->
+       (* Jump over msg id and cookie *)
+       let nll, nll_len = nll_of_buf (Cstruct.shift buf 17) 10 in
+       let first_kex_packet_follows = bool_of_buf buf nll_len in
+       { cookie = Cstruct.copy buf 1 16;
+         kex_algorithms = List.nth nll 0;
+         server_host_key_algorithms = List.nth nll 1;
+         encryption_algorithms_ctos = List.nth nll 2;
+         encryption_algorithms_stoc = List.nth nll 3;
+         mac_algorithms_ctos = List.nth nll 4;
+         mac_algorithms_stoc = List.nth nll 5;
+         compression_algorithms_ctos = List.nth nll 6;
+         compression_algorithms_stoc = List.nth nll 7;
+         languages_ctos = List.nth nll 8;
+         languages_stoc = List.nth nll 9;
+         first_kex_packet_follows; }) ()
 
 (** {2 SSH_MSG_USERAUTH_REQUEST RFC4252 5.} *)
 
@@ -257,13 +271,15 @@ let kex_of_buf buf =
 
 let userauth_failure_of_buf buf =
   assert_message_id buf SSH_MSG_USERAUTH_FAILURE;
-  let nl, len = nl_of_buf buf 1 in
-  let psucc = bool_of_buf buf len in
-  (nl, psucc)
+  trap_exn (fun () ->
+      let nl, len = nl_of_buf buf 1 in
+      let psucc = bool_of_buf buf len in
+      (nl, psucc)) ()
 
 let buf_of_userauth_failure nl psucc =
-  let head = buf_of_message_id SSH_MSG_USERAUTH_FAILURE in
-  Cstruct.concat [head; buf_of_nl nl; buf_of_bool psucc]
+  trap_exn (fun () ->
+      let head = buf_of_message_id SSH_MSG_USERAUTH_FAILURE in
+      Cstruct.concat [head; buf_of_nl nl; buf_of_bool psucc]) ()
 
 (** {2 SSH_MSG_USERAUTH_BANNER RFC4252 5.4.} *)
 

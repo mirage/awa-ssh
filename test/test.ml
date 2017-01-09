@@ -16,6 +16,8 @@
 
 let () = Printexc.record_backtrace true
 
+open Rresult.R
+
 let printf = Printf.printf
 
 let tty_out = Unix.isatty Unix.stdout
@@ -126,7 +128,7 @@ let t_key_exchange () =
   let file = "test/kex.packet" in
   let fd = Unix.(openfile file [O_RDONLY] 0) in
   let buf = Unix_cstruct.of_fd fd in
-  let pkt = Cstruct.shift buf 5 |> kex_of_buf in
+  let pkt = get_ok (Cstruct.shift buf 5 |> kex_of_buf) in
   (* printf "%s\n%!" (Sexplib.Sexp.to_string_hum (sexp_of_kex_pkt pkt)); *)
   Unix.close fd;
 
