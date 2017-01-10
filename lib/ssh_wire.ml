@@ -26,9 +26,6 @@ type pkt_hdr = {
 (** {2 Version exchange parser.} *)
 
 let scan_version buf =
-  (* if (Cstruct.len buf) > (1024 * 64) then *)
-  (*   error "Buffer is too big." *)
-  (* else *)
   let s = Cstruct.to_string buf in
   let len = String.length s in
   let not_found =
