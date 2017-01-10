@@ -185,17 +185,12 @@ let gen_buf_of_2strings msgid s1 s2 =
 
 (** {2 SSH_MSG_DISCONNECT RFC4253 11.1.} *)
 
-type disconnect_pkt = {
-  code : int32;
-  desc : string;
-  lang : string;
-}
-
-let buf_of_disconnect disc =
+let buf_of_disconnect code desc lang =
   trap_exn (fun () ->
-      let desc = buf_of_string disc.desc in
-      let lang = buf_of_string disc.lang in
-      Cstruct.concat [buf_of_message_id SSH_MSG_KEXINIT; desc; lang]) ()
+      let code = buf_of_uint32 code in
+      let desc = buf_of_string desc in
+      let lang = buf_of_string lang in
+      Cstruct.concat [buf_of_message_id SSH_MSG_KEXINIT; code; desc; lang]) ()
 
 let disconnect_of_buf buf =
   assert_message_id buf SSH_MSG_DISCONNECT;
@@ -203,7 +198,7 @@ let disconnect_of_buf buf =
       let code = uint32_of_buf buf 1 in
       let desc, len = string_of_buf buf 5 in
       let lang, _ = string_of_buf buf (len + 9) in
-      { code; desc; lang }) ()
+      code, desc, lang) ()
 
 (** {2 SSH_MSG_IGNORE RFC4253 11.2.} *)
 
@@ -224,19 +219,13 @@ let unimplemented_of_buf buf =
 
 (** {2 SSH_MSG_DEBUG RFC 4253 11.3} *)
 
-type debug_pkt = {
-  always_display : bool;
-  message : string;
-  lang : string
-}
-
 let debug_of_buf buf =
   assert_message_id buf SSH_MSG_DEBUG;
   trap_exn (fun () ->
       let always_display = bool_of_buf buf 1 in
       let message, len = string_of_buf buf 2 in
       let lang, _ = string_of_buf buf (len + 6) in
-      { always_display; message; lang }) ()
+      always_display, message, lang) ()
 
 (** {2 SSH_MSG_SERVICE_REQUEST RFC 4253 10.} *)
 
