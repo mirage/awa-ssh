@@ -96,19 +96,29 @@ let scan_pkt buf =
       invalid_arg "Bad pkt_len"
     else if Uint32.(pad_len >= pkt_len) then
       invalid_arg "Bad pad_len";
-    let buf = Cstruct.shift buf sizeof_pkt_hdr in
-    let len = Cstruct.len buf in
+    (* XXX consider padding and so on *)
+    (* let buf = Cstruct.shift buf sizeof_pkt_hdr in *)
+    (* let len = Cstruct.len buf in *)
     (* This is a partial packet, hold onto t *)
-    if Uint32.(pkt_len > (of_int len)) then
+    (* (len = (4 + pkt_len)) *)
+    assert (len >= 4);
+    if Uint32.(pkt_len > (of_int (len - 4))) then
       partial ()
     else
       let payload_len, u1 = Uint32.(sub pkt_len pad_len) in
       let payload_len, u2 = Uint32.pred payload_len in
       if u1 || u2 then
         invalid_arg "Bad payload_len";
-      Some (Cstruct.set_len buf (Int32.to_int payload_len))
+      let clen =
+        4 +                     (* pkt_len field itself *)
+        (Int32.to_int pkt_len) +(* size of this packet  *)
+        (Int32.to_int pad_len)  (* padding after packet *)
+                                (* XXX mac_len missing !*)
+      in
+      let pkt = Cstruct.sub buf sizeof_pkt_hdr (Int32.to_int payload_len) in
+      Some (pkt, clen)
   in
-  if len < 2 then
+  if len < 4 then
     ok None
   else trap_error wrap ()
 
@@ -367,3 +377,8 @@ let message_of_buf buf =
     | SSH_MSG_CHANNEL_REQUEST -> unimplemented ()
     | SSH_MSG_CHANNEL_SUCCESS -> unimplemented ()
     | SSH_MSG_CHANNEL_FAILURE -> unimplemented ()
+
+let scan_message buf =
+  scan_pkt buf >>= function
+  | None -> ok None
+  | Some (pkt, clen) -> message_of_buf pkt >>= fun msg -> ok (Some msg)

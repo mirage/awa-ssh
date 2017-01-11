@@ -16,6 +16,7 @@
 
 open Sexplib.Conv
 open Ssh_wire
+open Rresult.R
 
 type state =
   | Version_exchange       (* Handling client version *)
@@ -23,20 +24,13 @@ type state =
 
 type t = {
   state : state;
-  buffer : Cstruct.t;
   peer_version : string;
 }
 
-let max_pkt_len = Int32.of_int 64000    (* 64KB should be enough *)
-
 let version_banner = "SSH-2.0-awa_ssh_0.1\r\n"
-
-let add_buf t buf =
-  { t with buffer = Cstruct.append t.buffer buf }
 
 let make () =
   { state = Version_exchange;
-    buffer = Cstruct.create 0;
     peer_version = "unknown" }
 
 let find_some f = try Some (f ()) with Not_found -> None
@@ -44,32 +38,6 @@ let find_some_list f l = try Some (List.find f l)  with Not_found -> None
 
 let pick_common ~server ~client =
   find_some_list (fun x -> List.mem x server) client
-
-(* Pick into buffer.buffer and try to pop a packet *)
-let extract_pkt t =
-  let open Usane in
-  if Cstruct.len t.buffer < 2 then
-    None
-  else
-    (* Using pad_len as int32 saves us a lot of conversions. *)
-    let pkt_len = get_pkt_hdr_pkt_len t.buffer in
-    let pad_len = Int32.of_int (get_pkt_hdr_pad_len t.buffer) in
-    if pkt_len = Int32.zero || Uint32.(pkt_len >= max_pkt_len) then
-      invalid_arg (Printf.sprintf "Bad pkt_len %ld\n" pkt_len)
-    else if Uint32.(pad_len >= pkt_len) then
-      invalid_arg (Printf.sprintf "Bad pad_len %ld\n" pad_len);
-    let buffer = Cstruct.shift t.buffer sizeof_pkt_hdr in
-    (* This is a partial packet, hold onto t *)
-    if Uint32.(pkt_len > (of_int (Cstruct.len buffer))) then
-      None
-    else
-      let payload_len, u1 = Uint32.(sub pkt_len pad_len) in
-      let payload_len, u2 = Uint32.pred payload_len in
-      if u1 || u2 then
-        invalid_arg (Printf.sprintf "Bad payload_len %ld\n" payload_len);
-      Some
-        ((Cstruct.set_len buffer (Int32.to_int payload_len)),
-         {t with buffer = Cstruct.shift buffer (Int32.to_int pkt_len)})
 
 let supported_kex = {
   cookie = "";
@@ -90,15 +58,3 @@ let supported_kex = {
 let make_kex_pkt cookie =
   if (String.length cookie) <> 16 then invalid_arg "Bad cookie len";
   { supported_kex with cookie }
-
-let handle_key_exchange t pkt =
-  t
-
-let handle t = match t.state with
-  | Version_exchange -> failwith "TODO"
-  | Key_exchange -> match extract_pkt t with       (* We're negotiatiating cipher/mac *)
-    | None -> t
-    | Some (buf, t) ->
-      if (message_id_of_buf buf) <> (Some SSH_MSG_KEXINIT) then
-        invalid_arg "Not SSH_MSG_KEXINIT";
-      handle_key_exchange t (kex_of_buf buf)
