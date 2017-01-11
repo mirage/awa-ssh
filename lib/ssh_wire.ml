@@ -107,7 +107,7 @@ let scan_pkt buf =
       (pkt_len <> 0 &&
        ((u32_compare pkt_len32 max_pkt_len) < 0) &&
        (pkt_len > pad_len + 1))
-      "Malformed packet."
+      "Malformed packet"
     >>= fun () ->
     assert (len > 4);
     if pkt_len > (len - 4) then

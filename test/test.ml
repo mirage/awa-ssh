@@ -36,7 +36,7 @@ let assert_failure x =
       Failure _ -> true
   in
   if not ok then
-    failwith "Expected failure exception."
+    failwith "Expected failure exception"
 
 let assert_invalid x =
   let ok = try
@@ -46,11 +46,11 @@ let assert_invalid x =
       Invalid_argument _ -> true
   in
   if not ok then
-    invalid_arg "Expected failure exception."
+    invalid_arg "Expected failure exception"
 
-let get_some = function None -> invalid_arg "Expected Some." | Some x -> x
+let get_some = function None -> invalid_arg "Expected Some" | Some x -> x
 
-let assert_none = function None -> () | _ -> invalid_arg "Expected None."
+let assert_none = function None -> () | _ -> invalid_arg "Expected None"
 
 let get_ok_s = function
   | Ok x -> x
@@ -126,7 +126,7 @@ let t_key_exchange () =
     | Ssh_msg_kexinit msg ->
       (* printf "%s\n%!" (Sexplib.Sexp.to_string_hum (sexp_of_kex_pkt msg)); *)
       ()
-    | _ -> failwith "Expected Ssh_msg_kexinit."
+    | _ -> failwith "Expected Ssh_msg_kexinit"
   in
   Unix.close fd;
 
@@ -135,7 +135,7 @@ let t_key_exchange () =
   set_pkt_hdr_pkt_len buf 0l;
   set_pkt_hdr_pad_len buf 0;
   let e = get_error (scan_pkt buf) in
-  assert (e = "Malformed packet.");
+  assert (e = "Malformed packet");
 
   (* Test a pad_len equal/greater than pkt_len *)
   (* let () = assert_invalid @@ fun () -> *)
