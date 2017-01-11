@@ -19,5 +19,4 @@ depends: [
   "cstruct" {>= "1.9"}
   "sexplib"
   "menhir"
-  "usane"
 ]

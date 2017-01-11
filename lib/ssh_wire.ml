@@ -28,10 +28,19 @@ let trap_error f x =
   | Invalid_argument e -> error e
   | Failure e -> error e
 
-(* let guard p e = if p then ok () else error e *)
+let guard p e = if p then ok () else error e
 
 let safe_shift buf off =
   trap_error (fun () -> Cstruct.shift buf off) ()
+
+let safe_sub buf off len =
+  trap_error (fun () -> Cstruct.sub buf off len) ()
+
+let u32_compare a b = (* ignore the sign *)
+  let (&&&) x y = Int32.logand x y in
+  let (>|>) x y = Int32.shift_right_logical x y in
+  let c = Int32.compare (a >|> 1) (b >|> 1) in
+  if c = 0 then Int32.compare (a &&& 1l) (b &&& 1l) else c
 
 (** {2 Version exchange parser.} *)
 
@@ -80,47 +89,39 @@ let scan_version buf =
 let max_pkt_len = Int32.of_int 64000    (* 64KB should be enough *)
 
 let scan_pkt buf =
-  let open Usane in
   let len = Cstruct.len buf in
   let partial () =
     if len < (1024 * 64) then
-      None
+      ok None
     else
-      invalid_arg "Buffer is too big"
-  in
-  let wrap () =
-    (* Using pad_len as int32 saves us a lot of conversions. *)
-    let pkt_len = get_pkt_hdr_pkt_len buf in
-    let pad_len = Int32.of_int (get_pkt_hdr_pad_len buf) in
-    if pkt_len = Int32.zero || Uint32.(pkt_len >= max_pkt_len) then
-      invalid_arg "Bad pkt_len"
-    else if Uint32.(pad_len >= pkt_len) then
-      invalid_arg "Bad pad_len";
-    (* XXX consider padding and so on *)
-    (* let buf = Cstruct.shift buf sizeof_pkt_hdr in *)
-    (* let len = Cstruct.len buf in *)
-    (* This is a partial packet, hold onto t *)
-    (* (len = (4 + pkt_len)) *)
-    assert (len >= 4);
-    if Uint32.(pkt_len > (of_int (len - 4))) then
-      partial ()
-    else
-      let payload_len, u1 = Uint32.(sub pkt_len pad_len) in
-      let payload_len, u2 = Uint32.pred payload_len in
-      if u1 || u2 then
-        invalid_arg "Bad payload_len";
-      let clen =
-        4 +                     (* pkt_len field itself *)
-        (Int32.to_int pkt_len) +(* size of this packet  *)
-        (Int32.to_int pad_len)  (* padding after packet *)
-                                (* XXX mac_len missing !*)
-      in
-      let pkt = Cstruct.sub buf sizeof_pkt_hdr (Int32.to_int payload_len) in
-      Some (pkt, clen)
+      error "Buffer is too big"
   in
   if len < 4 then
-    ok None
-  else trap_error wrap ()
+    partial ()
+  else
+    let pkt_len32 = get_pkt_hdr_pkt_len buf in
+    let pkt_len = Int32.to_int pkt_len32 in
+    let pad_len = get_pkt_hdr_pad_len buf in
+    (* XXX remember mac_len *)
+    guard
+      (pkt_len <> 0 &&
+       ((u32_compare pkt_len32 max_pkt_len) < 0) &&
+       (pkt_len > pad_len + 1))
+      "Malformed packet."
+    >>= fun () ->
+    assert (len > 4);
+    if pkt_len > (len - 4) then
+      partial ()
+    else
+      let payload_len = pkt_len - pad_len - 1 in
+      let clen =
+        4 +                (* pkt_len field itself *)
+        pkt_len +          (* size of this packet  *)
+        pad_len            (* padding after packet *)
+                           (* XXX mac_len missing !*)
+      in
+      safe_sub buf sizeof_pkt_hdr payload_len >>= fun pkt ->
+      ok (Some (pkt, clen))
 
 (** {2 Message ID.} *)
 

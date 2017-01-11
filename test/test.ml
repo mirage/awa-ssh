@@ -135,7 +135,7 @@ let t_key_exchange () =
   set_pkt_hdr_pkt_len buf 0l;
   set_pkt_hdr_pad_len buf 0;
   let e = get_error (scan_pkt buf) in
-  assert (e = "Bad pkt_len");
+  assert (e = "Malformed packet.");
 
   (* Test a pad_len equal/greater than pkt_len *)
   (* let () = assert_invalid @@ fun () -> *)
