@@ -38,23 +38,3 @@ let find_some_list f l = try Some (List.find f l)  with Not_found -> None
 
 let pick_common ~server ~client =
   find_some_list (fun x -> List.mem x server) client
-
-let supported_kex = {
-  cookie = "";
-  kex_algorithms = [ "diffie-hellman-group1-sha1";
-                     "diffie-hellman-group14-sha1" ];
-  server_host_key_algorithms = [];
-  encryption_algorithms_ctos = [ "aes128-ctr" ];
-  encryption_algorithms_stoc = [ "aes128-ctr" ];
-  mac_algorithms_ctos = [ "hmac-sha1" ];
-  mac_algorithms_stoc = [ "hmac-sha1" ];
-  compression_algorithms_ctos = [ "none" ];
-  compression_algorithms_stoc = [ "none" ];
-  languages_ctos = [];
-  languages_stoc = [];
-  first_kex_packet_follows = false;
-}
-
-let make_kex_pkt cookie =
-  if (String.length cookie) <> 16 then invalid_arg "Bad cookie len";
-  { supported_kex with cookie }

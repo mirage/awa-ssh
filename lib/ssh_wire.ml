@@ -169,6 +169,7 @@ let assert_message_id buf msgid =
 (** {2 Conversions on primitives from RFC4251 5.} *)
 
 let string_of_buf buf off =
+  (* XXX bad to_int conversion *)
   trap_error (fun () ->
       let len = Cstruct.BE.get_uint32 buf off |> Int32.to_int in
       (Cstruct.copy buf (off + 4) len), len) ()
@@ -181,6 +182,16 @@ let buf_of_string s =
   Cstruct.BE.set_uint32 buf 0 (Int32.of_int len);
   Cstruct.blit_from_string s 0 buf 4 len;
   buf
+
+let buf_of_cstring c =
+  trap_error (fun () ->
+      let len = Cstruct.len c in
+      if len > 255 then
+        invalid_arg "Cstruct string is too long";
+      let buf = Cstruct.create (len + 4) in
+      Cstruct.BE.set_uint32 buf 0 (Int32.of_int len);
+      Cstruct.blit c 0 buf 4 len;
+      buf) ()
 
 let mpint_of_buf buf off =
   trap_error (fun () ->
@@ -215,6 +226,13 @@ let buf_of_mpint mpint =
     let head = Cstruct.create 4 in
     Cstruct.BE.set_uint32 head 0 (Int32.of_int len);
     Cstruct.append head mpint
+
+let encode_rsa (rsa : Nocrypto.Rsa.pub) =
+  let open Nocrypto in
+  let s = buf_of_string "ssh-rsa" in
+  let e = buf_of_mpint (Numeric.Z.to_cstruct_be rsa.Rsa.e) in
+  let n = buf_of_mpint (Numeric.Z.to_cstruct_be rsa.Rsa.n) in
+  Cstruct.concat [s; e; n]
 
 let uint32_of_buf buf off =
   trap_error (fun () -> Cstruct.BE.get_uint32 buf off) ()
@@ -416,3 +434,162 @@ let scan_message buf =
   scan_pkt buf >>= function
   | None -> ok None
   | Some (pkt, clen) -> message_of_buf pkt >>= fun msg -> ok (Some msg)
+
+(*
+ * All below should be moved somewhere
+ *)
+
+(* e = client public *)
+(* f = server public *)
+(* y = server secret *)
+
+let guard_some x e = match x with Some x -> ok x | None -> error e
+
+   (* The following steps are used to exchange a key.  In this, C is the *)
+   (* client; S is the server; p is a large safe prime; g is a generator *)
+   (* for a subgroup of GF(p); q is the order of the subgroup; V_S is S's *)
+   (* identification string; V_C is C's identification string; K_S is S's *)
+   (* public host key; I_C is C's SSH_MSG_KEXINIT message and I_S is S's *)
+   (* SSH_MSG_KEXINIT message that have been exchanged before this part *)
+(* begins. *)
+
+   (* The hash H is computed as the HASH hash of the concatenation of the *)
+   (* following: *)
+
+   (*    string    V_C, the client's identification string (CR and LF *)
+   (*              excluded) *)
+   (*    string    V_S, the server's identification string (CR and LF *)
+   (*              excluded) *)
+   (*    string    I_C, the payload of the client's SSH_MSG_KEXINIT *)
+   (*    string    I_S, the payload of the server's SSH_MSG_KEXINIT *)
+   (*    string    K_S, the host key *)
+   (*    mpint     e, exchange value sent by the client *)
+   (*    mpint     f, exchange value sent by the server *)
+   (*    mpint     K, the shared secret *)
+
+(* let dh_server_compute_hash ~rsa_secret ~v_c ~v_s ~i_c ~i_s ~e = *)
+(*   let open Nocrypto in *)
+(*   let rsa_pub = Rsa.pub_of_priv rsa_secret in *)
+(*   let g = Dh.Group.oakley_14 in *)
+(*   let y, f = Dh.gen_key g in *)
+(*   guard_some (Dh.shared g y e) "Can't compute shared secret" *)
+(*   >>= fun k -> *)
+(*   buf_of_cstring v_c >>= fun v_c -> *)
+(*   buf_of_cstring v_s >>= fun v_s -> *)
+(*   buf_of_cstring i_c >>= fun i_c -> *)
+(*   buf_of_cstring i_s >>= fun i_s -> *)
+(*   let k_s = buf_of_rsa rsa_pub in *)
+(*   let e = buf_of_mpint e in *)
+(*   (\* f computed in Dh.gen_key *\) *)
+(*   let h = Hash.SHA1.digestv [ v_c; v_s; i_c; i_s; k_s; e; f; k ] in *)
+(*   let sig = Rsa.PKCS1.sig_encode rsa_secret h in *)
+
+let dh_gen_keys g peer_pub =
+  let secret, my_pub = Nocrypto.Dh.gen_key g in
+  guard_some
+    (Nocrypto.Dh.shared g secret peer_pub)
+    "Can't compute shared secret"
+  >>= fun shared ->
+  (* secret is y, my_pub is f or e, shared is k *)
+  ok (secret, my_pub, shared)
+
+let dh_server_compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
+  encode_cstring v_c >>= fun v_c ->
+  encode_cstring v_s >>= fun v_s ->
+  encode_cstring i_c >>= fun i_c ->
+  encode_cstring i_s >>= fun i_s ->
+  let e = encode_mpint e in
+  let f = encode_mpint f in
+  ok (Nocrypto.Hash.SHA1.digestv [ v_c; v_s; i_c; i_s; k_s; e; f; k ])
+
+(* Only server obviously *)
+let handle_kexdh_init e g rsa_secret =
+  let v_c = Cstruct.create 0 in (* XXX *)
+  let v_s = v_c in              (* XXX *)
+  let i_c = v_c in              (* XXX *)
+  let i_s = v_c in              (* XXX *)
+  let rsa_pub = Nocrypto.Rsa.pub_of_priv rsa_secret in
+  dh_gen_keys g e
+  >>= fun (y, f, k) ->
+  let k_s = buf_of_rsa rsa_pub in
+  dh_server_compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k
+  >>= fun h ->
+  let signature = Nocrypto.Rsa.PKCS1.sig_encode rsa_secret h in
+  ok ()
+  (* ok (Ssh_msg_kexdh_reply k_s f signature) *)
+
+type mode = Server | Client
+
+let make_kex cookie =
+  if (String.length cookie) <> 16 then
+    invalid_arg "Bad cookie len";
+  { cookie;
+    kex_algorithms = [ "diffie-hellman-group14-sha1";
+                       "diffie-hellman-group1-sha1" ];
+    server_host_key_algorithms = [ "ssh-rsa" ];
+    encryption_algorithms_ctos = [ "aes128-ctr" ];
+    encryption_algorithms_stoc = [ "aes128-ctr" ];
+    mac_algorithms_ctos = [ "hmac-sha1" ];
+    mac_algorithms_stoc = [ "hmac-sha1" ];
+    compression_algorithms_ctos = [ "none" ];
+    compression_algorithms_stoc = [ "none" ];
+    languages_ctos = [];
+    languages_stoc = [];
+    first_kex_packet_follows = false }
+
+let handle_kex mode kex =
+  let us = make_kex (Bytes.create 16) in
+  let s = if mode = Server then us else kex in
+  let c = if mode = Server then kex else us in
+  let pick_common ~s ~c e =
+    try
+      Ok (List.find (fun x -> List.mem x s) c)
+    with
+      Not_found -> Error e
+  in
+  pick_common
+    ~s:s.kex_algorithms
+    ~c:c.kex_algorithms
+    "Can't agree on kex algorithm"
+  >>= fun kex_algorithms ->
+  pick_common
+    ~s:s.encryption_algorithms_ctos
+    ~c:c.encryption_algorithms_ctos
+    "Can't agree on encryption algorithm client to server"
+  >>= fun encryption_algorithms_ctos ->
+  pick_common
+    ~s:s.encryption_algorithms_stoc
+    ~c:c.encryption_algorithms_stoc
+    "Can't agree on encryption algorithm server to client"
+  >>= fun encryption_algorithms_stoc ->
+  pick_common
+    ~s:s.mac_algorithms_ctos
+    ~c:c.mac_algorithms_ctos
+    "Can't agree on mac algorithm client to server"
+  >>= fun mac_algorithms_ctos ->
+  pick_common
+    ~s:s.mac_algorithms_stoc
+    ~c:c.mac_algorithms_stoc
+    "Can't agree on mac algorithm server to client"
+  >>= fun mac_algorithms_stoc ->
+  pick_common
+    ~s:s.compression_algorithms_ctos
+    ~c:c.compression_algorithms_ctos
+    "Can't agree on compression algorithm client to server"
+  >>= fun compression_algorithms_ctos ->
+  pick_common
+    ~s:s.compression_algorithms_stoc
+    ~c:c.compression_algorithms_stoc
+    "Can't agree on compression algorithm server to client"
+  >>= fun compression_algorithms_stoc ->
+  (* XXX ignore languages for now *)
+  (* XXX this will be provided in the future, obviously *)
+  let rsa_priv = Nocrypto.Rsa.generate 4096 in
+  let rsa_pub = Nocrypto.Rsa.pub_of_priv rsa_priv in
+    (*
+     * secret is x
+     * public is g^x
+     * shared is shared g14 secret public
+     *)
+  let secret, public = Nocrypto.Dh.(gen_key Group.oakley_14) in
+  Ok (secret, public)
