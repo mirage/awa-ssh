@@ -232,8 +232,6 @@ let buf_of_bool b =
   Cstruct.set_uint8 buf 0 (if b then 1 else 0);
   buf
 
-(** {2 Name lists as in RFC4251 5.} *)
-
 let buf_of_nl nl =
   buf_of_string (String.concat "," nl)
 
