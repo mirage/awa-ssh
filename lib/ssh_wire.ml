@@ -166,7 +166,7 @@ let buf_of_message_id m =
 let assert_message_id buf msgid =
   assert ((message_id_of_buf buf) = Some msgid)
 
-(** {2 Conversions on primitives.} *)
+(** {2 Conversions on primitives from RFC4251 5.} *)
 
 let string_of_buf buf off =
   trap_error (fun () ->
@@ -180,6 +180,40 @@ let buf_of_string s =
   Cstruct.BE.set_uint32 buf 0 (Int32.of_int len);
   Cstruct.blit_from_string s 0 buf 4 len;
   buf
+
+let mpint_of_buf buf off =
+  trap_error (fun () ->
+      (Cstruct.BE.get_uint32 buf off) |> Int32.to_int) ()
+  >>= function
+  | 0 -> ok (Cstruct.create 0)
+  | len ->
+    safe_sub buf (off + 4) len >>= fun buf ->
+    let msb = Cstruct.get_uint8 buf 0 in
+    if (msb land 0x80) <> 0 then
+      error "Negative mpint"
+    else
+      let rec leading_zeros off sum =
+        if off = len then
+          sum
+        else if (Cstruct.get_uint8 buf off) = 0 then
+          leading_zeros (succ off) (succ sum)
+        else
+          leading_zeros (succ off) sum
+      in
+      safe_shift buf (leading_zeros 0 0)
+
+let buf_of_mpint mpint =
+  let len = Cstruct.len mpint in
+  if len > 0 &&
+     ((Cstruct.get_uint8 mpint 0) land 0x80) <> 0 then
+    let head = Cstruct.create 5 in
+    Cstruct.set_uint8 head 4 0;
+    Cstruct.BE.set_uint32 head 0 (Int32.of_int (succ len));
+    Cstruct.append head mpint
+  else
+    let head = Cstruct.create 4 in
+    Cstruct.BE.set_uint32 head 0 (Int32.of_int len);
+    Cstruct.append head mpint
 
 let uint32_of_buf buf off =
   trap_error (fun () -> Cstruct.BE.get_uint32 buf off) ()

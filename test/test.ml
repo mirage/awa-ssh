@@ -157,6 +157,49 @@ let t_namelist () =
   (* assert (Cstruct.len buf = (4 + String.length (String.concat "," s))); *)
   (* assert (s = fst (nl_of_buf buf 0)) *)
 
+let t_mpint () =
+  let open Ssh_wire in
+  let assert_byte buf off v =
+    assert ((Cstruct.get_uint8 buf off) = v)
+  in
+
+  (*
+   * Case 1: Make sure zeroes are stripped from the beggining.
+   *)
+  let head = Cstruct.create 4 in
+  let data = Cstruct.create 4 in
+  Cstruct.set_uint8 data 0 0x00;
+  Cstruct.set_uint8 data 1 0x00;
+  Cstruct.set_uint8 data 2 0xff;
+  Cstruct.set_uint8 data 3 0x02;
+  Cstruct.BE.set_uint32 head 0 (Int32.of_int (Cstruct.len data));
+  let mpint = get_ok_s @@ mpint_of_buf (Cstruct.append head data) 0 in
+  assert ((Cstruct.len mpint) = 2); (* Cuts the first two zeros *)
+  assert_byte mpint 0 0xff;
+  assert_byte mpint 1 0x02;
+
+  (*
+   * Case 2: Test the other way, one zero must be prepended
+   * since the first byte is negative (0xff).
+   *)
+  let buf = buf_of_mpint mpint in
+  (* 4 for header + 1 zero prepended + 2 data*)
+  assert ((Cstruct.len buf) = (4 + 1 + 2));
+  assert_byte buf 0 0x00;
+  assert_byte buf 1 0x00;
+  assert_byte buf 2 0x00;
+  assert_byte buf 3 0x03;
+  assert_byte buf 4 0x00;
+  assert_byte buf 5 0xff;
+  assert_byte buf 6 0x02;
+
+  (*
+   * Case 3: Make sure negative are errors.
+   *)
+  Cstruct.set_uint8 buf 4 0x80;
+  let e = get_error (mpint_of_buf buf 0) in
+  assert (e = "Negative mpint")
+
 let run_test test =
   let f = fst test in
   let name = snd test in
@@ -171,6 +214,7 @@ let all_tests = [
   (t_banner, "version banner");
   (t_key_exchange, "key exchange");
   (t_namelist, "namelist conversions");
+  (t_mpint, "mpint conversions");
 ]
 
 let _ =
