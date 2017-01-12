@@ -175,7 +175,8 @@ let string_of_buf buf off =
 
 let buf_of_string s =
   let len = String.length s in
-  (* XXX string cant be longer than uint8  *)
+  if len > 255 then
+      invalid_arg "String is too long";
   let buf = Cstruct.create (len + 4) in
   Cstruct.BE.set_uint32 buf 0 (Int32.of_int len);
   Cstruct.blit_from_string s 0 buf 4 len;
