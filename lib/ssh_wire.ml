@@ -155,26 +155,26 @@ type message_id =
   | SSH_MSG_CHANNEL_FAILURE           [@id 100]
 [@@uint8_t][@@sexp]]
 
-let message_id_of_buf buf =
+let decode_message_id buf =
   int_to_message_id (Cstruct.get_uint8 buf 0)
 
-let buf_of_message_id m =
+let encode_message_id m =
   let buf = Cstruct.create 1 in
   Cstruct.set_uint8 buf 0 (message_id_to_int m);
   buf
 
 let assert_message_id buf msgid =
-  assert ((message_id_of_buf buf) = Some msgid)
+  assert ((decode_message_id buf) = Some msgid)
 
 (** {2 Conversions on primitives from RFC4251 5.} *)
 
-let string_of_buf buf off =
+let decode_string buf off =
   (* XXX bad to_int conversion *)
   trap_error (fun () ->
       let len = Cstruct.BE.get_uint32 buf off |> Int32.to_int in
       (Cstruct.copy buf (off + 4) len), len) ()
 
-let buf_of_string s =
+let encode_string s =
   let len = String.length s in
   if len > 255 then
       invalid_arg "String is too long";
@@ -183,7 +183,7 @@ let buf_of_string s =
   Cstruct.blit_from_string s 0 buf 4 len;
   buf
 
-let buf_of_cstring c =
+let encode_cstring c =
   trap_error (fun () ->
       let len = Cstruct.len c in
       if len > 255 then
@@ -193,7 +193,7 @@ let buf_of_cstring c =
       Cstruct.blit c 0 buf 4 len;
       buf) ()
 
-let mpint_of_buf buf off =
+let decode_mpint buf off =
   trap_error (fun () ->
       (Cstruct.BE.get_uint32 buf off) |> Int32.to_int) ()
   >>= function
@@ -214,7 +214,7 @@ let mpint_of_buf buf off =
       in
       safe_shift buf (leading_zeros 0 0)
 
-let buf_of_mpint mpint =
+let encode_mpint mpint =
   let len = Cstruct.len mpint in
   if len > 0 &&
      ((Cstruct.get_uint8 mpint 0) land 0x80) <> 0 then
@@ -229,40 +229,40 @@ let buf_of_mpint mpint =
 
 let encode_rsa (rsa : Nocrypto.Rsa.pub) =
   let open Nocrypto in
-  let s = buf_of_string "ssh-rsa" in
-  let e = buf_of_mpint (Numeric.Z.to_cstruct_be rsa.Rsa.e) in
-  let n = buf_of_mpint (Numeric.Z.to_cstruct_be rsa.Rsa.n) in
+  let s = encode_string "ssh-rsa" in
+  let e = encode_mpint (Numeric.Z.to_cstruct_be rsa.Rsa.e) in
+  let n = encode_mpint (Numeric.Z.to_cstruct_be rsa.Rsa.n) in
   Cstruct.concat [s; e; n]
 
-let uint32_of_buf buf off =
+let decode_uint32 buf off =
   trap_error (fun () -> Cstruct.BE.get_uint32 buf off) ()
 
-let buf_of_uint32 v =
+let encode_uint32 v =
   let buf = Cstruct.create 4 in
   Cstruct.BE.set_uint32 buf 0 v;
   buf
 
-let bool_of_buf buf off =
+let decode_bool buf off =
   trap_error (fun () -> (Cstruct.get_uint8 buf 0) <> 0) ()
 
-let buf_of_bool b =
+let encode_bool b =
   let buf = Cstruct.create 1 in
   Cstruct.set_uint8 buf 0 (if b then 1 else 0);
   buf
 
-let buf_of_nl nl =
-  buf_of_string (String.concat "," nl)
+let encode_nl nl =
+  encode_string (String.concat "," nl)
 
-let nl_of_buf buf off =
-  string_of_buf buf off >>= fun (s, len) ->
+let decode_nl buf off =
+  decode_string buf off >>= fun (s, len) ->
   ok ((Str.split (Str.regexp ",") s), len)
 
-let nll_of_buf buf n =
+let decode_nll buf n =
   let rec loop buf l tlen =
     if (List.length l) = n then
       ok (List.rev l, tlen)
     else
-      nl_of_buf buf 0 >>= fun (nl, len) ->
+      decode_nl buf 0 >>= fun (nl, len) ->
       safe_shift buf (len + 4) >>= fun buf ->
       loop buf (nl :: l) (len + tlen + 4)
   in
@@ -270,11 +270,11 @@ let nll_of_buf buf n =
 
 (** {2 SSH_MSG_DISCONNECT RFC4253 11.1.} *)
 
-let buf_of_disconnect code desc lang =
-  let code = buf_of_uint32 code in
-  let desc = buf_of_string desc in
-  let lang = buf_of_string lang in
-  Cstruct.concat [buf_of_message_id SSH_MSG_KEXINIT; code; desc; lang]
+let encode_disconnect code desc lang =
+  let code = encode_uint32 code in
+  let desc = encode_string desc in
+  let lang = encode_string lang in
+  Cstruct.concat [encode_message_id SSH_MSG_KEXINIT; code; desc; lang]
 
 (** {2 SSH_MSG_KEXINIT RFC4253 7.1.} *)
 
@@ -293,8 +293,8 @@ type kex_pkt = {
   first_kex_packet_follows : bool
 } [@@deriving sexp]
 
-let buf_of_kex kex =
-  let f = buf_of_nl in
+let encode_kex kex =
+  let f = encode_nl in
   let nll = Cstruct.concat
       [ f kex.kex_algorithms;
         f kex.server_host_key_algorithms;
@@ -307,7 +307,7 @@ let buf_of_kex kex =
         f kex.languages_ctos;
         f kex.languages_stoc; ]
   in
-  let head = buf_of_message_id SSH_MSG_KEXINIT in
+  let head = encode_message_id SSH_MSG_KEXINIT in
   let cookie = Cstruct.create 16 in
   assert ((String.length kex.cookie) = 16);
   Cstruct.blit_from_string kex.cookie 0 cookie 0 16;
@@ -321,9 +321,9 @@ let buf_of_kex kex =
 
 (** {2 SSH_MSG_USERAUTH_FAILURE RFC4252 5.1} *)
 
-let buf_of_userauth_failure nl psucc =
-  let head = buf_of_message_id SSH_MSG_USERAUTH_FAILURE in
-  Cstruct.concat [head; buf_of_nl nl; buf_of_bool psucc]
+let encode_userauth_failure nl psucc =
+  let head = encode_message_id SSH_MSG_USERAUTH_FAILURE in
+  Cstruct.concat [head; encode_nl nl; encode_bool psucc]
 
 (** {2 SSH_MSG_GLOBAL_REQUEST RFC4254 4.} *)
 
@@ -360,7 +360,7 @@ type message =
   | Ssh_msg_channel_failure
 
 let message_of_buf buf =
-  match message_id_of_buf buf with
+  match decode_message_id buf with
   | None -> error "Unknown message id"
   | Some msgid ->
     let unimplemented () =
@@ -368,29 +368,29 @@ let message_of_buf buf =
     in
     match msgid with
     | SSH_MSG_DISCONNECT ->
-      uint32_of_buf buf 1 >>= fun code ->
-      string_of_buf buf 5 >>= fun (desc, len) ->
-      string_of_buf buf (len + 9) >>= fun (lang, _) ->
+      decode_uint32 buf 1 >>= fun code ->
+      decode_string buf 5 >>= fun (desc, len) ->
+      decode_string buf (len + 9) >>= fun (lang, _) ->
       ok (Ssh_msg_disconnect (code, desc, lang))
     | SSH_MSG_IGNORE ->
-      string_of_buf buf 1 >>= fun x ->
+      decode_string buf 1 >>= fun x ->
       ok (Ssh_msg_ignore x)
     | SSH_MSG_UNIMPLEMENTED ->
-      uint32_of_buf buf 1 >>= fun x ->
+      decode_uint32 buf 1 >>= fun x ->
       ok (Ssh_msg_unimplemented x)
     | SSH_MSG_DEBUG ->
-      bool_of_buf buf 1 >>= fun always_display ->
-      string_of_buf buf 2 >>= fun (message, len) ->
-      string_of_buf buf (len + 6) >>= fun (lang, _) ->
+      decode_bool buf 1 >>= fun always_display ->
+      decode_string buf 2 >>= fun (message, len) ->
+      decode_string buf (len + 6) >>= fun (lang, _) ->
       ok (Ssh_msg_debug (always_display, message, lang))
     | SSH_MSG_SERVICE_REQUEST ->
-      string_of_buf buf 1 >>= fun x -> ok (Ssh_msg_service_request x)
+      decode_string buf 1 >>= fun x -> ok (Ssh_msg_service_request x)
     | SSH_MSG_SERVICE_ACCEPT ->
-      string_of_buf buf 1 >>= fun x -> ok (Ssh_msg_service_accept x)
+      decode_string buf 1 >>= fun x -> ok (Ssh_msg_service_accept x)
     | SSH_MSG_KEXINIT ->
         safe_shift buf 17 >>= fun nllbuf ->
-        nll_of_buf nllbuf 10 >>= fun (nll, nll_len) ->
-        bool_of_buf buf nll_len >>= fun first_kex_packet_follows ->
+        decode_nll nllbuf 10 >>= fun (nll, nll_len) ->
+        decode_bool buf nll_len >>= fun first_kex_packet_follows ->
         ok (Ssh_msg_kexinit
               { cookie = Cstruct.copy buf 1 16;
                 kex_algorithms = List.nth nll 0;
@@ -407,13 +407,13 @@ let message_of_buf buf =
     | SSH_MSG_NEWKEYS -> ok Ssh_msg_newkeys
     | SSH_MSG_USERAUTH_REQUEST -> unimplemented ()
     | SSH_MSG_USERAUTH_FAILURE ->
-      nl_of_buf buf 1 >>= fun (nl, len) ->
-      bool_of_buf buf len >>= fun psucc ->
+      decode_nl buf 1 >>= fun (nl, len) ->
+      decode_bool buf len >>= fun psucc ->
       ok (Ssh_msg_userauth_failure (nl, psucc))
     | SSH_MSG_USERAUTH_SUCCESS -> unimplemented ()
     | SSH_MSG_USERAUTH_BANNER ->
-      string_of_buf buf 1 >>= fun (s1, len1) ->
-      string_of_buf buf (len1 + 5) >>= fun (s2, _) ->
+      decode_string buf 1 >>= fun (s1, len1) ->
+      decode_string buf (len1 + 5) >>= fun (s2, _) ->
       ok (Ssh_msg_userauth_banner (s1, s2))
     | SSH_MSG_GLOBAL_REQUEST -> unimplemented ()
     | SSH_MSG_REQUEST_SUCCESS -> unimplemented ()
@@ -474,12 +474,12 @@ let guard_some x e = match x with Some x -> ok x | None -> error e
 (*   let y, f = Dh.gen_key g in *)
 (*   guard_some (Dh.shared g y e) "Can't compute shared secret" *)
 (*   >>= fun k -> *)
-(*   buf_of_cstring v_c >>= fun v_c -> *)
-(*   buf_of_cstring v_s >>= fun v_s -> *)
-(*   buf_of_cstring i_c >>= fun i_c -> *)
-(*   buf_of_cstring i_s >>= fun i_s -> *)
-(*   let k_s = buf_of_rsa rsa_pub in *)
-(*   let e = buf_of_mpint e in *)
+(*   encode_cstring v_c >>= fun v_c -> *)
+(*   encode_cstring v_s >>= fun v_s -> *)
+(*   encode_cstring i_c >>= fun i_c -> *)
+(*   encode_cstring i_s >>= fun i_s -> *)
+(*   let k_s = encode_rsa rsa_pub in *)
+(*   let e = encode_mpint e in *)
 (*   (\* f computed in Dh.gen_key *\) *)
 (*   let h = Hash.SHA1.digestv [ v_c; v_s; i_c; i_s; k_s; e; f; k ] in *)
 (*   let sig = Rsa.PKCS1.sig_encode rsa_secret h in *)
@@ -511,7 +511,7 @@ let handle_kexdh_init e g rsa_secret =
   let rsa_pub = Nocrypto.Rsa.pub_of_priv rsa_secret in
   dh_gen_keys g e
   >>= fun (y, f, k) ->
-  let k_s = buf_of_rsa rsa_pub in
+  let k_s = encode_rsa rsa_pub in
   dh_server_compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k
   >>= fun h ->
   let signature = Nocrypto.Rsa.PKCS1.sig_encode rsa_secret h in

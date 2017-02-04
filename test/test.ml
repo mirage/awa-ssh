@@ -122,9 +122,9 @@ let t_key_exchange () =
   let file = "test/kex.packet" in
   let fd = Unix.(openfile file [O_RDONLY] 0) in
   let buf = Unix_cstruct.of_fd fd in
-  let () = match (get_some @@ get_ok @@ scan_message buf) with
-    | Ssh_msg_kexinit msg ->
-      (* printf "%s\n%!" (Sexplib.Sexp.to_string_hum (sexp_of_kex_pkt msg)); *)
+  let () = match (get_some @@ get_ok_s @@ scan_message buf) with
+    | Ssh_msg_kexinit kex -> (* get_ok_s @@ handle_kex Server kex; *)
+      printf "%s\n%!" (Sexplib.Sexp.to_string_hum (sexp_of_kex_pkt kex));
       ()
     | _ -> failwith "Expected Ssh_msg_kexinit"
   in
@@ -153,7 +153,7 @@ let t_namelist () =
   (* let open Ssh_trans in *)
   (* let open Ssh_wire in *)
   (* let s = ["uncle";"henry";"is";"evil"] in *)
-  (* let buf = buf_of_nl s in *)
+  (* let buf = encode_nl s in *)
   (* assert (Cstruct.len buf = (4 + String.length (String.concat "," s))); *)
   (* assert (s = fst (nl_of_buf buf 0)) *)
 
@@ -173,7 +173,7 @@ let t_mpint () =
   Cstruct.set_uint8 data 2 0xff;
   Cstruct.set_uint8 data 3 0x02;
   Cstruct.BE.set_uint32 head 0 (Int32.of_int (Cstruct.len data));
-  let mpint = get_ok_s @@ mpint_of_buf (Cstruct.append head data) 0 in
+  let mpint = get_ok_s @@ decode_mpint (Cstruct.append head data) 0 in
   assert ((Cstruct.len mpint) = 2); (* Cuts the first two zeros *)
   assert_byte mpint 0 0xff;
   assert_byte mpint 1 0x02;
@@ -182,7 +182,7 @@ let t_mpint () =
    * Case 2: Test the other way, one zero must be prepended
    * since the first byte is negative (0xff).
    *)
-  let buf = buf_of_mpint mpint in
+  let buf = encode_mpint mpint in
   (* 4 for header + 1 zero prepended + 2 data*)
   assert ((Cstruct.len buf) = (4 + 1 + 2));
   assert_byte buf 0 0x00;
@@ -197,7 +197,7 @@ let t_mpint () =
    * Case 3: Make sure negative are errors.
    *)
   Cstruct.set_uint8 buf 4 0x80;
-  let e = get_error (mpint_of_buf buf 0) in
+  let e = get_error (decode_mpint buf 0) in
   assert (e = "Negative mpint")
 
 let run_test test =
