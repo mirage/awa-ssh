@@ -68,7 +68,7 @@ let t_banner () =
   in
   List.iter (fun s ->
       let buf = Cstruct.of_string s in
-      match (Ssh_wire.scan_version buf) with
+      match (Ssh.Wire.scan_version buf) with
       | Result.Ok Some _ -> ()
       | Result.Ok None -> failwith "expected some"
       | Result.Error e -> failwith e)
@@ -85,14 +85,14 @@ let t_banner () =
   in
   List.iter (fun s ->
       let buf = Cstruct.of_string s in
-      match (Ssh_wire.scan_version buf) with
+      match (Ssh.Wire.scan_version buf) with
       | Result.Ok Some _ -> failwith "expected none or error"
       | Result.Ok None -> ()
       | Result.Error e -> ())
     bad_strings
 
 let t_key_exchange () =
-  let open Ssh_wire in
+  let open Ssh.Wire in
 
   (* Make sure nothing happens if packet is incomplete *)
   (* let cx = add_buf c (Cstruct.of_string "1") in *)
@@ -151,14 +151,14 @@ let t_key_exchange () =
 let t_namelist () =
   ()
   (* let open Ssh_trans in *)
-  (* let open Ssh_wire in *)
+  (* let open Ssh.Wire in *)
   (* let s = ["uncle";"henry";"is";"evil"] in *)
   (* let buf = encode_nl s in *)
   (* assert (Cstruct.len buf = (4 + String.length (String.concat "," s))); *)
   (* assert (s = fst (nl_of_buf buf 0)) *)
 
 let t_mpint () =
-  let open Ssh_wire in
+  let open Ssh.Wire in
   let assert_byte buf off v =
     assert ((Cstruct.get_uint8 buf off) = v)
   in
