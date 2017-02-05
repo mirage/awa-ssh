@@ -117,6 +117,8 @@ type message_id =
   | SSH_MSG_SERVICE_ACCEPT            [@id 6]
   | SSH_MSG_KEXINIT                   [@id 20]
   | SSH_MSG_NEWKEYS                   [@id 21]
+  | SSH_MSG_KEXDH_INIT                [@id 30]
+  | SSH_MSG_KEXDH_REPLY               [@id 31]
   | SSH_MSG_USERAUTH_REQUEST          [@id 50]
   | SSH_MSG_USERAUTH_FAILURE          [@id 51]
   | SSH_MSG_USERAUTH_SUCCESS          [@id 52]
@@ -327,6 +329,8 @@ type message =
   | Ssh_msg_service_request of string
   | Ssh_msg_service_accept of string
   | Ssh_msg_kexinit of kex_pkt
+  | Ssh_msg_kexdh_init of Cstruct.t
+  | Ssh_msg_kexdh_reply of (Cstruct.t * Cstruct.t * Cstruct.t)
   | Ssh_msg_newkeys
   | Ssh_msg_userauth_request
   | Ssh_msg_userauth_failure of (string list * bool)
@@ -393,6 +397,13 @@ let message_of_buf buf =
             languages_stoc = List.nth nll 9;
             first_kex_packet_follows; })
   | SSH_MSG_NEWKEYS -> ok Ssh_msg_newkeys
+  | SSH_MSG_KEXDH_INIT -> decode_mpint buf >>= fun (e, buf) ->
+    ok (Ssh_msg_kexdh_init e)
+  | SSH_MSG_KEXDH_REPLY ->
+    decode_cstring buf >>= fun (k_s, buf) ->
+    decode_mpint buf >>= fun (f, buf) ->
+    decode_cstring buf >>= fun (hsig, buf) ->
+    ok (Ssh_msg_kexdh_reply (k_s, f, hsig))
   | SSH_MSG_USERAUTH_REQUEST -> unimplemented ()
   | SSH_MSG_USERAUTH_FAILURE ->
     decode_nl buf >>= fun (nl, buf) ->
