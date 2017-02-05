@@ -269,7 +269,7 @@ let encode_disconnect code desc lang =
 (** {2 SSH_MSG_KEXINIT RFC4253 7.1.} *)
 
 type kex_pkt = {
-  cookie : string;
+  cookie : Cstruct.t;
   kex_algorithms : string list;
   server_host_key_algorithms : string list;
   encryption_algorithms_ctos : string list;
@@ -298,12 +298,9 @@ let encode_kex kex =
         f kex.languages_stoc; ]
   in
   let head = encode_message_id SSH_MSG_KEXINIT in
-  let cookie = Cstruct.create 16 in
-  assert ((String.length kex.cookie) = 16);
-  Cstruct.blit_from_string kex.cookie 0 cookie 0 16;
   let tail = Cstruct.create 5 in  (* first_kex_packet_follows + reserved *)
   Cstruct.set_uint8 tail 0 (if kex.first_kex_packet_follows then 1 else 0);
-  Cstruct.concat [head; cookie; nll; tail]
+  Cstruct.concat [head; kex.cookie; nll; tail]
 
 (** {2 SSH_MSG_USERAUTH_REQUEST RFC4252 5.} *)
 
@@ -384,7 +381,7 @@ let message_of_buf buf =
     decode_nll buf 10 >>= fun (nll, buf) ->
     decode_bool buf >>= fun (first_kex_packet_follows, buf) ->
     ok (Ssh_msg_kexinit
-          { cookie = Cstruct.copy cookiebegin 0 16;
+          { cookie = Cstruct.set_len cookiebegin 16;
             kex_algorithms = List.nth nll 0;
             server_host_key_algorithms = List.nth nll 1;
             encryption_algorithms_ctos = List.nth nll 2;
@@ -475,7 +472,7 @@ let handle_kexdh_init e g rsa_secret =
 type mode = Server | Client
 
 let make_kex cookie =
-  if (String.length cookie) <> 16 then
+  if (Cstruct.len cookie) <> 16 then
     invalid_arg "Bad cookie len";
   { cookie;
     kex_algorithms = [ "diffie-hellman-group14-sha1";
@@ -492,7 +489,7 @@ let make_kex cookie =
     first_kex_packet_follows = false }
 
 let handle_kex mode kex =
-  let us = make_kex (Bytes.create 16) in
+  let us = make_kex (Nocrypto.Rng.generate 16) in
   let s = if mode = Server then us else kex in
   let c = if mode = Server then kex else us in
   let pick_common ~s ~c e =
