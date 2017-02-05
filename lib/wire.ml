@@ -138,7 +138,10 @@ type message_id =
 [@@uint8_t][@@sexp]]
 
 let decode_message_id buf =
-  int_to_message_id (Cstruct.get_uint8 buf 0)
+  let id = (Cstruct.get_uint8 buf 0) in
+  match int_to_message_id id with
+  | None -> error (Printf.sprintf "Unknown message id %d" id)
+  | Some msgid -> ok msgid
 
 let encode_message_id m =
   let buf = Cstruct.create 1 in
@@ -146,7 +149,7 @@ let encode_message_id m =
   buf
 
 let assert_message_id buf msgid =
-  assert ((decode_message_id buf) = Some msgid)
+  assert ((decode_message_id buf) = ok msgid)
 
 (** {2 Conversions on primitives from RFC4251 5.} *)
 
@@ -342,75 +345,73 @@ type message =
   | Ssh_msg_channel_failure
 
 let message_of_buf buf =
-  match decode_message_id buf with
-  | None -> error "Unknown message id"
-  | Some msgid ->
-    let unimplemented () =
-      error (Printf.sprintf "Message %d unimplemented" (message_id_to_int msgid))
-    in
-    match msgid with
-    | SSH_MSG_DISCONNECT ->
-      decode_uint32 buf 1 >>= fun code ->
-      decode_string buf 5 >>= fun (desc, len) ->
-      decode_string buf (len + 9) >>= fun (lang, _) ->
-      ok (Ssh_msg_disconnect (code, desc, lang))
-    | SSH_MSG_IGNORE ->
-      decode_string buf 1 >>= fun x ->
-      ok (Ssh_msg_ignore x)
-    | SSH_MSG_UNIMPLEMENTED ->
-      decode_uint32 buf 1 >>= fun x ->
-      ok (Ssh_msg_unimplemented x)
-    | SSH_MSG_DEBUG ->
-      decode_bool buf 1 >>= fun always_display ->
-      decode_string buf 2 >>= fun (message, len) ->
-      decode_string buf (len + 6) >>= fun (lang, _) ->
-      ok (Ssh_msg_debug (always_display, message, lang))
-    | SSH_MSG_SERVICE_REQUEST ->
-      decode_string buf 1 >>= fun x -> ok (Ssh_msg_service_request x)
-    | SSH_MSG_SERVICE_ACCEPT ->
-      decode_string buf 1 >>= fun x -> ok (Ssh_msg_service_accept x)
-    | SSH_MSG_KEXINIT ->
-        safe_shift buf 17 >>= fun nllbuf ->
-        decode_nll nllbuf 10 >>= fun (nll, nll_len) ->
-        decode_bool buf nll_len >>= fun first_kex_packet_follows ->
-        ok (Ssh_msg_kexinit
-              { cookie = Cstruct.copy buf 1 16;
-                kex_algorithms = List.nth nll 0;
-                server_host_key_algorithms = List.nth nll 1;
-                encryption_algorithms_ctos = List.nth nll 2;
-                encryption_algorithms_stoc = List.nth nll 3;
-                mac_algorithms_ctos = List.nth nll 4;
-                mac_algorithms_stoc = List.nth nll 5;
-                compression_algorithms_ctos = List.nth nll 6;
-                compression_algorithms_stoc = List.nth nll 7;
-                languages_ctos = List.nth nll 8;
-                languages_stoc = List.nth nll 9;
-                first_kex_packet_follows; })
-    | SSH_MSG_NEWKEYS -> ok Ssh_msg_newkeys
-    | SSH_MSG_USERAUTH_REQUEST -> unimplemented ()
-    | SSH_MSG_USERAUTH_FAILURE ->
-      decode_nl buf 1 >>= fun (nl, len) ->
-      decode_bool buf len >>= fun psucc ->
-      ok (Ssh_msg_userauth_failure (nl, psucc))
-    | SSH_MSG_USERAUTH_SUCCESS -> unimplemented ()
-    | SSH_MSG_USERAUTH_BANNER ->
-      decode_string buf 1 >>= fun (s1, len1) ->
-      decode_string buf (len1 + 5) >>= fun (s2, _) ->
-      ok (Ssh_msg_userauth_banner (s1, s2))
-    | SSH_MSG_GLOBAL_REQUEST -> unimplemented ()
-    | SSH_MSG_REQUEST_SUCCESS -> unimplemented ()
-    | SSH_MSG_REQUEST_FAILURE -> unimplemented ()
-    | SSH_MSG_CHANNEL_OPEN -> unimplemented ()
-    | SSH_MSG_CHANNEL_OPEN_CONFIRMATION -> unimplemented ()
-    | SSH_MSG_CHANNEL_OPEN_FAILURE -> unimplemented ()
-    | SSH_MSG_CHANNEL_WINDOW_ADJUST -> unimplemented ()
-    | SSH_MSG_CHANNEL_DATA -> unimplemented ()
-    | SSH_MSG_CHANNEL_EXTENDED_DATA -> unimplemented ()
-    | SSH_MSG_CHANNEL_EOF -> unimplemented ()
-    | SSH_MSG_CHANNEL_CLOSE -> unimplemented ()
-    | SSH_MSG_CHANNEL_REQUEST -> unimplemented ()
-    | SSH_MSG_CHANNEL_SUCCESS -> unimplemented ()
-    | SSH_MSG_CHANNEL_FAILURE -> unimplemented ()
+  decode_message_id buf >>= fun msgid ->
+  let unimplemented () =
+    error (Printf.sprintf "Message %d unimplemented" (message_id_to_int msgid))
+  in
+  match msgid with
+  | SSH_MSG_DISCONNECT ->
+    decode_uint32 buf 1 >>= fun code ->
+    decode_string buf 5 >>= fun (desc, len) ->
+    decode_string buf (len + 9) >>= fun (lang, _) ->
+    ok (Ssh_msg_disconnect (code, desc, lang))
+  | SSH_MSG_IGNORE ->
+    decode_string buf 1 >>= fun x ->
+    ok (Ssh_msg_ignore x)
+  | SSH_MSG_UNIMPLEMENTED ->
+    decode_uint32 buf 1 >>= fun x ->
+    ok (Ssh_msg_unimplemented x)
+  | SSH_MSG_DEBUG ->
+    decode_bool buf 1 >>= fun always_display ->
+    decode_string buf 2 >>= fun (message, len) ->
+    decode_string buf (len + 6) >>= fun (lang, _) ->
+    ok (Ssh_msg_debug (always_display, message, lang))
+  | SSH_MSG_SERVICE_REQUEST ->
+    decode_string buf 1 >>= fun x -> ok (Ssh_msg_service_request x)
+  | SSH_MSG_SERVICE_ACCEPT ->
+    decode_string buf 1 >>= fun x -> ok (Ssh_msg_service_accept x)
+  | SSH_MSG_KEXINIT ->
+    safe_shift buf 17 >>= fun nllbuf ->
+    decode_nll nllbuf 10 >>= fun (nll, nll_len) ->
+    decode_bool buf nll_len >>= fun first_kex_packet_follows ->
+    ok (Ssh_msg_kexinit
+          { cookie = Cstruct.copy buf 1 16;
+            kex_algorithms = List.nth nll 0;
+            server_host_key_algorithms = List.nth nll 1;
+            encryption_algorithms_ctos = List.nth nll 2;
+            encryption_algorithms_stoc = List.nth nll 3;
+            mac_algorithms_ctos = List.nth nll 4;
+            mac_algorithms_stoc = List.nth nll 5;
+            compression_algorithms_ctos = List.nth nll 6;
+            compression_algorithms_stoc = List.nth nll 7;
+            languages_ctos = List.nth nll 8;
+            languages_stoc = List.nth nll 9;
+            first_kex_packet_follows; })
+  | SSH_MSG_NEWKEYS -> ok Ssh_msg_newkeys
+  | SSH_MSG_USERAUTH_REQUEST -> unimplemented ()
+  | SSH_MSG_USERAUTH_FAILURE ->
+    decode_nl buf 1 >>= fun (nl, len) ->
+    decode_bool buf len >>= fun psucc ->
+    ok (Ssh_msg_userauth_failure (nl, psucc))
+  | SSH_MSG_USERAUTH_SUCCESS -> unimplemented ()
+  | SSH_MSG_USERAUTH_BANNER ->
+    decode_string buf 1 >>= fun (s1, len1) ->
+    decode_string buf (len1 + 5) >>= fun (s2, _) ->
+    ok (Ssh_msg_userauth_banner (s1, s2))
+  | SSH_MSG_GLOBAL_REQUEST -> unimplemented ()
+  | SSH_MSG_REQUEST_SUCCESS -> unimplemented ()
+  | SSH_MSG_REQUEST_FAILURE -> unimplemented ()
+  | SSH_MSG_CHANNEL_OPEN -> unimplemented ()
+  | SSH_MSG_CHANNEL_OPEN_CONFIRMATION -> unimplemented ()
+  | SSH_MSG_CHANNEL_OPEN_FAILURE -> unimplemented ()
+  | SSH_MSG_CHANNEL_WINDOW_ADJUST -> unimplemented ()
+  | SSH_MSG_CHANNEL_DATA -> unimplemented ()
+  | SSH_MSG_CHANNEL_EXTENDED_DATA -> unimplemented ()
+  | SSH_MSG_CHANNEL_EOF -> unimplemented ()
+  | SSH_MSG_CHANNEL_CLOSE -> unimplemented ()
+  | SSH_MSG_CHANNEL_REQUEST -> unimplemented ()
+  | SSH_MSG_CHANNEL_SUCCESS -> unimplemented ()
+  | SSH_MSG_CHANNEL_FAILURE -> unimplemented ()
 
 let scan_message buf =
   scan_pkt buf >>= function
