@@ -472,10 +472,8 @@ let handle_kexdh_init e g rsa_secret =
 
 type mode = Server | Client
 
-let make_kex cookie =
-  if (Cstruct.len cookie) <> 16 then
-    invalid_arg "Bad cookie len";
-  { cookie;
+let make_kex () =
+  { cookie = Nocrypto.Rng.generate 16;
     kex_algorithms = [ "diffie-hellman-group14-sha1";
                        "diffie-hellman-group1-sha1" ];
     server_host_key_algorithms = [ "ssh-rsa" ];
@@ -490,7 +488,7 @@ let make_kex cookie =
     first_kex_packet_follows = false }
 
 let handle_kex mode kex =
-  let us = make_kex (Nocrypto.Rng.generate 16) in
+  let us = make_kex () in
   let s = if mode = Server then us else kex in
   let c = if mode = Server then kex else us in
   let pick_common ~s ~c e =
