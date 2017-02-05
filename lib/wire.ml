@@ -421,49 +421,6 @@ let scan_message buf =
  * All below should be moved somewhere
  *)
 
-(* e = client public *)
-(* f = server public *)
-(* y = server secret *)
-
-   (* The following steps are used to exchange a key.  In this, C is the *)
-   (* client; S is the server; p is a large safe prime; g is a generator *)
-   (* for a subgroup of GF(p); q is the order of the subgroup; V_S is S's *)
-   (* identification string; V_C is C's identification string; K_S is S's *)
-   (* public host key; I_C is C's SSH_MSG_KEXINIT message and I_S is S's *)
-   (* SSH_MSG_KEXINIT message that have been exchanged before this part *)
-(* begins. *)
-
-   (* The hash H is computed as the HASH hash of the concatenation of the *)
-   (* following: *)
-
-   (*    string    V_C, the client's identification string (CR and LF *)
-   (*              excluded) *)
-   (*    string    V_S, the server's identification string (CR and LF *)
-   (*              excluded) *)
-   (*    string    I_C, the payload of the client's SSH_MSG_KEXINIT *)
-   (*    string    I_S, the payload of the server's SSH_MSG_KEXINIT *)
-   (*    string    K_S, the host key *)
-   (*    mpint     e, exchange value sent by the client *)
-   (*    mpint     f, exchange value sent by the server *)
-   (*    mpint     K, the shared secret *)
-
-(* let dh_server_compute_hash ~rsa_secret ~v_c ~v_s ~i_c ~i_s ~e = *)
-(*   let open Nocrypto in *)
-(*   let rsa_pub = Rsa.pub_of_priv rsa_secret in *)
-(*   let g = Dh.Group.oakley_14 in *)
-(*   let y, f = Dh.gen_key g in *)
-(*   guard_some (Dh.shared g y e) "Can't compute shared secret" *)
-(*   >>= fun k -> *)
-(*   encode_cstring v_c >>= fun v_c -> *)
-(*   encode_cstring v_s >>= fun v_s -> *)
-(*   encode_cstring i_c >>= fun i_c -> *)
-(*   encode_cstring i_s >>= fun i_s -> *)
-(*   let k_s = encode_rsa rsa_pub in *)
-(*   let e = encode_mpint e in *)
-(*   (\* f computed in Dh.gen_key *\) *)
-(*   let h = Hash.SHA1.digestv [ v_c; v_s; i_c; i_s; k_s; e; f; k ] in *)
-(*   let sig = Rsa.PKCS1.sig_encode rsa_secret h in *)
-
 let dh_gen_keys g peer_pub =
   let secret, my_pub = Nocrypto.Dh.gen_key g in
   guard_some
