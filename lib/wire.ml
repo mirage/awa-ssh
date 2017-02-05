@@ -532,14 +532,4 @@ let handle_kex mode kex =
     ~c:c.compression_algorithms_stoc
     "Can't agree on compression algorithm server to client"
   >>= fun compression_algorithms_stoc ->
-  (* XXX ignore languages for now *)
-  (* XXX this will be provided in the future, obviously *)
-  let rsa_priv = Nocrypto.Rsa.generate 4096 in
-  let rsa_pub = Nocrypto.Rsa.pub_of_priv rsa_priv in
-    (*
-     * secret is x
-     * public is g^x
-     * shared is shared g14 secret public
-     *)
-  let secret, public = Nocrypto.Dh.(gen_key Group.oakley_14) in
-  Ok (secret, public)
+  ok ()
