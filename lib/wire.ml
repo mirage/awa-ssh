@@ -24,7 +24,7 @@ type pkt_hdr = {
   pad_len: uint8_t;
 } [@@big_endian]]
 
-(** {2 Version exchange parser.} *)
+let max_pkt_len = Int32.of_int 64000    (* 64KB should be enough *)
 
 let scan_version buf =
   let s = Cstruct.to_string buf in
@@ -67,9 +67,6 @@ let scan_version buf =
   else
     scan 0 1
 
-(** {2 Fetch the first packet and walk the buffer .} *)
-let max_pkt_len = Int32.of_int 64000    (* 64KB should be enough *)
-
 let scan_pkt buf =
   let len = Cstruct.len buf in
   let partial () =
@@ -104,8 +101,6 @@ let scan_pkt buf =
       in
       safe_sub buf sizeof_pkt_hdr payload_len >>= fun pkt ->
       ok (Some (pkt, clen))
-
-(** {2 Message ID.} *)
 
 [%%cenum
 type message_id =
@@ -150,8 +145,6 @@ let encode_message_id m =
   let buf = Cstruct.create 1 in
   Cstruct.set_uint8 buf 0 (message_id_to_int m);
   buf
-
-(** {2 Conversions on primitives from RFC4251 5.} *)
 
 let decode_string buf =
   (* XXX bad to_int conversion *)
@@ -248,15 +241,11 @@ let decode_nl buf =
   decode_string buf >>= fun (s, buf) ->
   ok ((Str.split (Str.regexp ",") s), buf)
 
-(** {2 SSH_MSG_DISCONNECT RFC4253 11.1.} *)
-
 let encode_disconnect code desc lang =
   let code = encode_uint32 code in
   let desc = encode_string desc in
   let lang = encode_string lang in
   Cstruct.concat [encode_message_id SSH_MSG_KEXINIT; code; desc; lang]
-
-(** {2 SSH_MSG_KEXINIT RFC4253 7.1.} *)
 
 type kex_pkt = {
   cookie : Cstruct.t;
@@ -293,21 +282,9 @@ let encode_kex kex =
   Cstruct.BE.set_uint32 tail 1 Int32.zero;
   Cstruct.concat [head; kex.cookie; nll; tail]
 
-(** {2 SSH_MSG_USERAUTH_REQUEST RFC4252 5.} *)
-
-(* TODO, variable len *)
-
-(** {2 SSH_MSG_USERAUTH_FAILURE RFC4252 5.1} *)
-
 let encode_userauth_failure nl psucc =
   let head = encode_message_id SSH_MSG_USERAUTH_FAILURE in
   Cstruct.concat [head; encode_nl nl; encode_bool psucc]
-
-(** {2 SSH_MSG_GLOBAL_REQUEST RFC4254 4.} *)
-
-(* TODO, variable len *)
-
-(** {2 High level representation of messages, one for each message_id. } *)
 
 type message =
   | Ssh_msg_disconnect of (int32 * string * string)
