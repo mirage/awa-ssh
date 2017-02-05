@@ -173,7 +173,7 @@ let t_mpint () =
   Cstruct.set_uint8 data 2 0xff;
   Cstruct.set_uint8 data 3 0x02;
   Cstruct.BE.set_uint32 head 0 (Int32.of_int (Cstruct.len data));
-  let mpint = get_ok_s @@ decode_mpint (Cstruct.append head data) 0 in
+  let mpint = fst @@ get_ok_s @@ decode_mpint (Cstruct.append head data) in
   assert ((Cstruct.len mpint) = 2); (* Cuts the first two zeros *)
   assert_byte mpint 0 0xff;
   assert_byte mpint 1 0x02;
@@ -197,7 +197,7 @@ let t_mpint () =
    * Case 3: Make sure negative are errors.
    *)
   Cstruct.set_uint8 buf 4 0x80;
-  let e = get_error (decode_mpint buf 0) in
+  let e = get_error (decode_mpint buf) in
   assert (e = "Negative mpint")
 
 let run_test test =

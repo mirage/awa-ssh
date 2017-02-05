@@ -138,26 +138,24 @@ type message_id =
 [@@uint8_t][@@sexp]]
 
 let decode_message_id buf =
-  let id = (Cstruct.get_uint8 buf 0) in
-  match int_to_message_id id with
-  | None -> error (Printf.sprintf "Unknown message id %d" id)
-  | Some msgid -> ok msgid
+  trap_error (fun () ->
+      let id = (Cstruct.get_uint8 buf 0) in
+      match int_to_message_id id with
+      | None -> invalid_arg (Printf.sprintf "Unknown message id %d" id)
+      | Some msgid -> msgid, (Cstruct.shift buf 1)) ()
 
 let encode_message_id m =
   let buf = Cstruct.create 1 in
   Cstruct.set_uint8 buf 0 (message_id_to_int m);
   buf
 
-let assert_message_id buf msgid =
-  assert ((decode_message_id buf) = ok msgid)
-
 (** {2 Conversions on primitives from RFC4251 5.} *)
 
-let decode_string buf off =
+let decode_string buf =
   (* XXX bad to_int conversion *)
   trap_error (fun () ->
-      let len = Cstruct.BE.get_uint32 buf off |> Int32.to_int in
-      (Cstruct.copy buf (off + 4) len), len) ()
+      let len = Cstruct.BE.get_uint32 buf 0 |> Int32.to_int in
+      (Cstruct.copy buf 4 len), Cstruct.shift buf (len + 4)) ()
 
 let encode_string s =
   let len = String.length s in
@@ -178,26 +176,23 @@ let encode_cstring c =
       Cstruct.blit c 0 buf 4 len;
       buf) ()
 
-let decode_mpint buf off =
+let decode_mpint buf =
   trap_error (fun () ->
-      (Cstruct.BE.get_uint32 buf off) |> Int32.to_int) ()
-  >>= function
-  | 0 -> ok (Cstruct.create 0)
-  | len ->
-    safe_sub buf (off + 4) len >>= fun buf ->
-    let msb = Cstruct.get_uint8 buf 0 in
-    if (msb land 0x80) <> 0 then
-      error "Negative mpint"
-    else
-      let rec leading_zeros off sum =
-        if off = len then
-          sum
-        else if (Cstruct.get_uint8 buf off) = 0 then
-          leading_zeros (succ off) (succ sum)
+      let rec strip_zeros buf =
+        if (Cstruct.get_uint8 buf 0) <> 0 then
+          buf
         else
-          leading_zeros (succ off) sum
+          strip_zeros (Cstruct.shift buf 1)
       in
-      safe_shift buf (leading_zeros 0 0)
+      match ((Cstruct.BE.get_uint32 buf 0) |> Int32.to_int) with
+      | 0 -> (Cstruct.create 0, buf)
+      | len ->
+        let mpbuf = Cstruct.sub buf 4 len in
+        let msb = Cstruct.get_uint8 mpbuf 0 in
+        if (msb land 0x80) <> 0 then
+          invalid_arg "Negative mpint"
+        else
+          strip_zeros mpbuf, Cstruct.shift buf (len + 4)) ()
 
 let encode_mpint mpint =
   let len = Cstruct.len mpint in
@@ -219,16 +214,18 @@ let encode_rsa (rsa : Nocrypto.Rsa.pub) =
   let n = encode_mpint (Numeric.Z.to_cstruct_be rsa.Rsa.n) in
   Cstruct.concat [s; e; n]
 
-let decode_uint32 buf off =
-  trap_error (fun () -> Cstruct.BE.get_uint32 buf off) ()
+let decode_uint32 buf =
+  trap_error (fun () ->
+      Cstruct.BE.get_uint32 buf 0, Cstruct.shift buf 4) ()
 
 let encode_uint32 v =
   let buf = Cstruct.create 4 in
   Cstruct.BE.set_uint32 buf 0 v;
   buf
 
-let decode_bool buf off =
-  trap_error (fun () -> (Cstruct.get_uint8 buf 0) <> 0) ()
+let decode_bool buf =
+  trap_error (fun () ->
+      (Cstruct.get_uint8 buf 0) <> 0, Cstruct.shift buf 1) ()
 
 let encode_bool b =
   let buf = Cstruct.create 1 in
@@ -238,20 +235,19 @@ let encode_bool b =
 let encode_nl nl =
   encode_string (String.concat "," nl)
 
-let decode_nl buf off =
-  decode_string buf off >>= fun (s, len) ->
-  ok ((Str.split (Str.regexp ",") s), len)
+let decode_nl buf =
+  decode_string buf >>= fun (s, buf) ->
+  ok ((Str.split (Str.regexp ",") s), buf)
 
 let decode_nll buf n =
-  let rec loop buf l tlen =
+  let rec loop buf l =
     if (List.length l) = n then
-      ok (List.rev l, tlen)
+      ok (List.rev l, buf)
     else
-      decode_nl buf 0 >>= fun (nl, len) ->
-      safe_shift buf (len + 4) >>= fun buf ->
-      loop buf (nl :: l) (len + tlen + 4)
+      decode_nl buf >>= fun (nl, buf) ->
+      loop buf (nl :: l)
   in
-  loop buf [] 0
+  loop buf []
 
 (** {2 SSH_MSG_DISCONNECT RFC4253 11.1.} *)
 
@@ -318,11 +314,11 @@ let encode_userauth_failure nl psucc =
 
 type message =
   | Ssh_msg_disconnect of (int32 * string * string)
-  | Ssh_msg_ignore of (string * int)
+  | Ssh_msg_ignore of string
   | Ssh_msg_unimplemented of int32
   | Ssh_msg_debug of (bool * string * string)
-  | Ssh_msg_service_request of (string * int)
-  | Ssh_msg_service_accept of (string * int)
+  | Ssh_msg_service_request of string
+  | Ssh_msg_service_accept of string
   | Ssh_msg_kexinit of kex_pkt
   | Ssh_msg_newkeys
   | Ssh_msg_userauth_request
@@ -345,37 +341,39 @@ type message =
   | Ssh_msg_channel_failure
 
 let message_of_buf buf =
-  decode_message_id buf >>= fun msgid ->
+  decode_message_id buf >>= fun (msgid, buf) ->
   let unimplemented () =
     error (Printf.sprintf "Message %d unimplemented" (message_id_to_int msgid))
   in
   match msgid with
   | SSH_MSG_DISCONNECT ->
-    decode_uint32 buf 1 >>= fun code ->
-    decode_string buf 5 >>= fun (desc, len) ->
-    decode_string buf (len + 9) >>= fun (lang, _) ->
+    decode_uint32 buf >>= fun (code, buf) ->
+    decode_string buf >>= fun (desc, buf) ->
+    decode_string buf >>= fun (lang, buf) ->
     ok (Ssh_msg_disconnect (code, desc, lang))
   | SSH_MSG_IGNORE ->
-    decode_string buf 1 >>= fun x ->
+    decode_string buf >>= fun (x, buf) ->
     ok (Ssh_msg_ignore x)
   | SSH_MSG_UNIMPLEMENTED ->
-    decode_uint32 buf 1 >>= fun x ->
+    decode_uint32 buf >>= fun (x, buf) ->
     ok (Ssh_msg_unimplemented x)
   | SSH_MSG_DEBUG ->
-    decode_bool buf 1 >>= fun always_display ->
-    decode_string buf 2 >>= fun (message, len) ->
-    decode_string buf (len + 6) >>= fun (lang, _) ->
+    decode_bool buf >>= fun (always_display, buf) ->
+    decode_string buf >>= fun (message, buf) ->
+    decode_string buf >>= fun (lang, buf) ->
     ok (Ssh_msg_debug (always_display, message, lang))
   | SSH_MSG_SERVICE_REQUEST ->
-    decode_string buf 1 >>= fun x -> ok (Ssh_msg_service_request x)
+    decode_string buf >>= fun (x, buf) -> ok (Ssh_msg_service_request x)
   | SSH_MSG_SERVICE_ACCEPT ->
-    decode_string buf 1 >>= fun x -> ok (Ssh_msg_service_accept x)
+    decode_string buf >>= fun (x, buf) -> ok (Ssh_msg_service_accept x)
   | SSH_MSG_KEXINIT ->
-    safe_shift buf 17 >>= fun nllbuf ->
-    decode_nll nllbuf 10 >>= fun (nll, nll_len) ->
-    decode_bool buf nll_len >>= fun first_kex_packet_follows ->
+    (* Jump over cookie *)
+    let cookiebegin = buf in
+    safe_shift buf 16 >>= fun buf ->
+    decode_nll buf 10 >>= fun (nll, buf) ->
+    decode_bool buf >>= fun (first_kex_packet_follows, buf) ->
     ok (Ssh_msg_kexinit
-          { cookie = Cstruct.copy buf 1 16;
+          { cookie = Cstruct.copy cookiebegin 0 16;
             kex_algorithms = List.nth nll 0;
             server_host_key_algorithms = List.nth nll 1;
             encryption_algorithms_ctos = List.nth nll 2;
@@ -390,13 +388,13 @@ let message_of_buf buf =
   | SSH_MSG_NEWKEYS -> ok Ssh_msg_newkeys
   | SSH_MSG_USERAUTH_REQUEST -> unimplemented ()
   | SSH_MSG_USERAUTH_FAILURE ->
-    decode_nl buf 1 >>= fun (nl, len) ->
-    decode_bool buf len >>= fun psucc ->
+    decode_nl buf >>= fun (nl, buf) ->
+    decode_bool buf >>= fun (psucc, buf) ->
     ok (Ssh_msg_userauth_failure (nl, psucc))
   | SSH_MSG_USERAUTH_SUCCESS -> unimplemented ()
   | SSH_MSG_USERAUTH_BANNER ->
-    decode_string buf 1 >>= fun (s1, len1) ->
-    decode_string buf (len1 + 5) >>= fun (s2, _) ->
+    decode_string buf >>= fun (s1, buf) ->
+    decode_string buf >>= fun (s2, buf) ->
     ok (Ssh_msg_userauth_banner (s1, s2))
   | SSH_MSG_GLOBAL_REQUEST -> unimplemented ()
   | SSH_MSG_REQUEST_SUCCESS -> unimplemented ()
