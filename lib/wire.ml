@@ -262,6 +262,94 @@ type kex_pkt = {
   first_kex_packet_follows : bool
 } [@@deriving sexp]
 
+type kex_neg = {
+  kex_algorithm : string;
+  server_host_key_algorithm : string;
+  encryption_algorithm_ctos : string;
+  encryption_algorithm_stoc : string;
+  mac_algorithm_ctos : string;
+  mac_algorithm_stoc : string;
+  compression_algorithm_ctos : string;
+  compression_algorithm_stoc : string;
+  language_ctos : string;
+  language_stoc : string;
+}
+
+let negotiate_kex ~s ~c =
+  let pick_common ~s ~c e =
+    try
+      Ok (List.find (fun x -> List.mem x s) c)
+    with
+      Not_found -> Error e
+  in
+  pick_common
+    ~s:s.kex_algorithms
+    ~c:c.kex_algorithms
+    "Can't agree on kex algorithm"
+  >>= fun kex_algorithm ->
+  pick_common
+    ~s:s.server_host_key_algorithms
+    ~c:c.server_host_key_algorithms
+    "Can't agree on server host key algorithm"
+  >>= fun server_host_key_algorithm ->
+  pick_common
+    ~s:s.encryption_algorithms_ctos
+    ~c:c.encryption_algorithms_ctos
+    "Can't agree on encryption algorithm client to server"
+  >>= fun encryption_algorithm_ctos ->
+  pick_common
+    ~s:s.encryption_algorithms_stoc
+    ~c:c.encryption_algorithms_stoc
+    "Can't agree on encryption algorithm server to client"
+  >>= fun encryption_algorithm_stoc ->
+  pick_common
+    ~s:s.mac_algorithms_ctos
+    ~c:c.mac_algorithms_ctos
+    "Can't agree on mac algorithm client to server"
+  >>= fun mac_algorithm_ctos ->
+  pick_common
+    ~s:s.mac_algorithms_stoc
+    ~c:c.mac_algorithms_stoc
+    "Can't agree on mac algorithm server to client"
+  >>= fun mac_algorithm_stoc ->
+  pick_common
+    ~s:s.compression_algorithms_ctos
+    ~c:c.compression_algorithms_ctos
+    "Can't agree on compression algorithm client to server"
+  >>= fun compression_algorithm_ctos ->
+  pick_common
+    ~s:s.compression_algorithms_stoc
+    ~c:c.compression_algorithms_stoc
+    "Can't agree on compression algorithm server to client"
+  >>= fun compression_algorithm_stoc ->
+  ok {
+    kex_algorithm;
+    server_host_key_algorithm;
+    encryption_algorithm_ctos;
+    encryption_algorithm_stoc;
+    mac_algorithm_ctos;
+    mac_algorithm_stoc;
+    compression_algorithm_ctos;
+    compression_algorithm_stoc;
+    language_ctos = "";         (* XXX *)
+    language_stoc = "";         (* XXX *)
+  }
+
+let make_kex () =
+  { cookie = Nocrypto.Rng.generate 16;
+    kex_algorithms = [ "diffie-hellman-group14-sha1";
+                       "diffie-hellman-group1-sha1" ];
+    server_host_key_algorithms = [ "ssh-rsa" ];
+    encryption_algorithms_ctos = [ "aes128-ctr" ];
+    encryption_algorithms_stoc = [ "aes128-ctr" ];
+    mac_algorithms_ctos = [ "hmac-sha1" ];
+    mac_algorithms_stoc = [ "hmac-sha1" ];
+    compression_algorithms_ctos = [ "none" ];
+    compression_algorithms_stoc = [ "none" ];
+    languages_ctos = [];
+    languages_stoc = [];
+    first_kex_packet_follows = false }
+
 let encode_kex kex =
   let f = encode_nl in
   let nll = Cstruct.concat
@@ -446,66 +534,3 @@ let handle_kexdh_init e g rsa_secret =
   ok ()
   (* ok (Ssh_msg_kexdh_reply k_s f signature) *)
 
-type mode = Server | Client
-
-let make_kex () =
-  { cookie = Nocrypto.Rng.generate 16;
-    kex_algorithms = [ "diffie-hellman-group14-sha1";
-                       "diffie-hellman-group1-sha1" ];
-    server_host_key_algorithms = [ "ssh-rsa" ];
-    encryption_algorithms_ctos = [ "aes128-ctr" ];
-    encryption_algorithms_stoc = [ "aes128-ctr" ];
-    mac_algorithms_ctos = [ "hmac-sha1" ];
-    mac_algorithms_stoc = [ "hmac-sha1" ];
-    compression_algorithms_ctos = [ "none" ];
-    compression_algorithms_stoc = [ "none" ];
-    languages_ctos = [];
-    languages_stoc = [];
-    first_kex_packet_follows = false }
-
-let handle_kex mode kex =
-  let us = make_kex () in
-  let s = if mode = Server then us else kex in
-  let c = if mode = Server then kex else us in
-  let pick_common ~s ~c e =
-    try
-      Ok (List.find (fun x -> List.mem x s) c)
-    with
-      Not_found -> Error e
-  in
-  pick_common
-    ~s:s.kex_algorithms
-    ~c:c.kex_algorithms
-    "Can't agree on kex algorithm"
-  >>= fun kex_algorithms ->
-  pick_common
-    ~s:s.encryption_algorithms_ctos
-    ~c:c.encryption_algorithms_ctos
-    "Can't agree on encryption algorithm client to server"
-  >>= fun encryption_algorithms_ctos ->
-  pick_common
-    ~s:s.encryption_algorithms_stoc
-    ~c:c.encryption_algorithms_stoc
-    "Can't agree on encryption algorithm server to client"
-  >>= fun encryption_algorithms_stoc ->
-  pick_common
-    ~s:s.mac_algorithms_ctos
-    ~c:c.mac_algorithms_ctos
-    "Can't agree on mac algorithm client to server"
-  >>= fun mac_algorithms_ctos ->
-  pick_common
-    ~s:s.mac_algorithms_stoc
-    ~c:c.mac_algorithms_stoc
-    "Can't agree on mac algorithm server to client"
-  >>= fun mac_algorithms_stoc ->
-  pick_common
-    ~s:s.compression_algorithms_ctos
-    ~c:c.compression_algorithms_ctos
-    "Can't agree on compression algorithm client to server"
-  >>= fun compression_algorithms_ctos ->
-  pick_common
-    ~s:s.compression_algorithms_stoc
-    ~c:c.compression_algorithms_stoc
-    "Can't agree on compression algorithm server to client"
-  >>= fun compression_algorithms_stoc ->
-  ok ()
