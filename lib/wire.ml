@@ -300,6 +300,7 @@ let encode_kex kex =
   let head = encode_message_id SSH_MSG_KEXINIT in
   let tail = Cstruct.create 5 in  (* first_kex_packet_follows + reserved *)
   Cstruct.set_uint8 tail 0 (if kex.first_kex_packet_follows then 1 else 0);
+  Cstruct.BE.set_uint32 tail 1 Int32.zero;
   Cstruct.concat [head; kex.cookie; nll; tail]
 
 (** {2 SSH_MSG_USERAUTH_REQUEST RFC4252 5.} *)
