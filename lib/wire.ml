@@ -248,16 +248,6 @@ let decode_nl buf =
   decode_string buf >>= fun (s, buf) ->
   ok ((Str.split (Str.regexp ",") s), buf)
 
-let decode_nll buf n =
-  let rec loop buf l =
-    if (List.length l) = n then
-      ok (List.rev l, buf)
-    else
-      decode_nl buf >>= fun (nl, buf) ->
-      loop buf (nl :: l)
-  in
-  loop buf []
-
 (** {2 SSH_MSG_DISCONNECT RFC4253 11.1.} *)
 
 let encode_disconnect code desc lang =
@@ -379,20 +369,29 @@ let message_of_buf buf =
     (* Jump over cookie *)
     let cookiebegin = buf in
     safe_shift buf 16 >>= fun buf ->
-    decode_nll buf 10 >>= fun (nll, buf) ->
+    decode_nl buf >>= fun (kex_algorithms, buf) ->
+    decode_nl buf >>= fun (server_host_key_algorithms, buf) ->
+    decode_nl buf >>= fun (encryption_algorithms_ctos, buf) ->
+    decode_nl buf >>= fun (encryption_algorithms_stoc, buf) ->
+    decode_nl buf >>= fun (mac_algorithms_ctos, buf) ->
+    decode_nl buf >>= fun (mac_algorithms_stoc, buf) ->
+    decode_nl buf >>= fun (compression_algorithms_ctos, buf) ->
+    decode_nl buf >>= fun (compression_algorithms_stoc, buf) ->
+    decode_nl buf >>= fun (languages_ctos, buf) ->
+    decode_nl buf >>= fun (languages_stoc, buf) ->
     decode_bool buf >>= fun (first_kex_packet_follows, buf) ->
     ok (Ssh_msg_kexinit
           { cookie = Cstruct.set_len cookiebegin 16;
-            kex_algorithms = List.nth nll 0;
-            server_host_key_algorithms = List.nth nll 1;
-            encryption_algorithms_ctos = List.nth nll 2;
-            encryption_algorithms_stoc = List.nth nll 3;
-            mac_algorithms_ctos = List.nth nll 4;
-            mac_algorithms_stoc = List.nth nll 5;
-            compression_algorithms_ctos = List.nth nll 6;
-            compression_algorithms_stoc = List.nth nll 7;
-            languages_ctos = List.nth nll 8;
-            languages_stoc = List.nth nll 9;
+            kex_algorithms;
+            server_host_key_algorithms;
+            encryption_algorithms_ctos;
+            encryption_algorithms_stoc;
+            mac_algorithms_ctos;
+            mac_algorithms_stoc;
+            compression_algorithms_ctos;
+            compression_algorithms_stoc;
+            languages_ctos;
+            languages_stoc;
             first_kex_packet_follows; })
   | SSH_MSG_NEWKEYS -> ok Ssh_msg_newkeys
   | SSH_MSG_KEXDH_INIT -> decode_mpint buf >>= fun (e, buf) ->
