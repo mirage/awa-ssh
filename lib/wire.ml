@@ -166,6 +166,13 @@ let encode_string s =
   Cstruct.blit_from_string s 0 buf 4 len;
   buf
 
+let decode_cstring buf =
+  (* XXX bad to_int conversion *)
+  trap_error (fun () ->
+      let len = Cstruct.BE.get_uint32 buf 0 |> Int32.to_int in
+      (Cstruct.set_len (Cstruct.shift buf 4) len,
+       Cstruct.shift buf (len + 4))) ()
+
 let encode_cstring c =
   trap_error (fun () ->
       let len = Cstruct.len c in
