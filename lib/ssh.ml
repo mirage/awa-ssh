@@ -404,7 +404,7 @@ type message =
   | Ssh_msg_channel_success
   | Ssh_msg_channel_failure
 
-let message_of_buf buf =
+let decode_message buf =
   decode_message_id buf >>= fun (msgid, buf) ->
   let unimplemented () =
     error (Printf.sprintf "Message %d unimplemented" (message_id_to_int msgid))
@@ -494,7 +494,7 @@ let message_of_buf buf =
 let scan_message buf =
   scan_pkt buf >>= function
   | None -> ok None
-  | Some (pkt, clen) -> message_of_buf pkt >>= fun msg -> ok (Some msg)
+  | Some (pkt, clen) -> decode_message pkt >>= fun msg -> ok (Some msg)
 
 (*
  * All below should be moved somewhere
