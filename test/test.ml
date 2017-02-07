@@ -93,10 +93,6 @@ let t_banner () =
     bad_strings
 
 let t_key_exchange () =
-  (* Make sure nothing happens if packet is incomplete *)
-  (* let cx = add_buf c (Cstruct.of_string "1") in *)
-  (* assert (cx = (cx |> handle)); *)
-
   (*
    * Case 1: A buffer with 64 bytes and payload with 60 bytes.
    * The pkt_len header is 4 bytes, so a payload of 60 + 4 requires 64 bytes,
@@ -134,25 +130,14 @@ let t_key_exchange () =
   Ssh.set_pkt_hdr_pkt_len buf 0l;
   Ssh.set_pkt_hdr_pad_len buf 0;
   let e = get_error (Ssh.scan_pkt buf) in
-  assert (e = "Malformed packet");
-
-  (* Test a pad_len equal/greater than pkt_len *)
-  (* let () = assert_invalid @@ fun () -> *)
-  (*   let buf = Cstruct.create 64 in *)
-  (*   set_pkt_hdr_pkt_len buf 20l; *)
-  (*   set_pkt_hdr_pad_len buf 20; *)
-  (*   ignore @@ (add_buf c buf |> handle); *)
-  (*   ignore @@ (add_buf c buf |> handle); *)
-  (* in *)
-  ()
+  assert (e = "Malformed packet")
 
 
 let t_namelist () =
-  ()
-  (* let s = ["uncle";"henry";"is";"evil"] in *)
-  (* let buf = encode_nl s in *)
-  (* assert (Cstruct.len buf = (4 + String.length (String.concat "," s))); *)
-  (* assert (s = fst (nl_of_buf buf 0)) *)
+  let s = ["The";"Conquest";"Of";"Bread"] in
+  let buf = Ssh.encode_nl s in
+  assert (Cstruct.len buf = (4 + String.length (String.concat "," s)));
+  assert (s = fst (get_ok (Ssh.decode_nl buf)))
 
 let t_mpint () =
   let assert_byte buf off v =
