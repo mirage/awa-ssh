@@ -262,78 +262,134 @@ type kex_pkt = {
   first_kex_packet_follows : bool
 } [@@deriving sexp]
 
+type kex_algorithm =
+  | Diffie_hellman_group14_sha1
+  | Diffie_hellman_group1_sha1
+
+let kex_algorithm_of_string = function
+  | "diffie-hellman-group14-sha1" -> Diffie_hellman_group14_sha1
+  | "diffie-hellman-group1-sha1"  -> Diffie_hellman_group1_sha1
+  | s -> failwith (Printf.sprintf "Unknown kex_algorithm %s" s)
+
+let kex_algorithm_to_string = function
+  | Diffie_hellman_group14_sha1 -> "diffie-hellman-group14-sha1"
+  | Diffie_hellman_group1_sha1  -> "diffie-hellman-group1-sha1"
+
+type server_host_key_algorithm =
+  | Ssh_rsa
+
+let server_host_key_algorithm_of_string = function
+  | "ssh-rsa" -> Ssh_rsa
+  | s -> failwith (Printf.sprintf "Unknown server host key algorithm %s" s)
+
+let server_host_key_algorithm_to_string = function
+  | Ssh_rsa -> "ssh-rsa"
+
+type encryption_algorithm =
+  | Aes128_ctr
+
+let encryption_algorithm_of_string = function
+  | "aes128-ctr" -> Aes128_ctr
+  | s -> failwith (Printf.sprintf "Unknown encryption algorithm %s" s)
+
+let encryption_algorithm_to_string = function
+  | Aes128_ctr -> "aes128-ctr"
+
+type mac_algorithm =
+  | Hmac_sha1
+
+let mac_algorithm_of_string = function
+  | "hmac-sha1" -> Hmac_sha1
+  | s -> failwith (Printf.sprintf "Unknown mac algorithm %s" s)
+
+let mac_algorithm_to_string = function
+  | Hmac_sha1 -> "hmac-sha1"
+
+type compression_algorithm =
+  | Nothing                        (* Can't use None :-D *)
+
+let compression_algorithm_of_string = function
+  | "none" -> Nothing
+  | s -> failwith (Printf.sprintf "Unknown compression algorithm %s" s)
+
+let compression_algorithm_to_string = function
+  | Nothing -> "none"
+
 type kex_neg = {
-  kex_algorithm : string;
-  server_host_key_algorithm : string;
-  encryption_algorithm_ctos : string;
-  encryption_algorithm_stoc : string;
-  mac_algorithm_ctos : string;
-  mac_algorithm_stoc : string;
-  compression_algorithm_ctos : string;
-  compression_algorithm_stoc : string;
-  language_ctos : string;
-  language_stoc : string;
+  kex_algorithm : kex_algorithm;
+  server_host_key_algorithm : server_host_key_algorithm;
+  encryption_algorithm_ctos : encryption_algorithm;
+  encryption_algorithm_stoc : encryption_algorithm;
+  mac_algorithm_ctos : mac_algorithm;
+  mac_algorithm_stoc : mac_algorithm;
+  compression_algorithm_ctos : compression_algorithm;
+  compression_algorithm_stoc : compression_algorithm;
 }
 
 let negotiate_kex ~s ~c =
-  let pick_common ~s ~c e =
+  let pick_common f ~s ~c e =
     try
-      Ok (List.find (fun x -> List.mem x s) c)
+      ok @@ f @@ List.find (fun x -> List.mem x s) c
     with
-      Not_found -> Error e
+      Not_found -> error e
   in
   pick_common
+    kex_algorithm_of_string
     ~s:s.kex_algorithms
     ~c:c.kex_algorithms
     "Can't agree on kex algorithm"
   >>= fun kex_algorithm ->
   pick_common
+    server_host_key_algorithm_of_string
     ~s:s.server_host_key_algorithms
     ~c:c.server_host_key_algorithms
     "Can't agree on server host key algorithm"
   >>= fun server_host_key_algorithm ->
   pick_common
+    encryption_algorithm_of_string
     ~s:s.encryption_algorithms_ctos
     ~c:c.encryption_algorithms_ctos
     "Can't agree on encryption algorithm client to server"
   >>= fun encryption_algorithm_ctos ->
   pick_common
+    encryption_algorithm_of_string
     ~s:s.encryption_algorithms_stoc
     ~c:c.encryption_algorithms_stoc
     "Can't agree on encryption algorithm server to client"
   >>= fun encryption_algorithm_stoc ->
   pick_common
+    mac_algorithm_of_string
     ~s:s.mac_algorithms_ctos
     ~c:c.mac_algorithms_ctos
     "Can't agree on mac algorithm client to server"
   >>= fun mac_algorithm_ctos ->
   pick_common
+    mac_algorithm_of_string
     ~s:s.mac_algorithms_stoc
     ~c:c.mac_algorithms_stoc
     "Can't agree on mac algorithm server to client"
   >>= fun mac_algorithm_stoc ->
   pick_common
+    compression_algorithm_of_string
     ~s:s.compression_algorithms_ctos
     ~c:c.compression_algorithms_ctos
     "Can't agree on compression algorithm client to server"
   >>= fun compression_algorithm_ctos ->
   pick_common
+    compression_algorithm_of_string
     ~s:s.compression_algorithms_stoc
     ~c:c.compression_algorithms_stoc
     "Can't agree on compression algorithm server to client"
   >>= fun compression_algorithm_stoc ->
-  ok {
-    kex_algorithm;
-    server_host_key_algorithm;
-    encryption_algorithm_ctos;
-    encryption_algorithm_stoc;
-    mac_algorithm_ctos;
-    mac_algorithm_stoc;
-    compression_algorithm_ctos;
-    compression_algorithm_stoc;
-    language_ctos = "";         (* XXX *)
-    language_stoc = "";         (* XXX *)
-  }
+  ok { kex_algorithm;
+       server_host_key_algorithm;
+       encryption_algorithm_ctos;
+       encryption_algorithm_stoc;
+       mac_algorithm_ctos;
+       mac_algorithm_stoc;
+       compression_algorithm_ctos;
+       compression_algorithm_stoc }
+      (* ignore language_ctos and language_stoc *)
 
 let make_kex () =
   { cookie = Nocrypto.Rng.generate 16;
@@ -497,7 +553,7 @@ let scan_message buf =
   | Some (pkt, clen) -> decode_message pkt >>= fun msg -> ok (Some msg)
 
 (*
- * All below should be moved somewhere
+ * Diffie-Hellmann
  *)
 
 let dh_gen_keys g peer_pub =
@@ -509,28 +565,11 @@ let dh_gen_keys g peer_pub =
   (* secret is y, my_pub is f or e, shared is k *)
   ok (secret, my_pub, shared)
 
-let dh_server_compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
+let dh_compute_hash ~hf ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
   encode_cstring v_c >>= fun v_c ->
   encode_cstring v_s >>= fun v_s ->
   encode_cstring i_c >>= fun i_c ->
   encode_cstring i_s >>= fun i_s ->
   let e = encode_mpint e in
   let f = encode_mpint f in
-  ok (Nocrypto.Hash.SHA1.digestv [ v_c; v_s; i_c; i_s; k_s; e; f; k ])
-
-(* Only server obviously *)
-let handle_kexdh_init e g rsa_secret =
-  let v_c = Cstruct.create 0 in (* XXX *)
-  let v_s = v_c in              (* XXX *)
-  let i_c = v_c in              (* XXX *)
-  let i_s = v_c in              (* XXX *)
-  let rsa_pub = Nocrypto.Rsa.pub_of_priv rsa_secret in
-  dh_gen_keys g e
-  >>= fun (y, f, k) ->
-  let k_s = encode_rsa rsa_pub in
-  dh_server_compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k
-  >>= fun h ->
-  let signature = Nocrypto.Rsa.PKCS1.sig_encode rsa_secret h in
-  ok ()
-  (* ok (Ssh_msg_kexdh_reply k_s f signature) *)
-
+  ok (hf [ v_c; v_s; i_c; i_s; k_s; e; f; k ])
