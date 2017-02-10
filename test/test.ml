@@ -155,12 +155,19 @@ let t_mpint () =
   Cstruct.set_uint8 data 3 0x02;
   Cstruct.BE.set_uint32 head 0 (Int32.of_int (Cstruct.len data));
   let mpint = fst @@ get_ok_s @@ Ssh.decode_mpint (Cstruct.append head data) in
-  assert ((Cstruct.len mpint) = 2); (* Cuts the first two zeros *)
-  assert_byte mpint 0 0xff;
-  assert_byte mpint 1 0x02;
+  let buf = Nocrypto.Numeric.Z.to_cstruct_be mpint in
+  assert ((Cstruct.len buf) = 2); (* Cuts the first two zeros *)
+  assert_byte buf 0 0xff;
+  assert_byte buf 1 0x02;
 
   (*
-   * Case 2: Test the other way, one zero must be prepended
+   * Case 2: Test identity
+   *)
+  assert (mpint =
+          (fst @@ get_ok_s (Ssh.decode_mpint (Ssh.encode_mpint mpint))));
+
+  (*
+   * Case 3: Test the other way from 1, one zero must be prepended
    * since the first byte is negative (0xff).
    *)
   let buf = Ssh.encode_mpint mpint in
@@ -175,7 +182,7 @@ let t_mpint () =
   assert_byte buf 6 0x02;
 
   (*
-   * Case 3: Make sure negative are errors.
+   * Case 4: Make sure negative are errors.
    *)
   Cstruct.set_uint8 buf 4 0x80;
   let e = get_error (Ssh.decode_mpint buf) in

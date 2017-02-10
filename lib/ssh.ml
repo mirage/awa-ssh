@@ -188,40 +188,39 @@ let encode_cstring c =
 
 let decode_mpint buf =
   trap_error (fun () ->
-      let rec strip_zeros buf =
-        if (Cstruct.get_uint8 buf 0) <> 0 then
-          buf
-        else
-          strip_zeros (Cstruct.shift buf 1)
-      in
       match ((Cstruct.BE.get_uint32 buf 0) |> Int32.to_int) with
-      | 0 -> (Cstruct.create 0, buf)
+      | 0 -> Nocrypto.Numeric.Z.zero, Cstruct.shift buf 4
       | len ->
         let mpbuf = Cstruct.sub buf 4 len in
         let msb = Cstruct.get_uint8 mpbuf 0 in
         if (msb land 0x80) <> 0 then
           invalid_arg "Negative mpint"
         else
-          strip_zeros mpbuf, Cstruct.shift buf (len + 4)) ()
+          (* of_cstruct_be strips leading zeros for us *)
+          Nocrypto.Numeric.Z.of_cstruct_be mpbuf,
+          Cstruct.shift buf (len + 4)) ()
 
 let encode_mpint mpint =
-  let len = Cstruct.len mpint in
-  if len > 0 &&
-     ((Cstruct.get_uint8 mpint 0) land 0x80) <> 0 then
-    let head = Cstruct.create 5 in
-    Cstruct.set_uint8 head 4 0;
-    Cstruct.BE.set_uint32 head 0 (Int32.of_int (succ len));
-    Cstruct.append head mpint
+  let mpbuf = Nocrypto.Numeric.Z.to_cstruct_be mpint in
+  let mplen = Cstruct.len mpbuf in
+  if mplen > 0 &&
+     ((Cstruct.get_uint8 mpbuf 0) land 0x80) <> 0 then
+    let buf = Cstruct.create (mplen + 5) in
+    Cstruct.BE.set_uint32 buf 0 (Int32.of_int (succ mplen));
+    Cstruct.set_uint8 buf 4 0;
+    Cstruct.blit mpbuf 0 buf 5 mplen;
+    buf
   else
-    let head = Cstruct.create 4 in
-    Cstruct.BE.set_uint32 head 0 (Int32.of_int len);
-    Cstruct.append head mpint
+    let buf = Cstruct.create (mplen + 4) in
+    Cstruct.BE.set_uint32 buf 0 (Int32.of_int mplen);
+    Cstruct.blit mpbuf 0 buf 4 mplen;
+    buf
 
 let encode_rsa (rsa : Nocrypto.Rsa.pub) =
   let open Nocrypto in
   let s = encode_string "ssh-rsa" in
-  let e = encode_mpint (Numeric.Z.to_cstruct_be rsa.Rsa.e) in
-  let n = encode_mpint (Numeric.Z.to_cstruct_be rsa.Rsa.n) in
+  let e = encode_mpint rsa.Rsa.e in
+  let n = encode_mpint rsa.Rsa.n in
   Cstruct.concat [s; e; n]
 
 let decode_uint32 buf =
@@ -475,8 +474,8 @@ type message =
   | Ssh_msg_service_request of string
   | Ssh_msg_service_accept of string
   | Ssh_msg_kexinit of kex_pkt
-  | Ssh_msg_kexdh_init of Cstruct.t
-  | Ssh_msg_kexdh_reply of (Cstruct.t * Cstruct.t * Cstruct.t)
+  | Ssh_msg_kexdh_init of Nocrypto.Numeric.Z.t
+  | Ssh_msg_kexdh_reply of (Cstruct.t * Nocrypto.Numeric.Z.t * Cstruct.t)
   | Ssh_msg_newkeys
   | Ssh_msg_userauth_request
   | Ssh_msg_userauth_failure of (string list * bool)
@@ -567,13 +566,14 @@ let scan_message buf =
  *)
 
 let dh_gen_keys g peer_pub =
+  let open Nocrypto in
   let secret, my_pub = Nocrypto.Dh.gen_key g in
   guard_some
-    (Nocrypto.Dh.shared g secret peer_pub)
+    (Nocrypto.Dh.shared g secret (Numeric.Z.to_cstruct_be peer_pub))
     "Can't compute shared secret"
   >>= fun shared ->
   (* secret is y, my_pub is f or e, shared is k *)
-  ok (secret, my_pub, shared)
+  ok (secret, Numeric.Z.of_cstruct_be my_pub, Numeric.Z.of_cstruct_be shared)
 
 let dh_compute_hash ~hf ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
   encode_cstring v_c >>= fun v_c ->
@@ -582,4 +582,5 @@ let dh_compute_hash ~hf ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
   encode_cstring i_s >>= fun i_s ->
   let e = encode_mpint e in
   let f = encode_mpint f in
+  let k = encode_mpint k in
   ok (hf [ v_c; v_s; i_c; i_s; k_s; e; f; k ])
