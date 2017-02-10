@@ -48,13 +48,14 @@ let make host_key =
 
 let input_msg t msgbuf =
   let open Ssh in
+  let open Nocrypto in
   decode_message msgbuf >>= fun msg ->
   match msg with
   | Ssh_msg_kexinit kex ->
     decode_kex t.server_kex >>= fun (server_kex, _) ->
     negotiate_kex ~s:server_kex ~c:kex
     >>= fun neg ->
-    ok { t with client_kex = Some msgbuf; neg_kex = Some neg }
+    ok ({ t with client_kex = Some msgbuf; neg_kex = Some neg }, None)
 
   | Ssh_msg_kexdh_init e ->
     guard_some t.neg_kex "No negotiated kex" >>= fun neg ->
@@ -63,16 +64,19 @@ let input_msg t msgbuf =
     let v_s = Cstruct.of_string t.server_version in
     guard_some t.client_kex "No client kex" >>= fun i_c ->
     let i_s = t.server_kex in
-    let k_s = encode_key (Nocrypto.Rsa.pub_of_priv t.host_key) in
-    let hf = Nocrypto.Hash.SHA1.digestv in
+    let pub_host_key = Rsa.pub_of_priv t.host_key in
+    let k_s = encode_key pub_host_key in
+    let hf = Hash.SHA1.digestv in
     let g = match neg.kex_algorithm with
-      | Diffie_hellman_group1_sha1  -> Nocrypto.Dh.Group.oakley_2 (* not a typo *)
-      | Diffie_hellman_group14_sha1 -> Nocrypto.Dh.Group.oakley_14
+      | Diffie_hellman_group1_sha1  -> Dh.Group.oakley_2 (* not a typo *)
+      | Diffie_hellman_group14_sha1 -> Dh.Group.oakley_14
     in
     dh_gen_keys g e >>= fun (y, f, k) ->
     dh_compute_hash ~hf ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k
     >>= fun h ->
-    let signature = Nocrypto.Rsa.PKCS1.sig_encode t.host_key h in
-    ok t
+    let signature = Rsa.PKCS1.sig_encode t.host_key h in
+    let reply = Ssh_msg_kexdh_reply (pub_host_key, f, signature) in
+    ok (t, Some reply)
+
   | _ -> error "unhandled stuff"
 
