@@ -52,7 +52,8 @@ let input_msg t msgbuf =
   decode_message msgbuf >>= fun msg ->
   match msg with
   | Ssh_msg_kexinit kex ->
-    negotiate_kex ~s:t.server_kex ~c:kex
+    decode_kex t.server_kex >>= fun server_kex ->
+    negotiate_kex ~s:server_kex ~c:kex
     >>= fun neg ->
     ok { t with client_kex = Some msgbuf; neg_kex = Some neg }
 
@@ -64,11 +65,10 @@ let input_msg t msgbuf =
     guard_some t.client_kex "No client kex" >>= fun i_c ->
     let i_s = t.server_kex in
     let k_s = encode_rsa (Nocrypto.Rsa.pub_of_priv t.host_key) in
-    let g, hf = match neg.kex_algorithm with
-      | Diffie_hellman_group1_sha1  -> Nocrypto.Dh.Group.oakley_1,
-                                       Nocrypto.Hash.SHA1.digestv
-      | Diffie_hellman_group14_sha1 -> Nocrypto.Dh.Group.oakley_14,
-                                       Nocrypto.Hash.SHA1.digestv
+    let hf = Nocrypto.Hash.SHA1.digestv in
+    let g = match neg.kex_algorithm with
+      | Diffie_hellman_group1_sha1  -> Nocrypto.Dh.Group.oakley_1
+      | Diffie_hellman_group14_sha1 -> Nocrypto.Dh.Group.oakley_14
     in
     dh_gen_keys g e >>= fun (y, f, k) ->
     dh_compute_hash ~hf ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k
