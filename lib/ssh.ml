@@ -261,6 +261,15 @@ let encode_disconnect code desc lang =
   let lang = encode_string lang in
   Cstruct.concat [encode_message_id SSH_MSG_KEXINIT; code; desc; lang]
 
+let derive_keys hf session_id k h =
+  let k = encode_mpint k in
+  let x = Cstruct.create 1 in
+  let hash ch =
+    Cstruct.set_char x 0 ch;
+    hf [k; h; x; session_id]
+  in
+  hash 'A', hash 'B', hash 'C', hash 'D', hash 'E', hash 'F'
+
 type kex_pkt = {
   cookie : Cstruct.t;
   kex_algorithms : string list;
