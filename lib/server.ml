@@ -51,7 +51,7 @@ let input_msg t msgbuf =
   decode_message msgbuf >>= fun msg ->
   match msg with
   | Ssh_msg_kexinit kex ->
-    decode_kex t.server_kex >>= fun server_kex ->
+    decode_kex t.server_kex >>= fun (server_kex, _) ->
     negotiate_kex ~s:server_kex ~c:kex
     >>= fun neg ->
     ok { t with client_kex = Some msgbuf; neg_kex = Some neg }

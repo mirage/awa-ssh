@@ -429,18 +429,19 @@ let decode_kex buf =
   decode_nl buf >>= fun (languages_ctos, buf) ->
   decode_nl buf >>= fun (languages_stoc, buf) ->
   decode_bool buf >>= fun (first_kex_packet_follows, buf) ->
-  ok { cookie = Cstruct.set_len cookiebegin 16;
-       kex_algorithms;
-       server_host_key_algorithms;
-       encryption_algorithms_ctos;
-       encryption_algorithms_stoc;
-       mac_algorithms_ctos;
-       mac_algorithms_stoc;
-       compression_algorithms_ctos;
-       compression_algorithms_stoc;
-       languages_ctos;
-       languages_stoc;
-       first_kex_packet_follows }
+  ok ({ cookie = Cstruct.set_len cookiebegin 16;
+        kex_algorithms;
+        server_host_key_algorithms;
+        encryption_algorithms_ctos;
+        encryption_algorithms_stoc;
+        mac_algorithms_ctos;
+        mac_algorithms_stoc;
+        compression_algorithms_ctos;
+        compression_algorithms_stoc;
+        languages_ctos;
+        languages_stoc;
+        first_kex_packet_follows },
+      buf)
 
 let encode_kex kex =
   let f = encode_nl in
@@ -522,7 +523,7 @@ let decode_message buf =
     decode_string buf >>= fun (x, buf) -> ok (Ssh_msg_service_request x)
   | SSH_MSG_SERVICE_ACCEPT ->
     decode_string buf >>= fun (x, buf) -> ok (Ssh_msg_service_accept x)
-  | SSH_MSG_KEXINIT -> decode_kex buf >>= fun kex -> ok (Ssh_msg_kexinit kex)
+  | SSH_MSG_KEXINIT -> decode_kex buf >>= fun (kex, buf) -> ok (Ssh_msg_kexinit kex)
   | SSH_MSG_NEWKEYS -> ok Ssh_msg_newkeys
   | SSH_MSG_KEXDH_INIT -> decode_mpint buf >>= fun (e, buf) ->
     ok (Ssh_msg_kexdh_init e)
