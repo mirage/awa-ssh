@@ -49,8 +49,7 @@ let make host_key =
 let input_msg t msgbuf =
   let open Ssh in
   let open Nocrypto in
-  decode_message msgbuf >>= fun msg ->
-  match msg with
+  decode_message msgbuf >>= function
   | Ssh_msg_kexinit kex ->
     decode_kex t.server_kex >>= fun (server_kex, _) ->
     negotiate_kex ~s:server_kex ~c:kex
