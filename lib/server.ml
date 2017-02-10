@@ -66,7 +66,7 @@ let input_msg t msgbuf =
     let k_s = encode_rsa (Nocrypto.Rsa.pub_of_priv t.host_key) in
     let hf = Nocrypto.Hash.SHA1.digestv in
     let g = match neg.kex_algorithm with
-      | Diffie_hellman_group1_sha1  -> Nocrypto.Dh.Group.oakley_1
+      | Diffie_hellman_group1_sha1  -> Nocrypto.Dh.Group.oakley_2 (* not a typo *)
       | Diffie_hellman_group14_sha1 -> Nocrypto.Dh.Group.oakley_14
     in
     dh_gen_keys g e >>= fun (y, f, k) ->
