@@ -44,8 +44,7 @@ let make host_key =
             neg_kex = None;
             host_key; }
   in
-  (* XXX build an actual packet out of server_kex *)
-  (t, Cstruct.append banner_buf server_kex)
+  t, Cstruct.append banner_buf (Ssh.encode_plain_pkt server_kex)
 
 let input_msg t msgbuf =
   let open Ssh in

@@ -102,6 +102,14 @@ let scan_pkt buf =
       safe_sub buf sizeof_pkt_hdr payload_len >>= fun pkt ->
       ok (Some (pkt, clen))
 
+let encode_plain_pkt buf =
+  let len = Cstruct.len buf in
+  let newbuf = Cstruct.create (len + sizeof_pkt_hdr) in
+  set_pkt_hdr_pkt_len newbuf (Int32.of_int len);
+  set_pkt_hdr_pad_len newbuf 0;
+  Cstruct.blit buf 0 newbuf sizeof_pkt_hdr len;
+  newbuf
+
 [%%cenum
 type message_id =
   | SSH_MSG_DISCONNECT                [@id 1]
