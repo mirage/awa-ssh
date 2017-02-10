@@ -63,7 +63,7 @@ let input_msg t msgbuf =
     let v_s = Cstruct.of_string t.server_version in
     guard_some t.client_kex "No client kex" >>= fun i_c ->
     let i_s = t.server_kex in
-    let k_s = encode_rsa (Nocrypto.Rsa.pub_of_priv t.host_key) in
+    let k_s = encode_key (Nocrypto.Rsa.pub_of_priv t.host_key) in
     let hf = Nocrypto.Hash.SHA1.digestv in
     let g = match neg.kex_algorithm with
       | Diffie_hellman_group1_sha1  -> Nocrypto.Dh.Group.oakley_2 (* not a typo *)

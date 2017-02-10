@@ -216,7 +216,14 @@ let encode_mpint mpint =
     Cstruct.blit mpbuf 0 buf 4 mplen;
     buf
 
-let encode_rsa (rsa : Nocrypto.Rsa.pub) =
+let decode_key buf =
+  decode_string buf >>= fun (key, buf) ->
+  guard (key = "ssh-rsa") "Bad key type" >>= fun () ->
+  decode_mpint buf >>= fun (e, buf) ->
+  decode_mpint buf >>= fun (n, buf) ->
+  ok (Nocrypto.Rsa.{e; n}, buf)
+
+let encode_key (rsa : Nocrypto.Rsa.pub) =
   let open Nocrypto in
   let s = encode_string "ssh-rsa" in
   let e = encode_mpint rsa.Rsa.e in
@@ -475,7 +482,7 @@ type message =
   | Ssh_msg_service_accept of string
   | Ssh_msg_kexinit of kex_pkt
   | Ssh_msg_kexdh_init of Nocrypto.Numeric.Z.t
-  | Ssh_msg_kexdh_reply of (Cstruct.t * Nocrypto.Numeric.Z.t * Cstruct.t)
+  | Ssh_msg_kexdh_reply of (Nocrypto.Rsa.pub * Nocrypto.Numeric.Z.t * Cstruct.t)
   | Ssh_msg_newkeys
   | Ssh_msg_userauth_request
   | Ssh_msg_userauth_failure of (string list * bool)
@@ -527,7 +534,7 @@ let decode_message buf =
   | SSH_MSG_KEXDH_INIT -> decode_mpint buf >>= fun (e, buf) ->
     ok (Ssh_msg_kexdh_init e)
   | SSH_MSG_KEXDH_REPLY ->
-    decode_cstring buf >>= fun (k_s, buf) ->
+    decode_key buf >>= fun (k_s, buf) ->
     decode_mpint buf >>= fun (f, buf) ->
     decode_cstring buf >>= fun (hsig, buf) ->
     ok (Ssh_msg_kexdh_reply (k_s, f, hsig))
