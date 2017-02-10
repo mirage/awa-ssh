@@ -268,7 +268,13 @@ let derive_keys hf session_id k h =
     Cstruct.set_char x 0 ch;
     hf [k; h; x; session_id]
   in
-  hash 'A', hash 'B', hash 'C', hash 'D', hash 'E', hash 'F'
+  hash 'A', (* Initial IV client to server *)
+  hash 'B', (* Initial IV server to client *)
+  hash 'C', (* Encryption key client to server *)
+  hash 'D', (* Encryption key server to client *)
+  hash 'E', (* Integrity key client to server *)
+  hash 'F'  (* Integrity key server to client *)
+(* XXX need to recompute if not enough key material is available *)
 
 type kex_pkt = {
   cookie : Cstruct.t;
