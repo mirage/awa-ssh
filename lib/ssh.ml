@@ -261,12 +261,18 @@ let encode_disconnect code desc lang =
   let lang = encode_string lang in
   Cstruct.concat [encode_message_id SSH_MSG_KEXINIT; code; desc; lang]
 
-let derive_keys hf session_id k h =
+let derive_keys hf k h session_id need =
   let k = encode_mpint k in
   let x = Cstruct.create 1 in
+  let rec expand kn =
+    if (Cstruct.len kn) >= need then
+      kn
+    else
+      expand (hf [k; h; kn])
+  in
   let hash ch =
     Cstruct.set_char x 0 ch;
-    hf [k; h; x; session_id]
+    expand (hf [k; h; x; session_id])
   in
   hash 'A', (* Initial IV client to server *)
   hash 'B', (* Initial IV server to client *)
@@ -274,7 +280,6 @@ let derive_keys hf session_id k h =
   hash 'D', (* Encryption key server to client *)
   hash 'E', (* Integrity key client to server *)
   hash 'F'  (* Integrity key server to client *)
-(* XXX need to recompute if not enough key material is available *)
 
 type kex_pkt = {
   cookie : Cstruct.t;
