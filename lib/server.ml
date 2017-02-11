@@ -60,14 +60,15 @@ let input_msg t msgbuf =
     decode_kex t.server_kex >>= fun (server_kex, _) ->
     negotiate_kex ~s:server_kex ~c:kex
     >>= fun neg ->
-    ok ({ t with client_kex = Some msgbuf; neg_kex = Some neg }, None)
+    ok ({ t with client_kex = Some msgbuf; neg_kex = Some neg }, [])
 
   | Ssh_msg_kexdh_init e ->
     guard_some t.neg_kex "No negotiated kex" >>= fun neg ->
     guard_some t.client_version "No client version" >>= fun v_c ->
+    guard_none t.new_keys "Already got new_keys" >>= fun () ->
+    guard_some t.client_kex "No client kex" >>= fun i_c ->
     let v_c = Cstruct.of_string v_c in
     let v_s = Cstruct.of_string t.server_version in
-    guard_some t.client_kex "No client kex" >>= fun i_c ->
     let i_s = t.server_kex in
     let pub_host_key = Rsa.pub_of_priv t.host_key in
     let k_s = encode_key pub_host_key in
@@ -77,16 +78,14 @@ let input_msg t msgbuf =
       | Diffie_hellman_group14_sha1 -> Dh.Group.oakley_14
     in
     dh_gen_keys g e >>= fun (y, f, k) ->
-    dh_compute_hash ~hf ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k
-    >>= fun h ->
+    dh_compute_hash ~hf ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k >>= fun h ->
     let signature = Rsa.PKCS1.sig_encode t.host_key h in
-    let reply = Ssh_msg_kexdh_reply (pub_host_key, f, signature) in
     let session_id = match t.session_id with None -> h | Some x -> x in
-    guard_none t.new_keys "Already got new_keys" >>= fun () ->
     let new_keys = Ssh.derive_keys hf k h session_id 99999 in
     ok ({t with session_id = Some session_id;
                 new_keys = Some new_keys; },
-        Some reply)
+        [ Ssh_msg_kexdh_reply (pub_host_key, f, signature);
+          Ssh_msg_newkeys ])
 
   | _ -> error "unhandled stuff"
 
