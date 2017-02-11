@@ -31,6 +31,7 @@ type t = {
   server_kex : Cstruct.t;              (* Last KEXINIT sent by us *)
   neg_kex : Ssh.kex_neg option;        (* Negotiated KEX *)
   host_key : Nocrypto.Rsa.priv;        (* Server host key *)
+  session_id : Cstruct.t option;       (* First calculated H *)
 }
 
 let make host_key =
@@ -42,7 +43,8 @@ let make host_key =
             server_kex;
             client_kex = None;
             neg_kex = None;
-            host_key; }
+            host_key;
+            session_id = None }
   in
   t, Cstruct.append banner_buf (Ssh.encode_plain_pkt server_kex)
 
@@ -75,7 +77,10 @@ let input_msg t msgbuf =
     >>= fun h ->
     let signature = Rsa.PKCS1.sig_encode t.host_key h in
     let reply = Ssh_msg_kexdh_reply (pub_host_key, f, signature) in
-    ok (t, Some reply)
+    if t.session_id = None then
+      ok ({t with session_id = Some h}, Some reply)
+    else
+      ok (t, Some reply)
 
   | _ -> error "unhandled stuff"
 
