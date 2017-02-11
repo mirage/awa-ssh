@@ -261,6 +261,15 @@ let encode_disconnect code desc lang =
   let lang = encode_string lang in
   Cstruct.concat [encode_message_id SSH_MSG_KEXINIT; code; desc; lang]
 
+type keys = {
+  iiv_ctos : Cstruct.t; (* Initial IV client to server *)
+  iiv_stoc : Cstruct.t; (* Initial IV server to client *)
+  enc_ctos : Cstruct.t; (* Encryption key client to server *)
+  enc_stoc : Cstruct.t; (* Encryption key server to client *)
+  int_ctos : Cstruct.t; (* Integrity key client to server *)
+  int_stoc : Cstruct.t; (* Integrity key server to client *)
+}
+
 let derive_keys hf k h session_id need =
   let k = encode_mpint k in
   let x = Cstruct.create 1 in
@@ -274,12 +283,12 @@ let derive_keys hf k h session_id need =
     Cstruct.set_char x 0 ch;
     expand (hf [k; h; x; session_id])
   in
-  hash 'A', (* Initial IV client to server *)
-  hash 'B', (* Initial IV server to client *)
-  hash 'C', (* Encryption key client to server *)
-  hash 'D', (* Encryption key server to client *)
-  hash 'E', (* Integrity key client to server *)
-  hash 'F'  (* Integrity key server to client *)
+  { iiv_ctos = hash 'A';
+    iiv_stoc = hash 'B';
+    enc_ctos = hash 'C';
+    enc_stoc = hash 'D';
+    int_ctos = hash 'E';
+    int_stoc = hash 'F'; }
 
 type kex_pkt = {
   cookie : Cstruct.t;

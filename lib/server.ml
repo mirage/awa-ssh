@@ -32,6 +32,8 @@ type t = {
   neg_kex : Ssh.kex_neg option;        (* Negotiated KEX *)
   host_key : Nocrypto.Rsa.priv;        (* Server host key *)
   session_id : Cstruct.t option;       (* First calculated H *)
+  keys : Ssh.keys option;              (* Derived keys *)
+  new_keys : Ssh.keys option;          (* Keys to be used after SSH_MSG_NEWKEYS *)
 }
 
 let make host_key =
@@ -44,7 +46,9 @@ let make host_key =
             client_kex = None;
             neg_kex = None;
             host_key;
-            session_id = None }
+            session_id = None;
+            keys = None;
+            new_keys = None; }
   in
   t, Cstruct.append banner_buf (Ssh.encode_plain_pkt server_kex)
 
@@ -77,10 +81,12 @@ let input_msg t msgbuf =
     >>= fun h ->
     let signature = Rsa.PKCS1.sig_encode t.host_key h in
     let reply = Ssh_msg_kexdh_reply (pub_host_key, f, signature) in
-    if t.session_id = None then
-      ok ({t with session_id = Some h}, Some reply)
-    else
-      ok (t, Some reply)
+    let session_id = match t.session_id with None -> h | Some x -> x in
+    guard_none t.new_keys "Already got new_keys" >>= fun () ->
+    let new_keys = Ssh.derive_keys hf k h session_id 99999 in
+    ok ({t with session_id = Some session_id;
+                new_keys = Some new_keys; },
+        Some reply)
 
   | _ -> error "unhandled stuff"
 
