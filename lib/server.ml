@@ -89,3 +89,11 @@ let input_msg t msgbuf =
 
   | _ -> error "unhandled stuff"
 
+let output_msg t msg =
+  let open Ssh in
+  match msg with
+  | Ssh_msg_newkeys ->
+    guard_some t.new_keys "Expected new keys" >>= fun _ ->
+    ok { t with keys = t.new_keys; new_keys = None }
+
+  | _ -> ok t
