@@ -25,6 +25,8 @@ let guard p e = if p then ok () else error e
 
 let guard_some x e = match x with Some x -> ok x | None -> error e
 
+let guard_none x e = match x with None -> ok () | Some _ -> error e
+
 let safe_shift buf off =
   trap_error (fun () -> Cstruct.shift buf off) ()
 
