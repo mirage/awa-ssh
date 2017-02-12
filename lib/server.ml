@@ -76,11 +76,11 @@ let input_msg t msgbuf =
       | Kex.Diffie_hellman_group1_sha1  -> Dh.Group.oakley_2 (* not a typo *)
       | Kex.Diffie_hellman_group14_sha1 -> Dh.Group.oakley_14
     in
-    Kex.generate g e >>= fun (y, f, k) ->
-    Kex.compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k >>= fun h ->
+    Kex.Dh.generate g e >>= fun (y, f, k) ->
+    Kex.Dh.compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k >>= fun h ->
     let signature = Rsa.PKCS1.sig_encode t.host_key h in
     let session_id = match t.session_id with None -> h | Some x -> x in
-    let new_keys = Kex.derive_keys k h session_id 99999 in
+    let new_keys = Kex.Dh.derive_keys k h session_id 99999 in
     ok ({t with session_id = Some session_id;
                 new_keys = Some new_keys; },
         [ Ssh_msg_kexdh_reply (pub_host_key, f, signature);

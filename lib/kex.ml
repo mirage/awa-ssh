@@ -29,27 +29,7 @@ type keys = {
   int_stoc : Cstruct.t; (* Integrity key server to client *)
 }
 
-let compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
-  encode_cstring v_c >>= fun v_c ->
-  encode_cstring v_s >>= fun v_s ->
-  encode_cstring i_c >>= fun i_c ->
-  encode_cstring i_s >>= fun i_s ->
-  let e = encode_mpint e in
-  let f = encode_mpint f in
-  let k = encode_mpint k in
-  ok (Hash.SHA1.digestv [ v_c; v_s; i_c; i_s; k_s; e; f; k ])
-
-let generate g peer_pub =
-  let secret, my_pub = Dh.gen_key g in
-  guard_some
-    (Nocrypto.Dh.shared g secret (Numeric.Z.to_cstruct_be peer_pub))
-    "Can't compute shared secret"
-  >>= fun shared ->
-  (* secret is y, my_pub is f or e, shared is k *)
-  ok (secret, Numeric.Z.of_cstruct_be my_pub, Numeric.Z.of_cstruct_be shared)
-
-let derive_keys k h session_id need =
-  let digestv = Nocrypto.Hash.SHA1.digestv in
+let derive_keys digestv k h session_id need =
   let k = encode_mpint k in
   let x = Cstruct.create 1 in
   let rec expand kn =
@@ -173,3 +153,27 @@ let negotiate_kex ~s ~c =
        compression_algorithm_stoc }
       (* ignore language_ctos and language_stoc *)
 
+module Dh = struct
+
+  let derive_keys = derive_keys Nocrypto.Hash.SHA1.digestv
+
+  let compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
+    encode_cstring v_c >>= fun v_c ->
+    encode_cstring v_s >>= fun v_s ->
+    encode_cstring i_c >>= fun i_c ->
+    encode_cstring i_s >>= fun i_s ->
+    let e = encode_mpint e in
+    let f = encode_mpint f in
+    let k = encode_mpint k in
+    ok (Hash.SHA1.digestv [ v_c; v_s; i_c; i_s; k_s; e; f; k ])
+
+  let generate g peer_pub =
+    let secret, my_pub = Dh.gen_key g in
+    guard_some
+      (Nocrypto.Dh.shared g secret (Numeric.Z.to_cstruct_be peer_pub))
+      "Can't compute shared secret"
+    >>= fun shared ->
+    (* secret is y, my_pub is f or e, shared is k *)
+    ok (secret, Numeric.Z.of_cstruct_be my_pub, Numeric.Z.of_cstruct_be shared)
+
+end
