@@ -20,10 +20,6 @@ open Util
 
 let version_banner = "SSH-2.0-awa_ssh_0.1"
 
-(*
- * We keep i_c in original wire form, since coding and decoding is not an
- * identity function.
- *)
 type t = {
   client_version : string option;      (* Without crlf *)
   server_version : string;             (* Without crlf *)
