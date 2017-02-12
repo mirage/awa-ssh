@@ -29,7 +29,7 @@ type t = {
   server_version : string;             (* Without crlf *)
   client_kex : Cstruct.t option;       (* Last KEXINIT received *)
   server_kex : Cstruct.t;              (* Last KEXINIT sent by us *)
-  neg_kex : Kex.kex_neg option;        (* Negotiated KEX *)
+  neg_kex : Kex.negotiation option;    (* Negotiated KEX *)
   host_key : Nocrypto.Rsa.priv;        (* Server host key *)
   session_id : Cstruct.t option;       (* First calculated H *)
   keys : Kex.keys option;              (* Derived keys *)
@@ -58,7 +58,7 @@ let input_msg t msgbuf =
   decode_message msgbuf >>= function
   | Ssh_msg_kexinit kex ->
     decode_kex_pkt t.server_kex >>= fun (server_kex, _) ->
-    Kex.negotiate_kex ~s:server_kex ~c:kex
+    Kex.negotiate ~s:server_kex ~c:kex
     >>= fun neg ->
     ok ({ t with client_kex = Some msgbuf; neg_kex = Some neg }, [])
 

@@ -20,6 +20,34 @@ open Util
 open Ssh
 open Nocrypto
 
+type algorithm =
+  | Diffie_hellman_group14_sha1
+  | Diffie_hellman_group1_sha1
+
+let algorithm_of_string = function
+  | "diffie-hellman-group14-sha1" -> ok Diffie_hellman_group14_sha1
+  | "diffie-hellman-group1-sha1"  -> ok Diffie_hellman_group1_sha1
+  | s -> error ("Unknown kex_algorithm " ^ s)
+
+let algorithm_to_string = function
+  | Diffie_hellman_group14_sha1 -> "diffie-hellman-group14-sha1"
+  | Diffie_hellman_group1_sha1  -> "diffie-hellman-group1-sha1"
+
+let make_pkt () =
+  { cookie = Nocrypto.Rng.generate 16;
+    kex_algorithms = [ "diffie-hellman-group14-sha1";
+                       "diffie-hellman-group1-sha1" ];
+    server_host_key_algorithms = [ "ssh-rsa" ];
+    encryption_algorithms_ctos = [ "aes128-ctr" ];
+    encryption_algorithms_stoc = [ "aes128-ctr" ];
+    mac_algorithms_ctos = [ "hmac-sha1" ];
+    mac_algorithms_stoc = [ "hmac-sha1" ];
+    compression_algorithms_ctos = [ "none" ];
+    compression_algorithms_stoc = [ "none" ];
+    languages_ctos = [];
+    languages_stoc = [];
+    first_kex_packet_follows = false }
+
 type keys = {
   iiv_ctos : Cstruct.t; (* Initial IV client to server *)
   iiv_stoc : Cstruct.t; (* Initial IV server to client *)
@@ -49,36 +77,8 @@ let derive_keys digestv k h session_id need =
     int_ctos = hash 'E';
     int_stoc = hash 'F'; }
 
-type kex_algorithm =
-  | Diffie_hellman_group14_sha1
-  | Diffie_hellman_group1_sha1
-
-let kex_algorithm_of_string = function
-  | "diffie-hellman-group14-sha1" -> ok Diffie_hellman_group14_sha1
-  | "diffie-hellman-group1-sha1"  -> ok Diffie_hellman_group1_sha1
-  | s -> error ("Unknown kex_algorithm " ^ s)
-
-let kex_algorithm_to_string = function
-  | Diffie_hellman_group14_sha1 -> "diffie-hellman-group14-sha1"
-  | Diffie_hellman_group1_sha1  -> "diffie-hellman-group1-sha1"
-
-let make_pkt () =
-  { cookie = Nocrypto.Rng.generate 16;
-    kex_algorithms = [ "diffie-hellman-group14-sha1";
-                       "diffie-hellman-group1-sha1" ];
-    server_host_key_algorithms = [ "ssh-rsa" ];
-    encryption_algorithms_ctos = [ "aes128-ctr" ];
-    encryption_algorithms_stoc = [ "aes128-ctr" ];
-    mac_algorithms_ctos = [ "hmac-sha1" ];
-    mac_algorithms_stoc = [ "hmac-sha1" ];
-    compression_algorithms_ctos = [ "none" ];
-    compression_algorithms_stoc = [ "none" ];
-    languages_ctos = [];
-    languages_stoc = [];
-    first_kex_packet_follows = false }
-
-type kex_neg = {
-  kex_algorithm : kex_algorithm;
+type negotiation = {
+  kex_algorithm : algorithm;
   server_host_key_algorithm : server_host_key_algorithm;
   encryption_algorithm_ctos : Cipher.t;
   encryption_algorithm_stoc : Cipher.t;
@@ -88,7 +88,7 @@ type kex_neg = {
   compression_algorithm_stoc : compression_algorithm;
 }
 
-let negotiate_kex ~s ~c =
+let negotiate ~s ~c =
   let pick_common f ~s ~c e =
     try
       f (List.find (fun x -> List.mem x s) c)
@@ -96,7 +96,7 @@ let negotiate_kex ~s ~c =
       Not_found -> error e
   in
   pick_common
-    kex_algorithm_of_string
+    algorithm_of_string
     ~s:s.kex_algorithms
     ~c:c.kex_algorithms
     "Can't agree on kex algorithm"
