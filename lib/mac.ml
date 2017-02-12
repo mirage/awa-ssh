@@ -44,3 +44,6 @@ let of_string = function
  | s -> error ("Unknown mac " ^ s)
 
 let known s = is_ok (of_string s)
+
+let preferred = [ Hmac_md5; Hmac_sha1; Hmac_sha2_256;
+                  Hmac_sha2_512; Hmac_sha1_96; Hmac_md5_96 ]
