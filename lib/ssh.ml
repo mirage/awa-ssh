@@ -276,19 +276,6 @@ type kex_pkt = {
   first_kex_packet_follows : bool
 } [@@deriving sexp]
 
-type kex_algorithm =
-  | Diffie_hellman_group14_sha1
-  | Diffie_hellman_group1_sha1
-
-let kex_algorithm_of_string = function
-  | "diffie-hellman-group14-sha1" -> ok Diffie_hellman_group14_sha1
-  | "diffie-hellman-group1-sha1"  -> ok Diffie_hellman_group1_sha1
-  | s -> error ("Unknown kex_algorithm " ^ s)
-
-let kex_algorithm_to_string = function
-  | Diffie_hellman_group14_sha1 -> "diffie-hellman-group14-sha1"
-  | Diffie_hellman_group1_sha1  -> "diffie-hellman-group1-sha1"
-
 type server_host_key_algorithm =
   | Ssh_rsa
 
@@ -309,98 +296,7 @@ let compression_algorithm_of_string = function
 let compression_algorithm_to_string = function
   | Nothing -> "none"
 
-type kex_neg = {
-  kex_algorithm : kex_algorithm;
-  server_host_key_algorithm : server_host_key_algorithm;
-  encryption_algorithm_ctos : Cipher.t;
-  encryption_algorithm_stoc : Cipher.t;
-  mac_algorithm_ctos : Mac.t;
-  mac_algorithm_stoc : Mac.t;
-  compression_algorithm_ctos : compression_algorithm;
-  compression_algorithm_stoc : compression_algorithm;
-}
-
-let negotiate_kex ~s ~c =
-  let pick_common f ~s ~c e =
-    try
-      f (List.find (fun x -> List.mem x s) c)
-    with
-      Not_found -> error e
-  in
-  pick_common
-    kex_algorithm_of_string
-    ~s:s.kex_algorithms
-    ~c:c.kex_algorithms
-    "Can't agree on kex algorithm"
-  >>= fun kex_algorithm ->
-  pick_common
-    server_host_key_algorithm_of_string
-    ~s:s.server_host_key_algorithms
-    ~c:c.server_host_key_algorithms
-    "Can't agree on server host key algorithm"
-  >>= fun server_host_key_algorithm ->
-  pick_common
-    Cipher.of_string
-    ~s:s.encryption_algorithms_ctos
-    ~c:c.encryption_algorithms_ctos
-    "Can't agree on encryption algorithm client to server"
-  >>= fun encryption_algorithm_ctos ->
-  pick_common
-    Cipher.of_string
-    ~s:s.encryption_algorithms_stoc
-    ~c:c.encryption_algorithms_stoc
-    "Can't agree on encryption algorithm server to client"
-  >>= fun encryption_algorithm_stoc ->
-  pick_common
-    Mac.of_string
-    ~s:s.mac_algorithms_ctos
-    ~c:c.mac_algorithms_ctos
-    "Can't agree on mac algorithm client to server"
-  >>= fun mac_algorithm_ctos ->
-  pick_common
-    Mac.of_string
-    ~s:s.mac_algorithms_stoc
-    ~c:c.mac_algorithms_stoc
-    "Can't agree on mac algorithm server to client"
-  >>= fun mac_algorithm_stoc ->
-  pick_common
-    compression_algorithm_of_string
-    ~s:s.compression_algorithms_ctos
-    ~c:c.compression_algorithms_ctos
-    "Can't agree on compression algorithm client to server"
-  >>= fun compression_algorithm_ctos ->
-  pick_common
-    compression_algorithm_of_string
-    ~s:s.compression_algorithms_stoc
-    ~c:c.compression_algorithms_stoc
-    "Can't agree on compression algorithm server to client"
-  >>= fun compression_algorithm_stoc ->
-  ok { kex_algorithm;
-       server_host_key_algorithm;
-       encryption_algorithm_ctos;
-       encryption_algorithm_stoc;
-       mac_algorithm_ctos;
-       mac_algorithm_stoc;
-       compression_algorithm_ctos;
-       compression_algorithm_stoc }
-      (* ignore language_ctos and language_stoc *)
-
-let make_kex () =
-  { cookie = Nocrypto.Rng.generate 16;
-    kex_algorithms = [ "diffie-hellman-group14-sha1";
-                       "diffie-hellman-group1-sha1" ];
-    server_host_key_algorithms = [ "ssh-rsa" ];
-    encryption_algorithms_ctos = [ "aes128-ctr" ];
-    encryption_algorithms_stoc = [ "aes128-ctr" ];
-    mac_algorithms_ctos = [ "hmac-sha1" ];
-    mac_algorithms_stoc = [ "hmac-sha1" ];
-    compression_algorithms_ctos = [ "none" ];
-    compression_algorithms_stoc = [ "none" ];
-    languages_ctos = [];
-    languages_stoc = [];
-    first_kex_packet_follows = false }
-
-let decode_kex buf =
+let decode_kex_pkt buf =
   let cookiebegin = buf in
   (* Jump over cookie *)
   safe_shift buf 16 >>= fun buf ->
@@ -429,7 +325,7 @@ let decode_kex buf =
         first_kex_packet_follows },
       buf)
 
-let encode_kex kex =
+let encode_kex_pkt kex =
   let f = encode_nl in
   let nll = Cstruct.concat
       [ f kex.kex_algorithms;
@@ -509,7 +405,8 @@ let decode_message buf =
     decode_string buf >>= fun (x, buf) -> ok (Ssh_msg_service_request x)
   | SSH_MSG_SERVICE_ACCEPT ->
     decode_string buf >>= fun (x, buf) -> ok (Ssh_msg_service_accept x)
-  | SSH_MSG_KEXINIT -> decode_kex buf >>= fun (kex, buf) -> ok (Ssh_msg_kexinit kex)
+  | SSH_MSG_KEXINIT ->
+    decode_kex_pkt buf >>= fun (kex, buf) -> ok (Ssh_msg_kexinit kex)
   | SSH_MSG_NEWKEYS -> ok Ssh_msg_newkeys
   | SSH_MSG_KEXDH_INIT -> decode_mpint buf >>= fun (e, buf) ->
     ok (Ssh_msg_kexdh_init e)
