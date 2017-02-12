@@ -261,21 +261,6 @@ let encode_disconnect code desc lang =
   let lang = encode_string lang in
   Cstruct.concat [encode_message_id SSH_MSG_KEXINIT; code; desc; lang]
 
-type kex_pkt = {
-  cookie : Cstruct.t;
-  kex_algorithms : string list;
-  server_host_key_algorithms : string list;
-  encryption_algorithms_ctos : string list;
-  encryption_algorithms_stoc : string list;
-  mac_algorithms_ctos : string list;
-  mac_algorithms_stoc : string list;
-  compression_algorithms_ctos : string list;
-  compression_algorithms_stoc : string list;
-  languages_ctos : string list;
-  languages_stoc : string list;
-  first_kex_packet_follows : bool
-} [@@deriving sexp]
-
 type server_host_key_algorithm =
   | Ssh_rsa
 
@@ -295,6 +280,21 @@ let compression_algorithm_of_string = function
 
 let compression_algorithm_to_string = function
   | Nothing -> "none"
+
+type kex_pkt = {
+  cookie : Cstruct.t;
+  kex_algorithms : string list;
+  server_host_key_algorithms : string list;
+  encryption_algorithms_ctos : string list;
+  encryption_algorithms_stoc : string list;
+  mac_algorithms_ctos : string list;
+  mac_algorithms_stoc : string list;
+  compression_algorithms_ctos : string list;
+  compression_algorithms_stoc : string list;
+  languages_ctos : string list;
+  languages_stoc : string list;
+  first_kex_packet_follows : bool
+} [@@deriving sexp]
 
 let decode_kex_pkt buf =
   let cookiebegin = buf in

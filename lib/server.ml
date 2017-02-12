@@ -29,16 +29,16 @@ type t = {
   server_version : string;             (* Without crlf *)
   client_kex : Cstruct.t option;       (* Last KEXINIT received *)
   server_kex : Cstruct.t;              (* Last KEXINIT sent by us *)
-  neg_kex : Sshdh.kex_neg option;        (* Negotiated KEX *)
+  neg_kex : Kex.kex_neg option;        (* Negotiated KEX *)
   host_key : Nocrypto.Rsa.priv;        (* Server host key *)
   session_id : Cstruct.t option;       (* First calculated H *)
-  keys : Sshdh.keys option;            (* Derived keys *)
-  new_keys : Sshdh.keys option;        (* Keys to be used after SSH_MSG_NEWKEYS *)
+  keys : Kex.keys option;              (* Derived keys *)
+  new_keys : Kex.keys option;          (* Keys to be used after SSH_MSG_NEWKEYS *)
 }
 
 let make host_key =
   let banner_buf = Printf.sprintf "%s\r\n" version_banner |> Cstruct.of_string in
-  let kex = Sshdh.make_kex () in
+  let kex = Kex.make_kex () in
   let server_kex = Ssh.encode_kex_pkt kex in
   let t = { client_version = None;
             server_version = version_banner;
@@ -58,7 +58,7 @@ let input_msg t msgbuf =
   decode_message msgbuf >>= function
   | Ssh_msg_kexinit kex ->
     decode_kex_pkt t.server_kex >>= fun (server_kex, _) ->
-    Sshdh.negotiate_kex ~s:server_kex ~c:kex
+    Kex.negotiate_kex ~s:server_kex ~c:kex
     >>= fun neg ->
     ok ({ t with client_kex = Some msgbuf; neg_kex = Some neg }, [])
 
@@ -72,15 +72,15 @@ let input_msg t msgbuf =
     let i_s = t.server_kex in
     let pub_host_key = Rsa.pub_of_priv t.host_key in
     let k_s = encode_key pub_host_key in
-    let g = match neg.Sshdh.kex_algorithm with
-      | Sshdh.Diffie_hellman_group1_sha1  -> Dh.Group.oakley_2 (* not a typo *)
-      | Sshdh.Diffie_hellman_group14_sha1 -> Dh.Group.oakley_14
+    let g = match neg.Kex.kex_algorithm with
+      | Kex.Diffie_hellman_group1_sha1  -> Dh.Group.oakley_2 (* not a typo *)
+      | Kex.Diffie_hellman_group14_sha1 -> Dh.Group.oakley_14
     in
-    Sshdh.generate g e >>= fun (y, f, k) ->
-    Sshdh.compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k >>= fun h ->
+    Kex.generate g e >>= fun (y, f, k) ->
+    Kex.compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k >>= fun h ->
     let signature = Rsa.PKCS1.sig_encode t.host_key h in
     let session_id = match t.session_id with None -> h | Some x -> x in
-    let new_keys = Sshdh.derive_keys k h session_id 99999 in
+    let new_keys = Kex.derive_keys k h session_id 99999 in
     ok ({t with session_id = Some session_id;
                 new_keys = Some new_keys; },
         [ Ssh_msg_kexdh_reply (pub_host_key, f, signature);
