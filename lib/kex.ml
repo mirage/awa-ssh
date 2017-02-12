@@ -62,7 +62,7 @@ let kex_algorithm_to_string = function
   | Diffie_hellman_group14_sha1 -> "diffie-hellman-group14-sha1"
   | Diffie_hellman_group1_sha1  -> "diffie-hellman-group1-sha1"
 
-let make_kex () =
+let make_pkt () =
   { cookie = Nocrypto.Rng.generate 16;
     kex_algorithms = [ "diffie-hellman-group14-sha1";
                        "diffie-hellman-group1-sha1" ];
