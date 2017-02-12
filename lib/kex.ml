@@ -33,15 +33,16 @@ let algorithm_to_string = function
   | Diffie_hellman_group14_sha1 -> "diffie-hellman-group14-sha1"
   | Diffie_hellman_group1_sha1  -> "diffie-hellman-group1-sha1"
 
+let preferred = [ Diffie_hellman_group14_sha1; Diffie_hellman_group1_sha1 ]
+
 let make_pkt () =
   { cookie = Nocrypto.Rng.generate 16;
-    kex_algorithms = [ "diffie-hellman-group14-sha1";
-                       "diffie-hellman-group1-sha1" ];
+    kex_algorithms = List.map algorithm_to_string preferred;
     server_host_key_algorithms = [ "ssh-rsa" ];
-    encryption_algorithms_ctos = [ "aes128-ctr" ];
-    encryption_algorithms_stoc = [ "aes128-ctr" ];
-    mac_algorithms_ctos = [ "hmac-sha1" ];
-    mac_algorithms_stoc = [ "hmac-sha1" ];
+    encryption_algorithms_ctos = List.map Cipher.to_string Cipher.preferred;
+    encryption_algorithms_stoc = List.map Cipher.to_string Cipher.preferred;
+    mac_algorithms_ctos = List.map Mac.to_string Mac.preferred;
+    mac_algorithms_stoc = List.map Mac.to_string Mac.preferred;
     compression_algorithms_ctos = [ "none" ];
     compression_algorithms_stoc = [ "none" ];
     languages_ctos = [];
