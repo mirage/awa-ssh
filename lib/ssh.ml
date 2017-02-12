@@ -261,36 +261,6 @@ let encode_disconnect code desc lang =
   let lang = encode_string lang in
   Cstruct.concat [encode_message_id SSH_MSG_KEXINIT; code; desc; lang]
 
-type keys = {
-  iiv_ctos : Cstruct.t; (* Initial IV client to server *)
-  iiv_stoc : Cstruct.t; (* Initial IV server to client *)
-  enc_ctos : Cstruct.t; (* Encryption key client to server *)
-  enc_stoc : Cstruct.t; (* Encryption key server to client *)
-  int_ctos : Cstruct.t; (* Integrity key client to server *)
-  int_stoc : Cstruct.t; (* Integrity key server to client *)
-}
-
-let derive_keys k h session_id need =
-  let digestv = Nocrypto.Hash.SHA1.digestv in
-  let k = encode_mpint k in
-  let x = Cstruct.create 1 in
-  let rec expand kn =
-    if (Cstruct.len kn) >= need then
-      kn
-    else
-      expand (digestv [k; h; kn])
-  in
-  let hash ch =
-    Cstruct.set_char x 0 ch;
-    expand (digestv [k; h; x; session_id])
-  in
-  { iiv_ctos = hash 'A';
-    iiv_stoc = hash 'B';
-    enc_ctos = hash 'C';
-    enc_stoc = hash 'D';
-    int_ctos = hash 'E';
-    int_stoc = hash 'F'; }
-
 type kex_pkt = {
   cookie : Cstruct.t;
   kex_algorithms : string list;
@@ -577,27 +547,3 @@ let scan_message buf =
   scan_pkt buf >>= function
   | None -> ok None
   | Some (pkt, clen) -> decode_message pkt >>= fun msg -> ok (Some msg)
-
-(*
- * Diffie-Hellmann
- *)
-
-let dh_gen_keys g peer_pub =
-  let open Nocrypto in
-  let secret, my_pub = Dh.gen_key g in
-  guard_some
-    (Nocrypto.Dh.shared g secret (Numeric.Z.to_cstruct_be peer_pub))
-    "Can't compute shared secret"
-  >>= fun shared ->
-  (* secret is y, my_pub is f or e, shared is k *)
-  ok (secret, Numeric.Z.of_cstruct_be my_pub, Numeric.Z.of_cstruct_be shared)
-
-let dh_compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
-  encode_cstring v_c >>= fun v_c ->
-  encode_cstring v_s >>= fun v_s ->
-  encode_cstring i_c >>= fun i_c ->
-  encode_cstring i_s >>= fun i_s ->
-  let e = encode_mpint e in
-  let f = encode_mpint f in
-  let k = encode_mpint k in
-  ok (Nocrypto.Hash.SHA1.digestv [ v_c; v_s; i_c; i_s; k_s; e; f; k ])
