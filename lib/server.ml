@@ -72,11 +72,7 @@ let input_msg t msgbuf =
     let i_s = t.server_kex in
     let pub_host_key = Rsa.pub_of_priv t.host_key in
     let k_s = encode_key pub_host_key in
-    let g = match neg.Kex.kex_algorithm with
-      | Kex.Diffie_hellman_group1_sha1  -> Dh.Group.oakley_2 (* not a typo *)
-      | Kex.Diffie_hellman_group14_sha1 -> Dh.Group.oakley_14
-    in
-    Kex.Dh.generate g e >>= fun (y, f, k) ->
+    Kex.(Dh.generate neg.kex_algorithm e) >>= fun (y, f, k) ->
     Kex.Dh.compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k >>= fun h ->
     let signature = Rsa.PKCS1.sig_encode t.host_key h in
     let session_id = match t.session_id with None -> h | Some x -> x in
