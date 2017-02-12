@@ -310,9 +310,9 @@ type kex_algorithm =
   | Diffie_hellman_group1_sha1
 
 let kex_algorithm_of_string = function
-  | "diffie-hellman-group14-sha1" -> Diffie_hellman_group14_sha1
-  | "diffie-hellman-group1-sha1"  -> Diffie_hellman_group1_sha1
-  | s -> failwith (Printf.sprintf "Unknown kex_algorithm %s" s)
+  | "diffie-hellman-group14-sha1" -> ok Diffie_hellman_group14_sha1
+  | "diffie-hellman-group1-sha1"  -> ok Diffie_hellman_group1_sha1
+  | s -> error ("Unknown kex_algorithm " ^ s)
 
 let kex_algorithm_to_string = function
   | Diffie_hellman_group14_sha1 -> "diffie-hellman-group14-sha1"
@@ -322,38 +322,18 @@ type server_host_key_algorithm =
   | Ssh_rsa
 
 let server_host_key_algorithm_of_string = function
-  | "ssh-rsa" -> Ssh_rsa
-  | s -> failwith (Printf.sprintf "Unknown server host key algorithm %s" s)
+  | "ssh-rsa" -> ok Ssh_rsa
+  | s -> error ("Unknown server host key algorithm " ^ s)
 
 let server_host_key_algorithm_to_string = function
   | Ssh_rsa -> "ssh-rsa"
-
-type encryption_algorithm =
-  | Aes128_ctr
-
-let encryption_algorithm_of_string = function
-  | "aes128-ctr" -> Aes128_ctr
-  | s -> failwith (Printf.sprintf "Unknown encryption algorithm %s" s)
-
-let encryption_algorithm_to_string = function
-  | Aes128_ctr -> "aes128-ctr"
-
-type mac_algorithm =
-  | Hmac_sha1
-
-let mac_algorithm_of_string = function
-  | "hmac-sha1" -> Hmac_sha1
-  | s -> failwith (Printf.sprintf "Unknown mac algorithm %s" s)
-
-let mac_algorithm_to_string = function
-  | Hmac_sha1 -> "hmac-sha1"
 
 type compression_algorithm =
   | Nothing                        (* Can't use None :-D *)
 
 let compression_algorithm_of_string = function
-  | "none" -> Nothing
-  | s -> failwith (Printf.sprintf "Unknown compression algorithm %s" s)
+  | "none" -> ok Nothing
+  | s -> error ("Unknown compression algorithm " ^ s)
 
 let compression_algorithm_to_string = function
   | Nothing -> "none"
@@ -361,10 +341,10 @@ let compression_algorithm_to_string = function
 type kex_neg = {
   kex_algorithm : kex_algorithm;
   server_host_key_algorithm : server_host_key_algorithm;
-  encryption_algorithm_ctos : encryption_algorithm;
-  encryption_algorithm_stoc : encryption_algorithm;
-  mac_algorithm_ctos : mac_algorithm;
-  mac_algorithm_stoc : mac_algorithm;
+  encryption_algorithm_ctos : Cipher.t;
+  encryption_algorithm_stoc : Cipher.t;
+  mac_algorithm_ctos : Mac.t;
+  mac_algorithm_stoc : Mac.t;
   compression_algorithm_ctos : compression_algorithm;
   compression_algorithm_stoc : compression_algorithm;
 }
@@ -372,7 +352,7 @@ type kex_neg = {
 let negotiate_kex ~s ~c =
   let pick_common f ~s ~c e =
     try
-      ok @@ f @@ List.find (fun x -> List.mem x s) c
+      f (List.find (fun x -> List.mem x s) c)
     with
       Not_found -> error e
   in
@@ -389,25 +369,25 @@ let negotiate_kex ~s ~c =
     "Can't agree on server host key algorithm"
   >>= fun server_host_key_algorithm ->
   pick_common
-    encryption_algorithm_of_string
+    Cipher.of_string
     ~s:s.encryption_algorithms_ctos
     ~c:c.encryption_algorithms_ctos
     "Can't agree on encryption algorithm client to server"
   >>= fun encryption_algorithm_ctos ->
   pick_common
-    encryption_algorithm_of_string
+    Cipher.of_string
     ~s:s.encryption_algorithms_stoc
     ~c:c.encryption_algorithms_stoc
     "Can't agree on encryption algorithm server to client"
   >>= fun encryption_algorithm_stoc ->
   pick_common
-    mac_algorithm_of_string
+    Mac.of_string
     ~s:s.mac_algorithms_ctos
     ~c:c.mac_algorithms_ctos
     "Can't agree on mac algorithm client to server"
   >>= fun mac_algorithm_ctos ->
   pick_common
-    mac_algorithm_of_string
+    Mac.of_string
     ~s:s.mac_algorithms_stoc
     ~c:c.mac_algorithms_stoc
     "Can't agree on mac algorithm server to client"
