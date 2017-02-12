@@ -51,8 +51,8 @@ let iv_len = function
   | Aes128_ctr -> 0
   | Aes192_ctr -> 0
   | Aes256_ctr -> 0
-  | Aes128_cbc -> 0
-  | Aes192_cbc -> 0
+  | Aes128_cbc -> 16
+  | Aes192_cbc -> 16
 
 let block_len = function
   | Aes128_ctr -> 16
