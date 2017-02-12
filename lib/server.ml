@@ -72,16 +72,15 @@ let input_msg t msgbuf =
     let i_s = t.server_kex in
     let pub_host_key = Rsa.pub_of_priv t.host_key in
     let k_s = encode_key pub_host_key in
-    let hf = Hash.SHA1.digestv in
     let g = match neg.kex_algorithm with
       | Diffie_hellman_group1_sha1  -> Dh.Group.oakley_2 (* not a typo *)
       | Diffie_hellman_group14_sha1 -> Dh.Group.oakley_14
     in
     dh_gen_keys g e >>= fun (y, f, k) ->
-    dh_compute_hash ~hf ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k >>= fun h ->
+    dh_compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k >>= fun h ->
     let signature = Rsa.PKCS1.sig_encode t.host_key h in
     let session_id = match t.session_id with None -> h | Some x -> x in
-    let new_keys = Ssh.derive_keys hf k h session_id 99999 in
+    let new_keys = Ssh.derive_keys k h session_id 99999 in
     ok ({t with session_id = Some session_id;
                 new_keys = Some new_keys; },
         [ Ssh_msg_kexdh_reply (pub_host_key, f, signature);

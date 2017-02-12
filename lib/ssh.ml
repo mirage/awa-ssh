@@ -270,18 +270,19 @@ type keys = {
   int_stoc : Cstruct.t; (* Integrity key server to client *)
 }
 
-let derive_keys hf k h session_id need =
+let derive_keys k h session_id need =
+  let digestv = Nocrypto.Hash.SHA1.digestv in
   let k = encode_mpint k in
   let x = Cstruct.create 1 in
   let rec expand kn =
     if (Cstruct.len kn) >= need then
       kn
     else
-      expand (hf [k; h; kn])
+      expand (digestv [k; h; kn])
   in
   let hash ch =
     Cstruct.set_char x 0 ch;
-    expand (hf [k; h; x; session_id])
+    expand (digestv [k; h; x; session_id])
   in
   { iiv_ctos = hash 'A';
     iiv_stoc = hash 'B';
@@ -583,7 +584,7 @@ let scan_message buf =
 
 let dh_gen_keys g peer_pub =
   let open Nocrypto in
-  let secret, my_pub = Nocrypto.Dh.gen_key g in
+  let secret, my_pub = Dh.gen_key g in
   guard_some
     (Nocrypto.Dh.shared g secret (Numeric.Z.to_cstruct_be peer_pub))
     "Can't compute shared secret"
@@ -591,7 +592,7 @@ let dh_gen_keys g peer_pub =
   (* secret is y, my_pub is f or e, shared is k *)
   ok (secret, Numeric.Z.of_cstruct_be my_pub, Numeric.Z.of_cstruct_be shared)
 
-let dh_compute_hash ~hf ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
+let dh_compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
   encode_cstring v_c >>= fun v_c ->
   encode_cstring v_s >>= fun v_s ->
   encode_cstring i_c >>= fun i_c ->
@@ -599,4 +600,4 @@ let dh_compute_hash ~hf ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
   let e = encode_mpint e in
   let f = encode_mpint f in
   let k = encode_mpint k in
-  ok (hf [ v_c; v_s; i_c; i_s; k_s; e; f; k ])
+  ok (Nocrypto.Hash.SHA1.digestv [ v_c; v_s; i_c; i_s; k_s; e; f; k ])
