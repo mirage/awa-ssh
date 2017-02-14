@@ -28,8 +28,10 @@ type t = {
   neg_kex : Kex.negotiation option;    (* Negotiated KEX *)
   host_key : Nocrypto.Rsa.priv;        (* Server host key *)
   session_id : Cstruct.t option;       (* First calculated H *)
-  keys : Kex.keys option;              (* Derived keys *)
-  new_keys : Kex.keys option;          (* Keys to be used after SSH_MSG_NEWKEYS *)
+  keys_ctos : Kex.keys option;         (* Client to server (input) keys *)
+  keys_stoc : Kex.keys option;         (* Server to cleint (output) keys *)
+  new_keys_ctos : Kex.keys option;     (* Install when we received NEWKEYS *)
+  new_keys_stoc : Kex.keys option;     (* Install after we send NEWKEYS *)
 }
 
 let make host_key =
@@ -43,8 +45,10 @@ let make host_key =
             neg_kex = None;
             host_key;
             session_id = None;
-            keys = None;
-            new_keys = None; }
+            keys_ctos = None;
+            keys_stoc = None;
+            new_keys_ctos = None;
+            new_keys_stoc = None; }
   in
   t, Cstruct.append banner_buf (Ssh.encode_plain_pkt server_kex)
 
@@ -61,7 +65,8 @@ let input_msg t msgbuf =
   | Ssh_msg_kexdh_init e ->
     guard_some t.neg_kex "No negotiated kex" >>= fun neg ->
     guard_some t.client_version "No client version" >>= fun v_c ->
-    guard_none t.new_keys "Already got new_keys" >>= fun () ->
+    guard_none t.new_keys_stoc "Already got new_keys_stoc" >>= fun () ->
+    guard_none t.new_keys_ctos "Already got new_keys_ctos" >>= fun () ->
     guard_some t.client_kex "No client kex" >>= fun i_c ->
     let v_c = Cstruct.of_string v_c in
     let v_s = Cstruct.of_string t.server_version in
@@ -72,11 +77,20 @@ let input_msg t msgbuf =
     Kex.Dh.compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k >>= fun h ->
     let signature = Rsa.PKCS1.sig_encode t.host_key h in
     let session_id = match t.session_id with None -> h | Some x -> x in
-    let new_keys = Kex.Dh.derive_keys k h session_id (Kex.keylen_needed neg) in
+    let new_keys_ctos, new_keys_stoc =
+      Kex.Dh.derive_keys k h session_id (Kex.keylen_needed neg)
+    in
     ok ({t with session_id = Some session_id;
-                new_keys = Some new_keys; },
+                new_keys_ctos = Some new_keys_ctos;
+                new_keys_stoc = Some new_keys_stoc; },
         [ Ssh_msg_kexdh_reply (pub_host_key, f, signature);
           Ssh_msg_newkeys ])
+
+  | Ssh_msg_newkeys ->
+    guard_some t.new_keys_ctos "No new_keys_ctos" >>= fun new_keys_ctos ->
+    ok ({ t with keys_ctos = Some new_keys_ctos;
+                 new_keys_ctos = None },
+        [])
 
   | _ -> error "unhandled stuff"
 
@@ -84,7 +98,8 @@ let output_msg t msg =
   let open Ssh in
   match msg with
   | Ssh_msg_newkeys ->
-    guard_some t.new_keys "Expected new keys" >>= fun _ ->
-    ok { t with keys = t.new_keys; new_keys = None }
+    guard_some t.new_keys_stoc "Expected new keys" >>= fun new_keys_stoc ->
+    ok { t with keys_stoc = Some new_keys_stoc;
+                new_keys_stoc = None }
 
   | _ -> ok t

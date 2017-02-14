@@ -54,12 +54,9 @@ let make_pkt () =
     first_kex_packet_follows = false }
 
 type keys = {
-  iiv_ctos : Cstruct.t; (* Initial IV client to server *)
-  iiv_stoc : Cstruct.t; (* Initial IV server to client *)
-  enc_ctos : Cstruct.t; (* Encryption key client to server *)
-  enc_stoc : Cstruct.t; (* Encryption key server to client *)
-  int_ctos : Cstruct.t; (* Integrity key client to server *)
-  int_stoc : Cstruct.t; (* Integrity key server to client *)
+  iiv : Cstruct.t; (* Initial IV *)
+  enc : Cstruct.t; (* Encryption key *)
+  mac : Cstruct.t; (* Integrity key *)
 }
 
 let derive_keys digestv k h session_id need =
@@ -75,12 +72,15 @@ let derive_keys digestv k h session_id need =
     Cstruct.set_char x 0 ch;
     expand (digestv [k; h; x; session_id])
   in
-  { iiv_ctos = hash 'A';
-    iiv_stoc = hash 'B';
-    enc_ctos = hash 'C';
-    enc_stoc = hash 'D';
-    int_ctos = hash 'E';
-    int_stoc = hash 'F'; }
+  let ctos = { iiv = hash 'A';
+               enc = hash 'C';
+               mac = hash 'E'; }
+  in
+  let stoc = { iiv = hash 'B';
+               enc = hash 'D';
+               mac = hash 'F'; }
+  in
+  (ctos, stoc)
 
 type negotiation = {
   kex_algorithm : algorithm;
