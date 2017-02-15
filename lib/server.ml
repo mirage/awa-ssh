@@ -30,7 +30,7 @@ type t = {
   session_id : Cstruct.t option;       (* First calculated H *)
   keys_ctos : Kex.keys option;         (* Client to server (input) keys *)
   keys_stoc : Kex.keys option;         (* Server to cleint (output) keys *)
-  new_keys_ctos : Kex.keys option;     (* Install when we received NEWKEYS *)
+  new_keys_ctos : Kex.keys option;     (* Install when we receive NEWKEYS *)
   new_keys_stoc : Kex.keys option;     (* Install after we send NEWKEYS *)
 }
 
