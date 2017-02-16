@@ -59,7 +59,7 @@ let scan_version buf =
               error ("Bad version " ^ version)
             else
               safe_shift buf (succ off) >>= fun buf ->
-              ok (Some (buf, peer_version))
+              ok (Some (peer_version, buf))
       | _ -> scan start (succ off)
   in
   if len < 2 then
