@@ -189,10 +189,16 @@ let encode_message msg =
       add_uint32 n
     (* | SSH_MSG_CHANNEL_DATA -> unimplemented () *)
     (* | SSH_MSG_CHANNEL_EXTENDED_DATA -> unimplemented () *)
-    (* | SSH_MSG_CHANNEL_EOF -> unimplemented () *)
-    (* | SSH_MSG_CHANNEL_CLOSE -> unimplemented () *)
+    | Ssh_msg_channel_eof channel ->
+      add_id SSH_MSG_CHANNEL_EOF |>
+      add_uint32 channel
+    | Ssh_msg_channel_close channel ->
+      add_id SSH_MSG_CHANNEL_CLOSE |>
+      add_uint32 channel
     (* | SSH_MSG_CHANNEL_REQUEST -> unimplemented () *)
-    (* | SSH_MSG_CHANNEL_SUCCESS -> unimplemented () *)
+    | Ssh_msg_channel_success channel ->
+      add_id SSH_MSG_CHANNEL_SUCCESS |>
+      add_uint32 channel
     | Ssh_msg_channel_failure channel ->
       add_id SSH_MSG_CHANNEL_FAILURE |>
       add_uint32 channel

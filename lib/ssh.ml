@@ -193,9 +193,9 @@ type message =
   | Ssh_msg_channel_window_adjust of (int32 * int32)
   | Ssh_msg_channel_data
   | Ssh_msg_channel_extended_data
-  | Ssh_msg_channel_eof
-  | Ssh_msg_channel_close
+  | Ssh_msg_channel_eof of int32
+  | Ssh_msg_channel_close of int32
   | Ssh_msg_channel_request
-  | Ssh_msg_channel_success
+  | Ssh_msg_channel_success of int32
   | Ssh_msg_channel_failure of int32
 
