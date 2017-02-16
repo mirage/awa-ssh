@@ -37,7 +37,7 @@ type t = {
 let make host_key =
   let banner_buf = Printf.sprintf "%s\r\n" version_banner |> Cstruct.of_string in
   let kex = Kex.make_pkt () in
-  let server_kex = Ssh.encode_kex_pkt kex in
+  let server_kex = Buf.encode_kex_pkt kex in
   let t = { client_version = None;
             server_version = version_banner;
             server_kex;
