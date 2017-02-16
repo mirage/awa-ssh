@@ -161,13 +161,7 @@ let decode_string buf =
       (Cstruct.copy buf 4 len), Cstruct.shift buf (len + 4)) ()
 
 let encode_string s =
-  let len = String.length s in
-  if len > 255 then
-      invalid_arg "String is too long";
-  let buf = Cstruct.create (len + 4) in
-  Cstruct.BE.set_uint32 buf 0 (Int32.of_int len);
-  Cstruct.blit_from_string s 0 buf 4 len;
-  buf
+  Buf.(to_cstruct @@ add_string s (create ()))
 
 let decode_cstring buf =
   (* XXX bad to_int conversion *)
@@ -177,14 +171,7 @@ let decode_cstring buf =
        Cstruct.shift buf (len + 4))) ()
 
 let encode_cstring c =
-  trap_error (fun () ->
-      let len = Cstruct.len c in
-      if len > 255 then
-        invalid_arg "Cstruct string is too long";
-      let buf = Cstruct.create (len + 4) in
-      Cstruct.BE.set_uint32 buf 0 (Int32.of_int len);
-      Cstruct.blit c 0 buf 4 len;
-      buf) ()
+  Buf.(to_cstruct @@ add_cstring c (create ()))
 
 let decode_mpint buf =
   trap_error (fun () ->
@@ -201,20 +188,7 @@ let decode_mpint buf =
           Cstruct.shift buf (len + 4)) ()
 
 let encode_mpint mpint =
-  let mpbuf = Nocrypto.Numeric.Z.to_cstruct_be mpint in
-  let mplen = Cstruct.len mpbuf in
-  if mplen > 0 &&
-     ((Cstruct.get_uint8 mpbuf 0) land 0x80) <> 0 then
-    let buf = Cstruct.create (mplen + 5) in
-    Cstruct.BE.set_uint32 buf 0 (Int32.of_int (succ mplen));
-    Cstruct.set_uint8 buf 4 0;
-    Cstruct.blit mpbuf 0 buf 5 mplen;
-    buf
-  else
-    let buf = Cstruct.create (mplen + 4) in
-    Cstruct.BE.set_uint32 buf 0 (Int32.of_int mplen);
-    Cstruct.blit mpbuf 0 buf 4 mplen;
-    buf
+  Buf.(to_cstruct @@ add_mpint mpint (create ()))
 
 let decode_key buf =
   decode_string buf >>= fun (key, buf) ->
@@ -254,12 +228,6 @@ let encode_nl nl =
 let decode_nl buf =
   decode_string buf >>= fun (s, buf) ->
   ok ((Str.split (Str.regexp ",") s), buf)
-
-let encode_disconnect code desc lang =
-  let code = encode_uint32 code in
-  let desc = encode_string desc in
-  let lang = encode_string lang in
-  Cstruct.concat [encode_message_id SSH_MSG_KEXINIT; code; desc; lang]
 
 type server_host_key_algorithm =
   | Ssh_rsa
@@ -345,10 +313,6 @@ let encode_kex_pkt kex =
   Cstruct.BE.set_uint32 tail 1 Int32.zero;
   Cstruct.concat [head; kex.cookie; nll; tail]
 
-let encode_userauth_failure nl psucc =
-  let head = encode_message_id SSH_MSG_USERAUTH_FAILURE in
-  Cstruct.concat [head; encode_nl nl; encode_bool psucc]
-
 type message =
   | Ssh_msg_disconnect of (int32 * string * string)
   | Ssh_msg_ignore of string
@@ -360,7 +324,7 @@ type message =
   | Ssh_msg_kexdh_init of Nocrypto.Numeric.Z.t
   | Ssh_msg_kexdh_reply of (Nocrypto.Rsa.pub * Nocrypto.Numeric.Z.t * Cstruct.t)
   | Ssh_msg_newkeys
-  | Ssh_msg_userauth_request
+  | Ssh_msg_userauth_request of (string * string * string * bool * string * Cstruct.t)
   | Ssh_msg_userauth_failure of (string list * bool)
   | Ssh_msg_userauth_success
   | Ssh_msg_userauth_banner of (string * string)
@@ -370,14 +334,14 @@ type message =
   | Ssh_msg_channel_open
   | Ssh_msg_channel_open_confirmation
   | Ssh_msg_channel_open_failure
-  | Ssh_msg_channel_window_adjust
+  | Ssh_msg_channel_window_adjust of (int32 * int32)
   | Ssh_msg_channel_data
   | Ssh_msg_channel_extended_data
   | Ssh_msg_channel_eof
   | Ssh_msg_channel_close
   | Ssh_msg_channel_request
   | Ssh_msg_channel_success
-  | Ssh_msg_channel_failure
+  | Ssh_msg_channel_failure of int32
 
 let decode_message buf =
   decode_message_id buf >>= fun (msgid, buf) ->
@@ -439,6 +403,79 @@ let decode_message buf =
   | SSH_MSG_CHANNEL_REQUEST -> unimplemented ()
   | SSH_MSG_CHANNEL_SUCCESS -> unimplemented ()
   | SSH_MSG_CHANNEL_FAILURE -> unimplemented ()
+
+let encode_message msg =
+  let open Buf in
+  let add_id id buf = add_uint8 (message_id_to_int id) buf in
+  let buf = match msg with
+    | Ssh_msg_disconnect (code, desc, lang) ->
+      add_id SSH_MSG_DISCONNECT (create ()) |>
+      add_uint32 code |>
+      add_string desc |>
+      add_string lang
+    | Ssh_msg_ignore s ->
+      add_id SSH_MSG_IGNORE (create ()) |>
+      add_string s
+    | Ssh_msg_unimplemented x ->
+      add_id SSH_MSG_UNIMPLEMENTED (create ()) |>
+      add_uint32 x
+    | Ssh_msg_debug (always_display, message, lang) ->
+      add_id SSH_MSG_DEBUG (create ()) |>
+      add_bool always_display |>
+      add_string message |>
+      add_string lang
+    | Ssh_msg_service_request s ->
+      add_id SSH_MSG_SERVICE_REQUEST (create ()) |>
+      add_string s
+    | Ssh_msg_service_accept s ->
+      add_id SSH_MSG_SERVICE_ACCEPT (create ()) |>
+      add_string s
+    (* | Ssh_msg_kexinit kex -> encode_kex_pkt kex (\* XXX convert *\) *)
+    | Ssh_msg_newkeys ->
+      add_id SSH_MSG_NEWKEYS (create ())
+    (* | SSH_MSG_KEXDH_INIT -> decode_mpint buf >>= fun (e, buf) -> *)
+    (*   ok (Ssh_msg_kexdh_init e) *)
+    (* | SSH_MSG_KEXDH_REPLY -> *)
+    (*   decode_key buf >>= fun (k_s, buf) -> *)
+    (*   decode_mpint buf >>= fun (f, buf) -> *)
+    (*   decode_cstring buf >>= fun (hsig, buf) -> *)
+    (*   ok (Ssh_msg_kexdh_reply (k_s, f, hsig)) *)
+    (* | Ssh_msg_userauth_request user service publickey *)
+    (*   -> unimplemented () *)
+    | Ssh_msg_userauth_failure (nl, psucc) ->
+      add_id SSH_MSG_USERAUTH_FAILURE (create ()) |>
+      add_nl nl |>
+      add_bool psucc
+    | Ssh_msg_userauth_success ->
+      add_id SSH_MSG_USERAUTH_SUCCESS (create ())
+    | Ssh_msg_userauth_banner (message, lang) ->
+      add_id SSH_MSG_USERAUTH_BANNER (create ()) |>
+      add_string message |>
+      add_string lang
+    (* | SSH_MSG_GLOBAL_REQUEST -> unimplemented () *)
+    (* | SSH_MSG_REQUEST_SUCCESS -> unimplemented () *)
+    | Ssh_msg_request_failure ->
+      add_id SSH_MSG_REQUEST_FAILURE (create ())
+    (* | SSH_MSG_CHANNEL_OPEN -> unimplemented () *)
+    (* | SSH_MSG_CHANNEL_OPEN_CONFIRMATION -> unimplemented () *)
+    | Ssh_msg_channel_open_failure ->
+      add_id SSH_MSG_CHANNEL_OPEN_FAILURE (create ())
+    | Ssh_msg_channel_window_adjust (channel, n) ->
+      add_id SSH_MSG_CHANNEL_WINDOW_ADJUST (create ()) |>
+      add_uint32 channel |>
+      add_uint32 n
+    (* | SSH_MSG_CHANNEL_DATA -> unimplemented () *)
+    (* | SSH_MSG_CHANNEL_EXTENDED_DATA -> unimplemented () *)
+    (* | SSH_MSG_CHANNEL_EOF -> unimplemented () *)
+    (* | SSH_MSG_CHANNEL_CLOSE -> unimplemented () *)
+    (* | SSH_MSG_CHANNEL_REQUEST -> unimplemented () *)
+    (* | SSH_MSG_CHANNEL_SUCCESS -> unimplemented () *)
+    | Ssh_msg_channel_failure channel ->
+      add_id SSH_MSG_CHANNEL_FAILURE (create ()) |>
+      add_uint32 channel
+    | _ -> failwith "removeme"
+  in
+  to_cstruct buf
 
 let scan_message buf =
   scan_pkt buf >>= function

@@ -169,10 +169,10 @@ module Dh = struct
   let derive_keys = derive_keys Nocrypto.Hash.SHA1.digestv
 
   let compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
-    encode_cstring v_c >>= fun v_c ->
-    encode_cstring v_s >>= fun v_s ->
-    encode_cstring i_c >>= fun i_c ->
-    encode_cstring i_s >>= fun i_s ->
+    let v_c = encode_cstring v_c in
+    let v_s = encode_cstring v_s in
+    let i_c = encode_cstring i_c in
+    let i_s = encode_cstring i_s in
     let e = encode_mpint e in
     let f = encode_mpint f in
     let k = encode_mpint k in
