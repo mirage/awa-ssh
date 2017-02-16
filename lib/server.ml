@@ -50,7 +50,7 @@ let make host_key =
             new_keys_ctos = None;
             new_keys_stoc = None; }
   in
-  t, Cstruct.append banner_buf (Ssh.encode_plain_pkt server_kex)
+  t, banner_buf, server_kex
 
 let input_msg t msgbuf =
   let open Ssh in
