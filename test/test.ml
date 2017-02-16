@@ -137,7 +137,7 @@ let t_namelist () =
   let s = ["The";"Conquest";"Of";"Bread"] in
   let buf = Encode.(to_cstruct @@ put_nl s (create ())) in
   assert (Cstruct.len buf = (4 + String.length (String.concat "," s)));
-  assert (s = fst (get_ok (Decode.decode_nl buf)))
+  assert (s = fst (get_ok (Decode.get_nl buf)))
 
 let t_mpint () =
   let assert_byte buf off v =
@@ -154,7 +154,7 @@ let t_mpint () =
   Cstruct.set_uint8 data 2 0xff;
   Cstruct.set_uint8 data 3 0x02;
   Cstruct.BE.set_uint32 head 0 (Int32.of_int (Cstruct.len data));
-  let mpint = fst @@ get_ok_s @@ Decode.decode_mpint (Cstruct.append head data) in
+  let mpint = fst @@ get_ok_s @@ Decode.get_mpint (Cstruct.append head data) in
   let buf = Nocrypto.Numeric.Z.to_cstruct_be mpint in
   assert ((Cstruct.len buf) = 2); (* Cuts the first two zeros *)
   assert_byte buf 0 0xff;
@@ -165,7 +165,7 @@ let t_mpint () =
    *)
   assert (mpint =
           (fst @@ get_ok_s
-             (Decode.decode_mpint
+             (Decode.get_mpint
                 (Encode.(to_cstruct @@
                       put_mpint mpint (create ()))))));
 
@@ -188,7 +188,7 @@ let t_mpint () =
    * Case 4: Make sure negative are errors.
    *)
   Cstruct.set_uint8 buf 4 0x80;
-  let e = get_error (Decode.decode_mpint buf) in
+  let e = get_error (Decode.get_mpint buf) in
   assert (e = "Negative mpint")
 
 let run_test test =
