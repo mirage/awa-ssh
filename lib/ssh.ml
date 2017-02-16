@@ -169,8 +169,8 @@ let decode_cstring buf =
       (Cstruct.set_len (Cstruct.shift buf 4) len,
        Cstruct.shift buf (len + 4))) ()
 
-let encode_cstring c =
-  Buf.(to_cstruct @@ add_cstring c (create ()))
+(* let encode_cstring c = *)
+(*   Buf.(to_cstruct @@ add_cstring c (create ())) *)
 
 let decode_mpint buf =
   trap_error (fun () ->

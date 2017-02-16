@@ -169,14 +169,16 @@ module Dh = struct
   let derive_keys = derive_keys Nocrypto.Hash.SHA1.digestv
 
   let compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
-    let v_c = encode_cstring v_c in
-    let v_s = encode_cstring v_s in
-    let i_c = encode_cstring i_c in
-    let i_s = encode_cstring i_s in
-    let e = encode_mpint e in
-    let f = encode_mpint f in
-    let k = encode_mpint k in
-    ok (Hash.SHA1.digestv [ v_c; v_s; i_c; i_s; k_s; e; f; k ])
+    let open Buf in
+    add_cstring v_c (create ()) |>
+    add_cstring v_s |>
+    add_cstring i_c |>
+    add_cstring i_s |>
+    add_mpint e |>
+    add_mpint f |>
+    add_mpint k |>
+    to_cstruct |>
+    Hash.SHA1.digest
 
   let generate alg peer_pub =
     let g = group_of_algorithm alg in
