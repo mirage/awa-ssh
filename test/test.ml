@@ -135,7 +135,7 @@ let t_key_exchange () =
 
 let t_namelist () =
   let s = ["The";"Conquest";"Of";"Bread"] in
-  let buf = Ssh.encode_nl s in
+  let buf = Buf.(to_cstruct @@ add_nl s (create ())) in
   assert (Cstruct.len buf = (4 + String.length (String.concat "," s)));
   assert (s = fst (get_ok (Ssh.decode_nl buf)))
 
