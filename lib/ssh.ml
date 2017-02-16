@@ -186,8 +186,8 @@ let decode_mpint buf =
           Nocrypto.Numeric.Z.of_cstruct_be mpbuf,
           Cstruct.shift buf (len + 4)) ()
 
-let encode_mpint mpint =
-  Buf.(to_cstruct @@ add_mpint mpint (create ()))
+(* let encode_mpint mpint = *)
+(*   Buf.(to_cstruct @@ add_mpint mpint (create ())) *)
 
 let decode_key buf =
   decode_string buf >>= fun (key, buf) ->

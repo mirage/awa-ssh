@@ -164,13 +164,16 @@ let t_mpint () =
    * Case 2: Test identity
    *)
   assert (mpint =
-          (fst @@ get_ok_s (Ssh.decode_mpint (Ssh.encode_mpint mpint))));
+          (fst @@ get_ok_s
+             (Ssh.decode_mpint
+                (Buf.(to_cstruct @@
+                      add_mpint mpint (create ()))))));
 
   (*
    * Case 3: Test the other way from 1, one zero must be prepended
    * since the first byte is negative (0xff).
    *)
-  let buf = Ssh.encode_mpint mpint in
+  let buf = Buf.(to_cstruct @@ add_mpint mpint (create ())) in
   (* 4 for header + 1 zero prepended + 2 data*)
   assert ((Cstruct.len buf) = (4 + 1 + 2));
   assert_byte buf 0 0x00;

@@ -60,7 +60,7 @@ type keys = {
 }
 
 let derive_keys digestv k h session_id need =
-  let k = encode_mpint k in
+  let k = Buf.(to_cstruct @@ add_mpint k (create ())) in
   let x = Cstruct.create 1 in
   let rec expand kn =
     if (Cstruct.len kn) >= need then
