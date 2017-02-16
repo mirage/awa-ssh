@@ -183,14 +183,6 @@ let decode_key buf =
   decode_mpint buf >>= fun (n, buf) ->
   ok (Nocrypto.Rsa.{e; n}, buf)
 
-let encode_key (rsa : Nocrypto.Rsa.pub) =
-  let open Nocrypto in
-  let open Buf in
-  add_string "ssh-rsa" (create ()) |>
-  add_mpint rsa.Rsa.e |>
-  add_mpint rsa.Rsa.n |>
-  to_cstruct
-
 let decode_uint32 buf =
   trap_error (fun () ->
       Cstruct.BE.get_uint32 buf 0, Cstruct.shift buf 4) ()

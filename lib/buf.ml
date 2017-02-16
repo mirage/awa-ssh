@@ -95,3 +95,10 @@ let add_mpint mpint t =
       add_uint32 (Int32.of_int mplen) t
   in
   add_raw mpbuf t
+
+let add_key (rsa : Nocrypto.Rsa.pub) t =
+  let open Nocrypto.Rsa in
+  add_string "ssh-rsa" t |> add_mpint rsa.e |> add_mpint rsa.n
+
+let encode_key rsa =
+  add_key rsa (create ()) |> to_cstruct
