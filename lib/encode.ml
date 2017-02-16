@@ -71,6 +71,9 @@ let put_cstring s t =
   Cstruct.blit s 0 t.cbuf t.coff len;
   shift len t
 
+let put_id id buf =
+  put_uint8 (Ssh.message_id_to_int id) buf
+
 let put_raw buf t =
   let len = Cstruct.len buf in
   let t = guard_space len t in
@@ -101,7 +104,7 @@ let put_key (rsa : Nocrypto.Rsa.pub) t =
                 put_mpint rsa.e |>
                 put_mpint rsa.n)
 
-let put_kex_pkt kex t =
+let put_kex kex t =
   let open Ssh in
   let nll = [ kex.kex_algorithms;
               kex.server_host_key_algorithms;
@@ -114,11 +117,7 @@ let put_kex_pkt kex t =
               kex.languages_ctos;
               kex.languages_stoc; ]
   in
-  let buf =
-    put_uint8 (message_id_to_int SSH_MSG_KEXDH_INIT) (create ()) |>
-    put_raw kex.cookie
-  in
-  List.fold_left (fun buf nl -> put_nl nl buf) buf nll |>
+  List.fold_left (fun buf nl -> put_nl nl buf) (create ()) nll |>
   put_bool kex.first_kex_packet_follows |>
   put_uint32 Int32.zero
 
@@ -126,11 +125,13 @@ let buf_of_key rsa =
   put_key rsa (create ()) |> to_cstruct
 
 let buf_of_kex_pkt kex =
-  put_kex_pkt kex (create ()) |> to_cstruct
+  put_id Ssh.SSH_MSG_KEXINIT (create ()) |>
+  put_kex kex |> to_cstruct
 
 let encode_message msg =
   let open Ssh in
-  let put_id id = put_uint8 (message_id_to_int id) (create ()) in
+  let unimplemented () = failwith "implement me" in
+  let put_id id = put_id id (create ()) in
   let buf = match msg with
     | Ssh_msg_disconnect (code, desc, lang) ->
       put_id SSH_MSG_DISCONNECT |>
@@ -156,14 +157,18 @@ let encode_message msg =
       put_string s
     | Ssh_msg_kexinit kex ->
       put_id SSH_MSG_KEXINIT |>
-      put_kex_pkt kex
+      put_kex kex
     | Ssh_msg_newkeys ->
       put_id SSH_MSG_NEWKEYS
+    | Ssh_msg_kexdh_init e ->
+      put_id SSH_MSG_KEXDH_INIT |>
+      put_mpint e
     | Ssh_msg_kexdh_reply (k_s, f, hsig) ->
       put_id SSH_MSG_KEXDH_REPLY |>
       put_key k_s |>
       put_mpint f |>
       put_cstring hsig
+    | Ssh_msg_userauth_request _ -> unimplemented ()
     | Ssh_msg_userauth_failure (nl, psucc) ->
       put_id SSH_MSG_USERAUTH_FAILURE |>
       put_nl nl |>
@@ -174,33 +179,32 @@ let encode_message msg =
       put_id SSH_MSG_USERAUTH_BANNER |>
       put_string message |>
       put_string lang
-    (* | SSH_MSG_GLOBAL_REQUEST -> unimplemented () *)
-    (* | SSH_MSG_REQUEST_SUCCESS -> unimplemented () *)
+    | Ssh_msg_global_request -> unimplemented ()
+    | Ssh_msg_request_success -> unimplemented ()
     | Ssh_msg_request_failure ->
       put_id SSH_MSG_REQUEST_FAILURE
-    (* | SSH_MSG_CHANNEL_OPEN -> unimplemented () *)
-    (* | SSH_MSG_CHANNEL_OPEN_CONFIRMATION -> unimplemented () *)
+    | Ssh_msg_channel_open -> unimplemented ()
+    | Ssh_msg_channel_open_confirmation -> unimplemented ()
     | Ssh_msg_channel_open_failure ->
       put_id SSH_MSG_CHANNEL_OPEN_FAILURE
     | Ssh_msg_channel_window_adjust (channel, n) ->
       put_id SSH_MSG_CHANNEL_WINDOW_ADJUST |>
       put_uint32 channel |>
       put_uint32 n
-    (* | SSH_MSG_CHANNEL_DATA -> unimplemented () *)
-    (* | SSH_MSG_CHANNEL_EXTENDED_DATA -> unimplemented () *)
+    | Ssh_msg_channel_data -> unimplemented ()
+    | Ssh_msg_channel_extended_data -> unimplemented ()
     | Ssh_msg_channel_eof channel ->
       put_id SSH_MSG_CHANNEL_EOF |>
       put_uint32 channel
     | Ssh_msg_channel_close channel ->
       put_id SSH_MSG_CHANNEL_CLOSE |>
       put_uint32 channel
-    (* | SSH_MSG_CHANNEL_REQUEST -> unimplemented () *)
+    | Ssh_msg_channel_request -> unimplemented ()
     | Ssh_msg_channel_success channel ->
       put_id SSH_MSG_CHANNEL_SUCCESS |>
       put_uint32 channel
     | Ssh_msg_channel_failure channel ->
       put_id SSH_MSG_CHANNEL_FAILURE |>
       put_uint32 channel
-    | _ -> failwith "removeme"
   in
   to_cstruct buf
