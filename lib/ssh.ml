@@ -149,18 +149,11 @@ let decode_message_id buf =
       | None -> invalid_arg (Printf.sprintf "Unknown message id %d" id)
       | Some msgid -> msgid, (Cstruct.shift buf 1)) ()
 
-(* let encode_message_id m = *)
-(*   Buf.(to_cstruct @@ add_uint8 (message_id_to_int m) (create ~len:1 ())) *)
-
 let decode_string buf =
   (* XXX bad to_int conversion *)
   trap_error (fun () ->
       let len = Cstruct.BE.get_uint32 buf 0 |> Int32.to_int in
       (Cstruct.copy buf 4 len), Cstruct.shift buf (len + 4)) ()
-
-(* let encode_string s = *)
-(*   let len = String.length s in *)
-(*   Buf.(to_cstruct @@ add_string s (create ~len ())) *)
 
 let decode_cstring buf =
   (* XXX bad to_int conversion *)
@@ -168,9 +161,6 @@ let decode_cstring buf =
       let len = Cstruct.BE.get_uint32 buf 0 |> Int32.to_int in
       (Cstruct.set_len (Cstruct.shift buf 4) len,
        Cstruct.shift buf (len + 4))) ()
-
-(* let encode_cstring c = *)
-(*   Buf.(to_cstruct @@ add_cstring c (create ())) *)
 
 let decode_mpint buf =
   trap_error (fun () ->
@@ -185,9 +175,6 @@ let decode_mpint buf =
           (* of_cstruct_be strips leading zeros for us *)
           Nocrypto.Numeric.Z.of_cstruct_be mpbuf,
           Cstruct.shift buf (len + 4)) ()
-
-(* let encode_mpint mpint = *)
-(*   Buf.(to_cstruct @@ add_mpint mpint (create ())) *)
 
 let decode_key buf =
   decode_string buf >>= fun (key, buf) ->
@@ -208,18 +195,9 @@ let decode_uint32 buf =
   trap_error (fun () ->
       Cstruct.BE.get_uint32 buf 0, Cstruct.shift buf 4) ()
 
-(* let encode_uint32 v = *)
-(*   Buf.(to_cstruct @@ add_uint32 v (create ~len:4 ())) *)
-
 let decode_bool buf =
   trap_error (fun () ->
       (Cstruct.get_uint8 buf 0) <> 0, Cstruct.shift buf 1) ()
-
-(* let encode_bool b = *)
-(*   Buf.(to_cstruct @@ add_bool b (create ~len:1 ())) *)
-
-(* let encode_nl nl = *)
-(*   encode_string (String.concat "," nl) *)
 
 let decode_nl buf =
   decode_string buf >>= fun (s, buf) ->
