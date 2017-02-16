@@ -150,9 +150,7 @@ let decode_message_id buf =
       | Some msgid -> msgid, (Cstruct.shift buf 1)) ()
 
 let encode_message_id m =
-  let buf = Cstruct.create 1 in
-  Cstruct.set_uint8 buf 0 (message_id_to_int m);
-  buf
+  Buf.(to_cstruct @@ add_uint8 (message_id_to_int m) (create ~len:1 ()))
 
 let decode_string buf =
   (* XXX bad to_int conversion *)
@@ -211,14 +209,14 @@ let decode_uint32 buf =
       Cstruct.BE.get_uint32 buf 0, Cstruct.shift buf 4) ()
 
 let encode_uint32 v =
-  Buf.(add_uint32 v (create ~len:4 ()))
+  Buf.(to_cstruct @@ add_uint32 v (create ~len:4 ()))
 
 let decode_bool buf =
   trap_error (fun () ->
       (Cstruct.get_uint8 buf 0) <> 0, Cstruct.shift buf 1) ()
 
 let encode_bool b =
-  Buf.(add_bool b (create ~len:1 ()))
+  Buf.(to_cstruct @@ add_bool b (create ~len:1 ()))
 
 let encode_nl nl =
   encode_string (String.concat "," nl)
