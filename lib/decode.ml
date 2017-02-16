@@ -144,25 +144,36 @@ let get_message buf =
     get_nl buf >>= fun (nl, buf) ->
     get_bool buf >>= fun (psucc, buf) ->
     ok (Ssh_msg_userauth_failure (nl, psucc))
-  | SSH_MSG_USERAUTH_SUCCESS -> unimplemented ()
+  | SSH_MSG_USERAUTH_SUCCESS -> ok Ssh_msg_userauth_success
   | SSH_MSG_USERAUTH_BANNER ->
     get_string buf >>= fun (s1, buf) ->
     get_string buf >>= fun (s2, buf) ->
     ok (Ssh_msg_userauth_banner (s1, s2))
   | SSH_MSG_GLOBAL_REQUEST -> unimplemented ()
   | SSH_MSG_REQUEST_SUCCESS -> unimplemented ()
-  | SSH_MSG_REQUEST_FAILURE -> unimplemented ()
+  | SSH_MSG_REQUEST_FAILURE -> ok Ssh_msg_request_failure
   | SSH_MSG_CHANNEL_OPEN -> unimplemented ()
   | SSH_MSG_CHANNEL_OPEN_CONFIRMATION -> unimplemented ()
-  | SSH_MSG_CHANNEL_OPEN_FAILURE -> unimplemented ()
-  | SSH_MSG_CHANNEL_WINDOW_ADJUST -> unimplemented ()
+  | SSH_MSG_CHANNEL_OPEN_FAILURE -> ok Ssh_msg_channel_open_failure
+  | SSH_MSG_CHANNEL_WINDOW_ADJUST ->
+    get_uint32 buf >>= fun (channel, buf) ->
+    get_uint32 buf >>= fun (n, buf) ->
+    ok (Ssh_msg_channel_window_adjust (channel, n))
   | SSH_MSG_CHANNEL_DATA -> unimplemented ()
   | SSH_MSG_CHANNEL_EXTENDED_DATA -> unimplemented ()
-  | SSH_MSG_CHANNEL_EOF -> unimplemented ()
-  | SSH_MSG_CHANNEL_CLOSE -> unimplemented ()
+  | SSH_MSG_CHANNEL_EOF ->
+    get_uint32 buf >>= fun (channel, buf) ->
+    ok (Ssh_msg_channel_eof channel)
+  | SSH_MSG_CHANNEL_CLOSE ->
+    get_uint32 buf >>= fun (channel, buf) ->
+    ok (Ssh_msg_channel_close channel)
   | SSH_MSG_CHANNEL_REQUEST -> unimplemented ()
-  | SSH_MSG_CHANNEL_SUCCESS -> unimplemented ()
-  | SSH_MSG_CHANNEL_FAILURE -> unimplemented ()
+  | SSH_MSG_CHANNEL_SUCCESS ->
+    get_uint32 buf >>= fun (channel, buf) ->
+    ok (Ssh_msg_channel_success channel)
+  | SSH_MSG_CHANNEL_FAILURE ->
+    get_uint32 buf >>= fun (channel, buf) ->
+    ok (Ssh_msg_channel_failure channel)
 
 let scan_message buf =
   Ssh.scan_pkt buf >>= function
