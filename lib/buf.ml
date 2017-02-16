@@ -100,13 +100,8 @@ let add_key (rsa : Nocrypto.Rsa.pub) t =
   let open Nocrypto.Rsa in
   add_string "ssh-rsa" t |> add_mpint rsa.e |> add_mpint rsa.n
 
-(* *** *)
-open Ssh
-
-let encode_key rsa =
-  add_key rsa (create ()) |> to_cstruct
-
-let encode_kex_pkt kex =
+let add_kex_pkt kex t =
+  let open Ssh in
   let nll = [ kex.kex_algorithms;
               kex.server_host_key_algorithms;
               kex.encryption_algorithms_ctos;
@@ -124,8 +119,16 @@ let encode_kex_pkt kex =
   in
   List.fold_left (fun buf nl -> add_nl nl buf) buf nll |>
   add_bool kex.first_kex_packet_follows |>
-  add_uint32 Int32.zero |>
-  to_cstruct
+  add_uint32 Int32.zero
+
+(* *** *)
+open Ssh
+
+let encode_key rsa =
+  add_key rsa (create ()) |> to_cstruct
+
+let encode_kex_pkt kex =
+  add_kex_pkt kex (create ()) |> to_cstruct
 
 let encode_message msg =
   let add_id id = add_uint8 (message_id_to_int id) (create ()) in
@@ -152,7 +155,9 @@ let encode_message msg =
     | Ssh_msg_service_accept s ->
       add_id SSH_MSG_SERVICE_ACCEPT |>
       add_string s
-    (* | Ssh_msg_kexinit kex -> encode_kex_pkt kex (\* XXX convert *\) *)
+    | Ssh_msg_kexinit kex ->
+      add_id SSH_MSG_KEXINIT |>
+      add_kex_pkt kex
     | Ssh_msg_newkeys ->
       add_id SSH_MSG_NEWKEYS
     (* | SSH_MSG_KEXDH_INIT -> decode_mpint buf >>= fun (e, buf) -> *)
