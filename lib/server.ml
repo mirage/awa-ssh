@@ -37,7 +37,7 @@ type t = {
 let make host_key =
   let banner_buf = Printf.sprintf "%s\r\n" version_banner |> Cstruct.of_string in
   let kex = Kex.make_pkt () in
-  let server_kex = Buf.encode_kex_pkt kex in
+  let server_kex = Encode.encode_kex_pkt kex in
   let t = { client_version = None;
             server_version = version_banner;
             server_kex;
@@ -72,7 +72,7 @@ let input_msg t msgbuf =
     let v_s = Cstruct.of_string t.server_version in
     let i_s = t.server_kex in
     let pub_host_key = Rsa.pub_of_priv t.host_key in
-    let k_s = Buf.encode_key pub_host_key in
+    let k_s = Encode.encode_key pub_host_key in
     Kex.(Dh.generate neg.kex_algorithm e) >>= fun (y, f, k) ->
     let h = Kex.Dh.compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k in
     let signature = Rsa.PKCS1.sig_encode t.host_key h in

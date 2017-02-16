@@ -60,7 +60,7 @@ type keys = {
 }
 
 let derive_keys digestv k h session_id need =
-  let k = Buf.(to_cstruct @@ add_mpint k (create ())) in
+  let k = Encode.(to_cstruct @@ add_mpint k (create ())) in
   let x = Cstruct.create 1 in
   let rec expand kn =
     if (Cstruct.len kn) >= need then
@@ -169,7 +169,7 @@ module Dh = struct
   let derive_keys = derive_keys Nocrypto.Hash.SHA1.digestv
 
   let compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
-    let open Buf in
+    let open Encode in
     add_cstring v_c (create ()) |>
     add_cstring v_s |>
     add_cstring i_c |>
