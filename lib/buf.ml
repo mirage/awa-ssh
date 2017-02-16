@@ -22,13 +22,10 @@ type t = {
 
 let chunk_size = 256
 
-let create () =
-  let tlen = chunk_size in
-  let cbuf = Cstruct.create tlen in
-  { tlen; coff = 0; cbuf }
+let create ?(len=chunk_size) () =
+  { tlen = len; coff = 0; cbuf = Cstruct.create len }
 
-let to_cstruct t =
-  Cstruct.set_len t.cbuf t.coff
+let to_cstruct t = Cstruct.set_len t.cbuf t.coff
 
 let left t = t.tlen - t.coff
 

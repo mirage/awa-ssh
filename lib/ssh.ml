@@ -161,7 +161,8 @@ let decode_string buf =
       (Cstruct.copy buf 4 len), Cstruct.shift buf (len + 4)) ()
 
 let encode_string s =
-  Buf.(to_cstruct @@ add_string s (create ()))
+  let len = String.length s in
+  Buf.(to_cstruct @@ add_string s (create ~len ()))
 
 let decode_cstring buf =
   (* XXX bad to_int conversion *)
@@ -210,18 +211,14 @@ let decode_uint32 buf =
       Cstruct.BE.get_uint32 buf 0, Cstruct.shift buf 4) ()
 
 let encode_uint32 v =
-  let buf = Cstruct.create 4 in
-  Cstruct.BE.set_uint32 buf 0 v;
-  buf
+  Buf.(add_uint32 v (create ~len:4 ()))
 
 let decode_bool buf =
   trap_error (fun () ->
       (Cstruct.get_uint8 buf 0) <> 0, Cstruct.shift buf 1) ()
 
 let encode_bool b =
-  let buf = Cstruct.create 1 in
-  Cstruct.set_uint8 buf 0 (if b then 1 else 0);
-  buf
+  Buf.(add_bool b (create ~len:1 ()))
 
 let encode_nl nl =
   encode_string (String.concat "," nl)
