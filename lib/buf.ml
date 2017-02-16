@@ -160,15 +160,11 @@ let encode_message msg =
       add_kex_pkt kex
     | Ssh_msg_newkeys ->
       add_id SSH_MSG_NEWKEYS
-    (* | SSH_MSG_KEXDH_INIT -> decode_mpint buf >>= fun (e, buf) -> *)
-    (*   ok (Ssh_msg_kexdh_init e) *)
-    (* | SSH_MSG_KEXDH_REPLY -> *)
-    (*   decode_key buf >>= fun (k_s, buf) -> *)
-    (*   decode_mpint buf >>= fun (f, buf) -> *)
-    (*   decode_cstring buf >>= fun (hsig, buf) -> *)
-    (*   ok (Ssh_msg_kexdh_reply (k_s, f, hsig)) *)
-    (* | Ssh_msg_userauth_request user service publickey *)
-    (*   -> unimplemented () *)
+    | Ssh_msg_kexdh_reply (k_s, f, hsig) ->
+      add_id SSH_MSG_KEXDH_REPLY |>
+      add_key k_s |>
+      add_mpint f |>
+      add_cstring hsig
     | Ssh_msg_userauth_failure (nl, psucc) ->
       add_id SSH_MSG_USERAUTH_FAILURE |>
       add_nl nl |>
