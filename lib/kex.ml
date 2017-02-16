@@ -60,7 +60,7 @@ type keys = {
 }
 
 let derive_keys digestv k h session_id need =
-  let k = Encode.(to_cstruct @@ add_mpint k (create ())) in
+  let k = Encode.(to_cstruct @@ put_mpint k (create ())) in
   let x = Cstruct.create 1 in
   let rec expand kn =
     if (Cstruct.len kn) >= need then
@@ -170,13 +170,13 @@ module Dh = struct
 
   let compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
     let open Encode in
-    add_cstring v_c (create ()) |>
-    add_cstring v_s |>
-    add_cstring i_c |>
-    add_cstring i_s |>
-    add_mpint e |>
-    add_mpint f |>
-    add_mpint k |>
+    put_cstring v_c (create ()) |>
+    put_cstring v_s |>
+    put_cstring i_c |>
+    put_cstring i_s |>
+    put_mpint e |>
+    put_mpint f |>
+    put_mpint k |>
     to_cstruct |>
     Hash.SHA1.digest
 

@@ -43,64 +43,64 @@ let shift n t = { t with coff = t.coff + n }
 
 let reserve n t = shift n t
 
-let add_uint8 b t =
+let put_uint8 b t =
   let t = guard_space 1 t in
   Cstruct.set_uint8 t.cbuf t.coff b;
   shift 1 t
 
-let add_bool b t =
+let put_bool b t =
   let x = if b then 1 else 0 in
-  add_uint8 x t
+  put_uint8 x t
 
-let add_uint32 w t =
+let put_uint32 w t =
   let t = guard_space 4 t in
   Cstruct.BE.set_uint32 t.cbuf t.coff w;
   shift 4 t
 
-let add_string s t =
+let put_string s t =
   let len = String.length s in
-  let t = add_uint32 (Int32.of_int len) t in
+  let t = put_uint32 (Int32.of_int len) t in
   let t = guard_space len t in
   Cstruct.blit_from_string s 0 t.cbuf t.coff len;
   shift len t
 
-let add_cstring s t =
+let put_cstring s t =
   let len = Cstruct.len s in
-  let t = add_uint32 (Int32.of_int len) t in
+  let t = put_uint32 (Int32.of_int len) t in
   let t = guard_space len t in
   Cstruct.blit s 0 t.cbuf t.coff len;
   shift len t
 
-let add_raw buf t =
+let put_raw buf t =
   let len = Cstruct.len buf in
   let t = guard_space len t in
   Cstruct.blit buf 0 t.cbuf t.coff len;
   shift len t
 
-let add_random len t =
-  add_raw (Nocrypto.Rng.generate len) t
+let put_random len t =
+  put_raw (Nocrypto.Rng.generate len) t
 
-let add_nl nl t =
-  add_string (String.concat "," nl) t
+let put_nl nl t =
+  put_string (String.concat "," nl) t
 
-let add_mpint mpint t =
+let put_mpint mpint t =
   let mpbuf = Nocrypto.Numeric.Z.to_cstruct_be mpint in
   let mplen = Cstruct.len mpbuf in
   let t =
     if mplen > 0 &&
        ((Cstruct.get_uint8 mpbuf 0) land 0x80) <> 0 then
-      add_uint32 (Int32.of_int (succ mplen)) t |>
-      add_uint8 0
+      put_uint32 (Int32.of_int (succ mplen)) t |>
+      put_uint8 0
     else
-      add_uint32 (Int32.of_int mplen) t
+      put_uint32 (Int32.of_int mplen) t
   in
-  add_raw mpbuf t
+  put_raw mpbuf t
 
-let add_key (rsa : Nocrypto.Rsa.pub) t =
+let put_key (rsa : Nocrypto.Rsa.pub) t =
   let open Nocrypto.Rsa in
-  add_string "ssh-rsa" t |> add_mpint rsa.e |> add_mpint rsa.n
+  put_string "ssh-rsa" t |> put_mpint rsa.e |> put_mpint rsa.n
 
-let add_kex_pkt kex t =
+let put_kex_pkt kex t =
   let open Ssh in
   let nll = [ kex.kex_algorithms;
               kex.server_host_key_algorithms;
@@ -114,94 +114,94 @@ let add_kex_pkt kex t =
               kex.languages_stoc; ]
   in
   let buf =
-    add_uint8 (message_id_to_int SSH_MSG_KEXDH_INIT) (create ()) |>
-    add_raw kex.cookie
+    put_uint8 (message_id_to_int SSH_MSG_KEXDH_INIT) (create ()) |>
+    put_raw kex.cookie
   in
-  List.fold_left (fun buf nl -> add_nl nl buf) buf nll |>
-  add_bool kex.first_kex_packet_follows |>
-  add_uint32 Int32.zero
+  List.fold_left (fun buf nl -> put_nl nl buf) buf nll |>
+  put_bool kex.first_kex_packet_follows |>
+  put_uint32 Int32.zero
 
 (* *** *)
 open Ssh
 
 let encode_key rsa =
-  add_key rsa (create ()) |> to_cstruct
+  put_key rsa (create ()) |> to_cstruct
 
 let encode_kex_pkt kex =
-  add_kex_pkt kex (create ()) |> to_cstruct
+  put_kex_pkt kex (create ()) |> to_cstruct
 
 let encode_message msg =
-  let add_id id = add_uint8 (message_id_to_int id) (create ()) in
+  let put_id id = put_uint8 (message_id_to_int id) (create ()) in
   let buf = match msg with
     | Ssh_msg_disconnect (code, desc, lang) ->
-      add_id SSH_MSG_DISCONNECT |>
-      add_uint32 code |>
-      add_string desc |>
-      add_string lang
+      put_id SSH_MSG_DISCONNECT |>
+      put_uint32 code |>
+      put_string desc |>
+      put_string lang
     | Ssh_msg_ignore s ->
-      add_id SSH_MSG_IGNORE |>
-      add_string s
+      put_id SSH_MSG_IGNORE |>
+      put_string s
     | Ssh_msg_unimplemented x ->
-      add_id SSH_MSG_UNIMPLEMENTED |>
-      add_uint32 x
+      put_id SSH_MSG_UNIMPLEMENTED |>
+      put_uint32 x
     | Ssh_msg_debug (always_display, message, lang) ->
-      add_id SSH_MSG_DEBUG |>
-      add_bool always_display |>
-      add_string message |>
-      add_string lang
+      put_id SSH_MSG_DEBUG |>
+      put_bool always_display |>
+      put_string message |>
+      put_string lang
     | Ssh_msg_service_request s ->
-      add_id SSH_MSG_SERVICE_REQUEST |>
-      add_string s
+      put_id SSH_MSG_SERVICE_REQUEST |>
+      put_string s
     | Ssh_msg_service_accept s ->
-      add_id SSH_MSG_SERVICE_ACCEPT |>
-      add_string s
+      put_id SSH_MSG_SERVICE_ACCEPT |>
+      put_string s
     | Ssh_msg_kexinit kex ->
-      add_id SSH_MSG_KEXINIT |>
-      add_kex_pkt kex
+      put_id SSH_MSG_KEXINIT |>
+      put_kex_pkt kex
     | Ssh_msg_newkeys ->
-      add_id SSH_MSG_NEWKEYS
+      put_id SSH_MSG_NEWKEYS
     | Ssh_msg_kexdh_reply (k_s, f, hsig) ->
-      add_id SSH_MSG_KEXDH_REPLY |>
-      add_key k_s |>
-      add_mpint f |>
-      add_cstring hsig
+      put_id SSH_MSG_KEXDH_REPLY |>
+      put_key k_s |>
+      put_mpint f |>
+      put_cstring hsig
     | Ssh_msg_userauth_failure (nl, psucc) ->
-      add_id SSH_MSG_USERAUTH_FAILURE |>
-      add_nl nl |>
-      add_bool psucc
+      put_id SSH_MSG_USERAUTH_FAILURE |>
+      put_nl nl |>
+      put_bool psucc
     | Ssh_msg_userauth_success ->
-      add_id SSH_MSG_USERAUTH_SUCCESS
+      put_id SSH_MSG_USERAUTH_SUCCESS
     | Ssh_msg_userauth_banner (message, lang) ->
-      add_id SSH_MSG_USERAUTH_BANNER |>
-      add_string message |>
-      add_string lang
+      put_id SSH_MSG_USERAUTH_BANNER |>
+      put_string message |>
+      put_string lang
     (* | SSH_MSG_GLOBAL_REQUEST -> unimplemented () *)
     (* | SSH_MSG_REQUEST_SUCCESS -> unimplemented () *)
     | Ssh_msg_request_failure ->
-      add_id SSH_MSG_REQUEST_FAILURE
+      put_id SSH_MSG_REQUEST_FAILURE
     (* | SSH_MSG_CHANNEL_OPEN -> unimplemented () *)
     (* | SSH_MSG_CHANNEL_OPEN_CONFIRMATION -> unimplemented () *)
     | Ssh_msg_channel_open_failure ->
-      add_id SSH_MSG_CHANNEL_OPEN_FAILURE
+      put_id SSH_MSG_CHANNEL_OPEN_FAILURE
     | Ssh_msg_channel_window_adjust (channel, n) ->
-      add_id SSH_MSG_CHANNEL_WINDOW_ADJUST |>
-      add_uint32 channel |>
-      add_uint32 n
+      put_id SSH_MSG_CHANNEL_WINDOW_ADJUST |>
+      put_uint32 channel |>
+      put_uint32 n
     (* | SSH_MSG_CHANNEL_DATA -> unimplemented () *)
     (* | SSH_MSG_CHANNEL_EXTENDED_DATA -> unimplemented () *)
     | Ssh_msg_channel_eof channel ->
-      add_id SSH_MSG_CHANNEL_EOF |>
-      add_uint32 channel
+      put_id SSH_MSG_CHANNEL_EOF |>
+      put_uint32 channel
     | Ssh_msg_channel_close channel ->
-      add_id SSH_MSG_CHANNEL_CLOSE |>
-      add_uint32 channel
+      put_id SSH_MSG_CHANNEL_CLOSE |>
+      put_uint32 channel
     (* | SSH_MSG_CHANNEL_REQUEST -> unimplemented () *)
     | Ssh_msg_channel_success channel ->
-      add_id SSH_MSG_CHANNEL_SUCCESS |>
-      add_uint32 channel
+      put_id SSH_MSG_CHANNEL_SUCCESS |>
+      put_uint32 channel
     | Ssh_msg_channel_failure channel ->
-      add_id SSH_MSG_CHANNEL_FAILURE |>
-      add_uint32 channel
+      put_id SSH_MSG_CHANNEL_FAILURE |>
+      put_uint32 channel
     | _ -> failwith "removeme"
   in
   to_cstruct buf
