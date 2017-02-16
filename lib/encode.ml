@@ -124,10 +124,10 @@ let put_kex_pkt kex t =
 (* *** *)
 open Ssh
 
-let encode_key rsa =
+let buf_of_key rsa =
   put_key rsa (create ()) |> to_cstruct
 
-let encode_kex_pkt kex =
+let buf_of_kex_pkt kex =
   put_kex_pkt kex (create ()) |> to_cstruct
 
 let encode_message msg =
