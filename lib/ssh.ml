@@ -199,10 +199,11 @@ let decode_key buf =
 
 let encode_key (rsa : Nocrypto.Rsa.pub) =
   let open Nocrypto in
-  let s = encode_string "ssh-rsa" in
-  let e = encode_mpint rsa.Rsa.e in
-  let n = encode_mpint rsa.Rsa.n in
-  Cstruct.concat [s; e; n]
+  let open Buf in
+  add_string "ssh-rsa" (create ()) |>
+  add_mpint rsa.Rsa.e |>
+  add_mpint rsa.Rsa.n |>
+  to_cstruct
 
 let decode_uint32 buf =
   trap_error (fun () ->
@@ -294,24 +295,26 @@ let decode_kex_pkt buf =
       buf)
 
 let encode_kex_pkt kex =
-  let f = encode_nl in
-  let nll = Cstruct.concat
-      [ f kex.kex_algorithms;
-        f kex.server_host_key_algorithms;
-        f kex.encryption_algorithms_ctos;
-        f kex.encryption_algorithms_stoc;
-        f kex.mac_algorithms_ctos;
-        f kex.mac_algorithms_stoc;
-        f kex.compression_algorithms_ctos;
-        f kex.compression_algorithms_stoc;
-        f kex.languages_ctos;
-        f kex.languages_stoc; ]
+  let open Buf in
+  let nll = [ kex.kex_algorithms;
+              kex.server_host_key_algorithms;
+              kex.encryption_algorithms_ctos;
+              kex.encryption_algorithms_stoc;
+              kex.mac_algorithms_ctos;
+              kex.mac_algorithms_stoc;
+              kex.compression_algorithms_ctos;
+              kex.compression_algorithms_stoc;
+              kex.languages_ctos;
+              kex.languages_stoc; ]
   in
-  let head = encode_message_id SSH_MSG_KEXINIT in
-  let tail = Cstruct.create 5 in  (* first_kex_packet_follows + reserved *)
-  Cstruct.set_uint8 tail 0 (if kex.first_kex_packet_follows then 1 else 0);
-  Cstruct.BE.set_uint32 tail 1 Int32.zero;
-  Cstruct.concat [head; kex.cookie; nll; tail]
+  let buf =
+    add_uint8 (message_id_to_int SSH_MSG_KEXDH_INIT) (create ()) |>
+    add_raw kex.cookie
+  in
+  List.fold_left (fun buf nl -> add_nl nl buf) buf nll |>
+  add_bool kex.first_kex_packet_follows |>
+  add_uint32 Int32.zero |>
+  to_cstruct
 
 type message =
   | Ssh_msg_disconnect of (int32 * string * string)
