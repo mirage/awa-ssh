@@ -29,6 +29,8 @@ let to_cstruct t = Cstruct.set_len t.cbuf t.coff
 
 let left t = t.tlen - t.coff
 
+let used t = t.coff
+
 let grow len t =
   let tlen = t.tlen + len in
   let cbuf = Cstruct.append t.cbuf (Cstruct.create len) in
@@ -38,6 +40,8 @@ let guard_space len t =
   if (left t) >= len then t else grow (max len chunk_size) t
 
 let shift n t = { t with coff = t.coff + n }
+
+let reserve n t = shift n t
 
 let add_uint8 b t =
   let t = guard_space 1 t in
@@ -72,6 +76,9 @@ let add_raw buf t =
   let t = guard_space len t in
   Cstruct.blit buf 0 t.cbuf t.coff len;
   shift len t
+
+let add_random len t =
+  add_raw (Nocrypto.Rng.generate len) t
 
 let add_nl nl t =
   add_string (String.concat "," nl) t
