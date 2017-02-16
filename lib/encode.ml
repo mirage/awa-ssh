@@ -97,8 +97,9 @@ let put_mpint mpint t =
   put_raw mpbuf t
 
 let put_key (rsa : Nocrypto.Rsa.pub) t =
-  let open Nocrypto.Rsa in
-  put_string "ssh-rsa" t |> put_mpint rsa.e |> put_mpint rsa.n
+  Nocrypto.Rsa.(put_string "ssh-rsa" t |>
+                put_mpint rsa.e |>
+                put_mpint rsa.n)
 
 let put_kex_pkt kex t =
   let open Ssh in
@@ -121,9 +122,6 @@ let put_kex_pkt kex t =
   put_bool kex.first_kex_packet_follows |>
   put_uint32 Int32.zero
 
-(* *** *)
-open Ssh
-
 let buf_of_key rsa =
   put_key rsa (create ()) |> to_cstruct
 
@@ -131,6 +129,7 @@ let buf_of_kex_pkt kex =
   put_kex_pkt kex (create ()) |> to_cstruct
 
 let encode_message msg =
+  let open Ssh in
   let put_id id = put_uint8 (message_id_to_int id) (create ()) in
   let buf = match msg with
     | Ssh_msg_disconnect (code, desc, lang) ->
