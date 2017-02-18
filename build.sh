@@ -15,5 +15,4 @@
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #
 
-ocamlbuild -no-links -use-ocamlfind -I lib -I test all.otarget &&
-	./_build/test/test.native $@
+topkg build && topkg test

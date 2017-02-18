@@ -1,0 +1,8 @@
+version = "%%VERSION_NUM%%"
+description = "Pure SSH library implmentation in ocaml"
+requires = "str cstruct sexplib result nocrypto ipaddr"
+archive(byte) = "awa.cma"
+plugin(byte) = "awa.cma"
+archive(native) = "awa.cmxa"
+plugin(native) = "awa.cmxs"
+exists_if = "awa.cma"

@@ -1,10 +1,6 @@
-true: debug, bin_annot, strict_sequence
-true: use_menhir
-true: package(str)
-true: package(nocrypto)
-true: package(result), package(rresult)
-true: package(cstruct), package(cstruct.ppx)
-true: package(cstruct.unix), package(ipaddr)
-true: package(sexplib), package(ppx_type_conv), package(ppx_sexp_conv)
-<test/*.native>: package(io-page.unix)
+true: debug, bin_annot, strict_sequence, safe_string
+true: package(str nocrypto rresult cstruct cstruct.ppx sexplib ppx_sexp_conv)
+true: package(ipaddr)
+<lib> : include
+<test/*.native>: package(cstruct.unix io-page.unix)
 <lib/*.cm{x,o}> and not <lib/awa.*>: for-pack(Awa)

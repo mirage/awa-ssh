@@ -1,22 +1,35 @@
 opam-version: "1.2"
 name: "awa-ssh"
-version: "0.1"
 maintainer: "Christiano F. Haesbaert <haesbaert@haesbaert.org>"
 authors: "Christiano F. Haesbaert <haesbaert@haesbaert.org>"
+license: "ISC"
 homepage: "https://github.com/haesbaert/awa-ssh"
 bug-reports: "https://github.com/haesbaert/awa-ssh/issues"
-license: "ISC"
 dev-repo: "https://github.com/haesbaert/awa-ssh.git"
-available: [ocaml-version >= "4.02.3" & opam-version >= "1.2"]
+doc: "https://mirage.github.io/awa-ssh/api"
+
+available: [ocaml-version >= "4.03" & opam-version >= "1.2"]
+
 build: [
-  ["sh" "build.sh"]
+  [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "false" ]
 ]
+
+build-test: [
+  [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "true" ]
+  [ "ocaml" "pkg/pkg.ml" "test" ]
+]
+
 depends: [
-  "ocamlfind"
-  {build}
-  "ppx_sexp_conv"
-  "ppx_type_conv"
-  "cstruct" {>= "1.9"}
+  "ocamlfind"     {build}
+  "ocamlbuild"    {build}
+  "topkg"         {build}
+  "ppx_sexp_conv" {build}
+  "ppx_tools"     {build}
+  "nocrypto"
+  "cstruct"       {>= "1.9.0"}
   "sexplib"
-  "menhir"
+  "ipaddr"        {>= "2.5.0"}
+  "tcpip"         {>= "3.0.0"}
+  "rresult"
+  "io-page"       {test}
 ]

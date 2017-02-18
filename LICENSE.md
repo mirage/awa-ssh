@@ -1,4 +1,4 @@
-Copyright (c) 2016 Christiano F. Haesbaert <haesbaert@haesbaert.org>
+Copyright (c) 2016-2017 Christiano F. Haesbaert <haesbaert@haesbaert.org>
 
 Permission to use, copy, modify, and distribute this software for any
 purpose with or without fee is hereby granted, provided that the above
