@@ -128,83 +128,99 @@ let buf_of_kex_pkt kex =
   put_id Ssh.SSH_MSG_KEXINIT (create ()) |>
   put_kex kex |> to_cstruct
 
-let encode_message msg =
+let put_message msg buf =
   let open Ssh in
   let unimplemented () = failwith "implement me" in
-  let put_id id = put_id id (create ()) in
-  let buf = match msg with
+  match msg with
     | Ssh_msg_disconnect (code, desc, lang) ->
-      put_id SSH_MSG_DISCONNECT |>
+      put_id SSH_MSG_DISCONNECT buf |>
       put_uint32 code |>
       put_string desc |>
       put_string lang
     | Ssh_msg_ignore s ->
-      put_id SSH_MSG_IGNORE |>
+      put_id SSH_MSG_IGNORE buf |>
       put_string s
     | Ssh_msg_unimplemented x ->
-      put_id SSH_MSG_UNIMPLEMENTED |>
+      put_id SSH_MSG_UNIMPLEMENTED buf |>
       put_uint32 x
     | Ssh_msg_debug (always_display, message, lang) ->
-      put_id SSH_MSG_DEBUG |>
+      put_id SSH_MSG_DEBUG buf |>
       put_bool always_display |>
       put_string message |>
       put_string lang
     | Ssh_msg_service_request s ->
-      put_id SSH_MSG_SERVICE_REQUEST |>
+      put_id SSH_MSG_SERVICE_REQUEST buf |>
       put_string s
     | Ssh_msg_service_accept s ->
-      put_id SSH_MSG_SERVICE_ACCEPT |>
+      put_id SSH_MSG_SERVICE_ACCEPT buf |>
       put_string s
     | Ssh_msg_kexinit kex ->
-      put_id SSH_MSG_KEXINIT |>
+      put_id SSH_MSG_KEXINIT buf |>
       put_kex kex
     | Ssh_msg_newkeys ->
-      put_id SSH_MSG_NEWKEYS
+      put_id SSH_MSG_NEWKEYS buf
     | Ssh_msg_kexdh_init e ->
-      put_id SSH_MSG_KEXDH_INIT |>
+      put_id SSH_MSG_KEXDH_INIT buf |>
       put_mpint e
     | Ssh_msg_kexdh_reply (k_s, f, hsig) ->
-      put_id SSH_MSG_KEXDH_REPLY |>
+      put_id SSH_MSG_KEXDH_REPLY buf |>
       put_key k_s |>
       put_mpint f |>
       put_cstring hsig
     | Ssh_msg_userauth_request _ -> unimplemented ()
     | Ssh_msg_userauth_failure (nl, psucc) ->
-      put_id SSH_MSG_USERAUTH_FAILURE |>
+      put_id SSH_MSG_USERAUTH_FAILURE buf |>
       put_nl nl |>
       put_bool psucc
     | Ssh_msg_userauth_success ->
-      put_id SSH_MSG_USERAUTH_SUCCESS
+      put_id SSH_MSG_USERAUTH_SUCCESS buf
     | Ssh_msg_userauth_banner (message, lang) ->
-      put_id SSH_MSG_USERAUTH_BANNER |>
+      put_id SSH_MSG_USERAUTH_BANNER buf |>
       put_string message |>
       put_string lang
     | Ssh_msg_global_request -> unimplemented ()
     | Ssh_msg_request_success -> unimplemented ()
     | Ssh_msg_request_failure ->
-      put_id SSH_MSG_REQUEST_FAILURE
+      put_id SSH_MSG_REQUEST_FAILURE buf
     | Ssh_msg_channel_open -> unimplemented ()
     | Ssh_msg_channel_open_confirmation -> unimplemented ()
     | Ssh_msg_channel_open_failure ->
-      put_id SSH_MSG_CHANNEL_OPEN_FAILURE
+      put_id SSH_MSG_CHANNEL_OPEN_FAILURE buf
     | Ssh_msg_channel_window_adjust (channel, n) ->
-      put_id SSH_MSG_CHANNEL_WINDOW_ADJUST |>
+      put_id SSH_MSG_CHANNEL_WINDOW_ADJUST buf |>
       put_uint32 channel |>
       put_uint32 n
     | Ssh_msg_channel_data -> unimplemented ()
     | Ssh_msg_channel_extended_data -> unimplemented ()
     | Ssh_msg_channel_eof channel ->
-      put_id SSH_MSG_CHANNEL_EOF |>
+      put_id SSH_MSG_CHANNEL_EOF buf |>
       put_uint32 channel
     | Ssh_msg_channel_close channel ->
-      put_id SSH_MSG_CHANNEL_CLOSE |>
+      put_id SSH_MSG_CHANNEL_CLOSE buf |>
       put_uint32 channel
     | Ssh_msg_channel_request -> unimplemented ()
     | Ssh_msg_channel_success channel ->
-      put_id SSH_MSG_CHANNEL_SUCCESS |>
+      put_id SSH_MSG_CHANNEL_SUCCESS buf |>
       put_uint32 channel
     | Ssh_msg_channel_failure channel ->
-      put_id SSH_MSG_CHANNEL_FAILURE |>
+      put_id SSH_MSG_CHANNEL_FAILURE buf |>
       put_uint32 channel
+
+let encode_pkt msg blen =
+  let open Ssh in
+  let blen = max 8 blen in
+  (* Reserve sizeof_pkt_hdr so we can patch it when we know the size *)
+  let buf = reserve sizeof_pkt_hdr (create ()) |>
+            put_message msg
   in
-  to_cstruct buf
+  (* packet_length (sizeof_pkt_hdr) + padding_length + payload *)
+  let len = used buf in
+  (* calculate padding *)
+  let padlen =
+    let x = blen - (len mod blen) in
+    if x < 4 then x + blen else x
+  in
+  assert (padlen < 256);
+  let buf = put_random padlen buf in
+  (* do encryption and so on *)
+  buf
