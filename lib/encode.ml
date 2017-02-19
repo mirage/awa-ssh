@@ -230,7 +230,7 @@ let buf_of_pkt msg blen =
 let encrypt key iv buf =
   let open Nocrypto.Cipher_block in
   match key with
-  | Kex.Aes_ctr_key key ->
+  | Cipher.Aes_ctr_key key ->
     let buf = AES.CTR.encrypt ~key ~ctr:iv buf in
     let blocks = (Cstruct.len buf) / AES.CTR.block_size |> Int64.of_int in
     let iv_len = Cstruct.len iv in
@@ -240,7 +240,7 @@ let encrypt key iv buf =
     Counter.add16 next_iv 0 blocks;
     buf, next_iv
 
-  | Kex.Aes_cbc_key key ->
+  | Cipher.Aes_cbc_key key ->
     let enc_buf = AES.CBC.encrypt ~key ~iv buf in
     let next_iv = AES.CBC.next_iv ~iv buf in
     enc_buf, next_iv

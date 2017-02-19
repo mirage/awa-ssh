@@ -135,13 +135,9 @@ let negotiate ~s ~c =
        compression_algorithm_stoc }
       (* ignore language_ctos and language_stoc *)
 
-type enc_key =
-  | Aes_ctr_key of Nocrypto.Cipher_block.AES.CTR.key
-  | Aes_cbc_key of Nocrypto.Cipher_block.AES.CBC.key
-
 type keys = {
   iiv : Cstruct.t; (* Initial IV *)
-  enc : enc_key; (* Encryption key *)
+  enc : Cipher.key; (* Encryption key *)
   mac : Cstruct.t; (* Integrity key *)
 }
 
@@ -163,10 +159,11 @@ let derive_keys digestv k h session_id neg =
   in
   let key_of cipher h =
     let open Nocrypto.Cipher_block in
+    let open Cipher in
     match cipher with
-    | Cipher.Aes128_ctr | Cipher.Aes192_ctr | Cipher.Aes256_ctr ->
+    | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
       Aes_ctr_key (AES.CTR.of_secret h)
-    | Cipher.Aes128_cbc | Cipher.Aes192_cbc | Cipher.Aes256_cbc ->
+    | Aes128_cbc | Aes192_cbc | Aes256_cbc ->
       Aes_cbc_key (AES.CBC.of_secret h)
   in
   let ctos = { iiv = hash 'A';

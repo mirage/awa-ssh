@@ -26,6 +26,10 @@ type t =
   | Aes192_cbc
   | Aes256_cbc
 
+type key =
+  | Aes_ctr_key of Nocrypto.Cipher_block.AES.CTR.key
+  | Aes_cbc_key of Nocrypto.Cipher_block.AES.CBC.key
+
 let to_string = function
   | Aes128_ctr -> "aes128-ctr"
   | Aes192_ctr -> "aes192-ctr"
