@@ -227,7 +227,7 @@ let buf_of_pkt msg blen =
   buf
 
 (* For some reason Nocrypto CTR modifies ctr in place, CBC returns next *)
-let encrypt key iv buf =
+let encrypt ~key ~iv buf =
   let open Nocrypto.Cipher_block in
   match key with
   | Cipher.Aes_ctr_key key ->
@@ -241,6 +241,6 @@ let encrypt key iv buf =
     buf, next_iv
 
   | Cipher.Aes_cbc_key key ->
-    let enc_buf = AES.CBC.encrypt ~key ~iv buf in
+    let buf = AES.CBC.encrypt ~key ~iv buf in
     let next_iv = AES.CBC.next_iv ~iv buf in
-    enc_buf, next_iv
+    buf, next_iv
