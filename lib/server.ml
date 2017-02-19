@@ -77,9 +77,7 @@ let input_msg t msgbuf =
     let h = Kex.Dh.compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k in
     let signature = Rsa.PKCS1.sig_encode t.host_key h in
     let session_id = match t.session_id with None -> h | Some x -> x in
-    let new_keys_ctos, new_keys_stoc =
-      Kex.Dh.derive_keys k h session_id (Kex.keylen_needed neg)
-    in
+    let new_keys_ctos, new_keys_stoc = Kex.Dh.derive_keys k h session_id neg in
     ok ({t with session_id = Some session_id;
                 new_keys_ctos = Some new_keys_ctos;
                 new_keys_stoc = Some new_keys_stoc; },

@@ -53,35 +53,6 @@ let make_pkt () =
     languages_stoc = [];
     first_kex_packet_follows = false }
 
-type keys = {
-  iiv : Cstruct.t; (* Initial IV *)
-  enc : Cstruct.t; (* Encryption key *)
-  mac : Cstruct.t; (* Integrity key *)
-}
-
-let derive_keys digestv k h session_id need =
-  let k = Encode.(to_cstruct @@ put_mpint k (create ())) in
-  let x = Cstruct.create 1 in
-  let rec expand kn =
-    if (Cstruct.len kn) >= need then
-      kn
-    else
-      expand (digestv [k; h; kn])
-  in
-  let hash ch =
-    Cstruct.set_char x 0 ch;
-    expand (digestv [k; h; x; session_id])
-  in
-  let ctos = { iiv = hash 'A';
-               enc = hash 'C';
-               mac = hash 'E'; }
-  in
-  let stoc = { iiv = hash 'B';
-               enc = hash 'D';
-               mac = hash 'F'; }
-  in
-  (ctos, stoc)
-
 type negotiation = {
   kex_algorithm : algorithm;
   server_host_key_algorithm : server_host_key_algorithm;
@@ -163,6 +134,51 @@ let negotiate ~s ~c =
        compression_algorithm_ctos;
        compression_algorithm_stoc }
       (* ignore language_ctos and language_stoc *)
+
+type enc_key =
+  | Aes_ctr_key of Nocrypto.Cipher_block.AES.CTR.key
+  | Aes_cbc_key of Nocrypto.Cipher_block.AES.CBC.key
+
+type keys = {
+  iiv : Cstruct.t; (* Initial IV *)
+  enc : enc_key; (* Encryption key *)
+  mac : Cstruct.t; (* Integrity key *)
+}
+
+let derive_keys digestv k h session_id neg =
+  let need = keylen_needed neg in
+  let cipher_ctos = neg.encryption_algorithm_ctos in
+  let cipher_stoc = neg.encryption_algorithm_stoc in
+  let k = Encode.(to_cstruct @@ put_mpint k (create ())) in
+  let x = Cstruct.create 1 in
+  let rec expand kn =
+    if (Cstruct.len kn) >= need then
+      kn
+    else
+      expand (digestv [k; h; kn])
+  in
+  let hash ch =
+    Cstruct.set_char x 0 ch;
+    expand (digestv [k; h; x; session_id])
+  in
+  let key_of cipher h =
+    let open Nocrypto.Cipher_block in
+    match cipher with
+    | Cipher.Aes128_ctr | Cipher.Aes192_ctr | Cipher.Aes256_ctr ->
+      Aes_ctr_key (AES.CTR.of_secret h)
+    | Cipher.Aes128_cbc | Cipher.Aes192_cbc | Cipher.Aes256_cbc ->
+      Aes_cbc_key (AES.CBC.of_secret h)
+  in
+  let ctos = { iiv = hash 'A';
+               enc = hash 'C' |> key_of cipher_ctos;
+               mac = hash 'E'; }
+  in
+  let stoc = { iiv = hash 'B';
+               enc = hash 'D' |> key_of cipher_stoc;
+               mac = hash 'F'; }
+  in
+  (ctos, stoc)
+
 
 module Dh = struct
 

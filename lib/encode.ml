@@ -225,3 +225,22 @@ let buf_of_pkt msg blen =
   Ssh.set_pkt_hdr_pkt_len buf (Int32.of_int (Cstruct.len buf));
   Ssh.set_pkt_hdr_pad_len buf padlen;
   buf
+
+(* For some reason Nocrypto CTR modifies ctr in place, CBC returns next *)
+let encrypt key iv buf =
+  let open Nocrypto.Cipher_block in
+  match key with
+  | Kex.Aes_ctr_key key ->
+    let buf = AES.CTR.encrypt ~key ~ctr:iv buf in
+    let blocks = (Cstruct.len buf) / AES.CTR.block_size |> Int64.of_int in
+    let iv_len = Cstruct.len iv in
+    let next_iv = Cstruct.create iv_len in
+    Cstruct.blit iv 0 next_iv 0 iv_len;
+    (* Update ctr with number of blocks *)
+    Counter.add16 next_iv 0 blocks;
+    buf, next_iv
+
+  | Kex.Aes_cbc_key key ->
+    let enc_buf = AES.CBC.encrypt ~key ~iv buf in
+    let next_iv = AES.CBC.next_iv ~iv buf in
+    enc_buf, next_iv
