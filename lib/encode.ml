@@ -244,3 +244,23 @@ let encrypt ~key ~iv buf =
     let buf = AES.CBC.encrypt ~key ~iv buf in
     let next_iv = AES.CBC.next_iv ~iv buf in
     buf, next_iv
+
+let hmac ~key seq hmac pkt =
+  let open Mac in
+  let open Nocrypto.Hash in
+  let buf = Cstruct.create ((Cstruct.len pkt) + 4) in
+  Cstruct.BE.set_uint32 buf 0 seq;
+  Cstruct.blit pkt 0 buf 4 (Cstruct.len pkt);
+  let take_16 buf =
+    if (Cstruct.len buf) <= 16 then
+      buf
+    else
+      Cstruct.sub buf 0 16
+  in
+  match hmac with
+  | Mac.Hmac_md5 -> MD5.hmac ~key buf
+  | Hmac_md5_96 -> MD5.hmac ~key buf |> take_16
+  | Hmac_sha1 -> SHA1.hmac ~key buf
+  | Hmac_sha1_96 -> SHA1.hmac ~key buf |> take_16
+  | Hmac_sha2_256 -> SHA256.hmac ~key buf
+  | Hmac_sha2_512 -> SHA512.hmac ~key buf
