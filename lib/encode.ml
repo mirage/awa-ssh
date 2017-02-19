@@ -206,7 +206,7 @@ let put_message msg buf =
       put_id SSH_MSG_CHANNEL_FAILURE buf |>
       put_uint32 channel
 
-let encode_pkt msg blen =
+let buf_of_pkt msg blen =
   let open Ssh in
   let blen = max 8 blen in
   (* Reserve sizeof_pkt_hdr so we can patch it when we know the size *)
@@ -221,6 +221,7 @@ let encode_pkt msg blen =
     if x < 4 then x + blen else x
   in
   assert (padlen < 256);
-  let buf = put_random padlen buf in
-  (* do encryption and so on *)
+  let buf = to_cstruct @@ put_random padlen buf in
+  Ssh.set_pkt_hdr_pkt_len buf (Int32.of_int (Cstruct.len buf));
+  Ssh.set_pkt_hdr_pad_len buf padlen;
   buf
