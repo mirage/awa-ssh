@@ -27,13 +27,12 @@ let hmac ~key hmac buf =
       Cstruct.sub buf 0 16
   in
   match hmac with
-  | Hmac_md5 -> MD5.hmac ~key buf
-  | Hmac_md5_96 -> MD5.hmac ~key buf |> take_16
-  | Hmac_sha1 -> SHA1.hmac ~key buf
-  | Hmac_sha1_96 -> SHA1.hmac ~key buf |> take_16
-  | Hmac_sha2_256 -> SHA256.hmac ~key buf
-  | Hmac_sha2_512 -> SHA512.hmac ~key buf
-
+  | Md5 -> MD5.hmac ~key buf
+  | Md5_96 -> MD5.hmac ~key buf |> take_16
+  | Sha1 -> SHA1.hmac ~key buf
+  | Sha1_96 -> SHA1.hmac ~key buf |> take_16
+  | Sha2_256 -> SHA256.hmac ~key buf
+  | Sha2_512 -> SHA512.hmac ~key buf
 
 (* For some reason Nocrypto CTR modifies ctr in place, CBC returns next *)
 let cipher_enc ~key ~iv buf =
