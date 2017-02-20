@@ -78,13 +78,10 @@ let encrypt keys iv seq cipher mac msg =
   let buf = put_random padlen buf |> to_cstruct in
   Cstruct.BE.set_uint32 buf 0 seq;
 
-  (*
-   * At this point buf points to the sequence number.
-   * Now we can do HMAC, we then shift the sequence number and encrypt.
-   *)
+  (* At this point buf points to the sequence number *)
+  let pkt = Cstruct.shift buf 4 in
+  Ssh.set_pkt_hdr_pkt_len pkt (Int32.of_int (Cstruct.len pkt));
+  Ssh.set_pkt_hdr_pad_len pkt padlen;
   let hash = hmac ~key:keys.Kex.mac mac buf in
-  let buf = Cstruct.shift buf 4 in
-  Ssh.set_pkt_hdr_pkt_len buf (Int32.of_int (Cstruct.len buf));
-  Ssh.set_pkt_hdr_pad_len buf padlen;
-  let enc, next_iv = cipher_enc ~key:keys.Kex.enc ~iv:keys.Kex.iiv buf in
+  let enc, next_iv = cipher_enc ~key:keys.Kex.enc ~iv:keys.Kex.iiv pkt in
   (Cstruct.append enc hash), next_iv
