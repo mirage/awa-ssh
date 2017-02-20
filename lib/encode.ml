@@ -117,7 +117,7 @@ let put_kex kex t =
               kex.languages_ctos;
               kex.languages_stoc; ]
   in
-  List.fold_left (fun buf nl -> put_nl nl buf) (create ()) nll |>
+  List.fold_left (fun buf nl -> put_nl nl buf) t nll |>
   put_bool kex.first_kex_packet_follows |>
   put_uint32 Int32.zero
 
