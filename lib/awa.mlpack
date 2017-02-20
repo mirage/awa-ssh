@@ -3,6 +3,6 @@ Crypto
 Encode
 Decode
 Cipher
-Mac
+Hmac
 Kex
 Server

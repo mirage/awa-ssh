@@ -18,7 +18,7 @@
  * NOTE: Sequence must be already in buf !!!
  *)
 let hmac ~key hmac buf =
-  let open Mac in
+  let open Hmac in
   let open Nocrypto.Hash in
   let take_16 buf =
     if (Cstruct.len buf) <= 16 then
@@ -27,7 +27,7 @@ let hmac ~key hmac buf =
       Cstruct.sub buf 0 16
   in
   match hmac with
-  | Mac.Hmac_md5 -> MD5.hmac ~key buf
+  | Hmac_md5 -> MD5.hmac ~key buf
   | Hmac_md5_96 -> MD5.hmac ~key buf |> take_16
   | Hmac_sha1 -> SHA1.hmac ~key buf
   | Hmac_sha1_96 -> SHA1.hmac ~key buf |> take_16

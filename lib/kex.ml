@@ -45,8 +45,8 @@ let make_pkt () =
     server_host_key_algorithms = [ "ssh-rsa" ];
     encryption_algorithms_ctos = List.map Cipher.to_string Cipher.preferred;
     encryption_algorithms_stoc = List.map Cipher.to_string Cipher.preferred;
-    mac_algorithms_ctos = List.map Mac.to_string Mac.preferred;
-    mac_algorithms_stoc = List.map Mac.to_string Mac.preferred;
+    mac_algorithms_ctos = List.map Hmac.to_string Hmac.preferred;
+    mac_algorithms_stoc = List.map Hmac.to_string Hmac.preferred;
     compression_algorithms_ctos = [ "none" ];
     compression_algorithms_stoc = [ "none" ];
     languages_ctos = [];
@@ -58,8 +58,8 @@ type negotiation = {
   server_host_key_algorithm : server_host_key_algorithm;
   encryption_algorithm_ctos : Cipher.t;
   encryption_algorithm_stoc : Cipher.t;
-  mac_algorithm_ctos : Mac.t;
-  mac_algorithm_stoc : Mac.t;
+  mac_algorithm_ctos : Hmac.t;
+  mac_algorithm_stoc : Hmac.t;
   compression_algorithm_ctos : compression_algorithm;
   compression_algorithm_stoc : compression_algorithm;
 }
@@ -102,13 +102,13 @@ let negotiate ~s ~c =
     "Can't agree on encryption algorithm server to client"
   >>= fun encryption_algorithm_stoc ->
   pick_common
-    Mac.of_string
+    Hmac.of_string
     ~s:s.mac_algorithms_ctos
     ~c:c.mac_algorithms_ctos
     "Can't agree on mac algorithm client to server"
   >>= fun mac_algorithm_ctos ->
   pick_common
-    Mac.of_string
+    Hmac.of_string
     ~s:s.mac_algorithms_stoc
     ~c:c.mac_algorithms_stoc
     "Can't agree on mac algorithm server to client"
