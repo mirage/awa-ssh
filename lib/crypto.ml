@@ -24,7 +24,7 @@ let hmac ~key hmac buf =
     if (Cstruct.len buf) < 12 then
       failwith "digest is too short."
     else
-      Cstruct.sub buf 0 12
+      Cstruct.set_len buf 12
   in
   match hmac with
   | Md5 -> MD5.hmac ~key buf
