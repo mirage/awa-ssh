@@ -17,6 +17,7 @@
 open Sexplib.Conv
 open Rresult.R
 open Util
+open Nocrypto.Hash
 
 type t =
   | Md5
@@ -42,6 +43,14 @@ let of_string = function
  | "hmac-sha2-256" -> ok Sha2_256
  | "hmac-sha2-512" -> ok Sha2_512
  | s -> error ("Unknown mac " ^ s)
+
+let digest_len = function
+  | Md5      -> MD5.digest_size
+  | Md5_96   -> 12
+  | Sha1     -> SHA1.digest_size
+  | Sha1_96  -> 12
+  | Sha2_256 -> SHA256.digest_size
+  | Sha2_512 -> SHA512.digest_size
 
 let known s = is_ok (of_string s)
 
