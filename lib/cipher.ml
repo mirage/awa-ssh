@@ -17,6 +17,7 @@
 open Sexplib.Conv
 open Rresult.R
 open Util
+open Nocrypto.Cipher_block.AES
 
 type t =
   | Aes128_ctr
@@ -27,8 +28,8 @@ type t =
   | Aes256_cbc
 
 type key =
-  | Aes_ctr_key of Nocrypto.Cipher_block.AES.CTR.key
-  | Aes_cbc_key of Nocrypto.Cipher_block.AES.CBC.key
+  | Aes_ctr_key of CTR.key
+  | Aes_cbc_key of CBC.key
 
 let to_string = function
   | Aes128_ctr -> "aes128-ctr"
@@ -56,20 +57,12 @@ let key_len = function
   | Aes256_cbc -> 32
 
 let iv_len = function
-  | Aes128_ctr -> 0
-  | Aes192_ctr -> 0
-  | Aes256_ctr -> 0
-  | Aes128_cbc -> 16
-  | Aes192_cbc -> 16
-  | Aes256_cbc -> 16
+  | Aes128_ctr | Aes192_ctr | Aes256_ctr -> CTR.block_size
+  | Aes128_cbc | Aes192_cbc | Aes256_cbc -> CBC.block_size
 
 let block_len = function
-  | Aes128_ctr -> 16
-  | Aes192_ctr -> 16
-  | Aes256_ctr -> 16
-  | Aes128_cbc -> 16
-  | Aes192_cbc -> 16
-  | Aes256_cbc -> 16
+  | Aes128_ctr | Aes192_ctr | Aes256_ctr -> CTR.block_size
+  | Aes128_cbc | Aes192_cbc | Aes256_cbc -> CBC.block_size
 
 let known s = is_ok (of_string s)
 
