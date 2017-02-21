@@ -20,10 +20,10 @@ type t = {
   cbuf : Cstruct.t;
 }
 
-let chunk_size = 256
+let chunk_size = 1024
 
-let create ?(len=chunk_size) () =
-  { tlen = len; coff = 0; cbuf = Cstruct.create len }
+let create () =
+  { tlen = chunk_size; coff = 0; cbuf = Cstruct.create chunk_size }
 
 let to_cstruct t = Cstruct.set_len t.cbuf t.coff
 
