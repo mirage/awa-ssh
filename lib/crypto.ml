@@ -20,17 +20,17 @@
 let hmac ~key hmac buf =
   let open Hmac in
   let open Nocrypto.Hash in
-  let take_16 buf =
-    if (Cstruct.len buf) <= 16 then
-      buf
+  let take_96 buf =
+    if (Cstruct.len buf) < 12 then
+      failwith "digest is too short."
     else
-      Cstruct.sub buf 0 16
+      Cstruct.sub buf 0 12
   in
   match hmac with
   | Md5 -> MD5.hmac ~key buf
-  | Md5_96 -> MD5.hmac ~key buf |> take_16
+  | Md5_96 -> MD5.hmac ~key buf |> take_96
   | Sha1 -> SHA1.hmac ~key buf
-  | Sha1_96 -> SHA1.hmac ~key buf |> take_16
+  | Sha1_96 -> SHA1.hmac ~key buf |> take_96
   | Sha2_256 -> SHA256.hmac ~key buf
   | Sha2_512 -> SHA512.hmac ~key buf
 
