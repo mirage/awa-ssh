@@ -14,6 +14,10 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+open Sexplib.Conv
+open Rresult.R
+open Util
+
 (*
  * NOTE: Sequence must be already in buf !!!
  *)
@@ -53,30 +57,28 @@ let cipher_enc ~key ~iv buf =
     let next_iv = AES.CBC.next_iv ~iv buf in
     buf, next_iv
 
-let encrypt keys iv seq cipher mac msg =
-  let open Ssh in
+let encrypt keys seq cipher mac msg =
   let open Encode in
-  let blen = max 8 (Cipher.block_len cipher) in
+  let block_len = max 8 (Cipher.block_len cipher) in
 
   (*
    * Reserve 4 bytes for the sequence number which will be used on hmac.
    * Reserve sizeof_pkt_hdr so we can patch len/padlen after knowing how much
    * we need.
    *)
-  let buf = reserve (4 + sizeof_pkt_hdr)  (create ()) |>
+  let buf = reserve (4 + Ssh.sizeof_pkt_hdr)  (create ()) |>
             put_message msg     (* payload *)
   in
   (* packet_length + padding_length + payload - sequence_length *)
   let len = (used buf) - 4 in
   (* calculate padding *)
   let padlen =
-    let x = blen - (len mod blen) in
-    if x < 4 then x + blen else x
+    let x = block_len - (len mod block_len) in
+    if x < 4 then x + block_len else x
   in
   assert (padlen < 256);
   let buf = put_random padlen buf |> to_cstruct in
   Cstruct.BE.set_uint32 buf 0 seq;
-
   (* At this point buf points to the sequence number *)
   let pkt = Cstruct.shift buf 4 in
   Ssh.set_pkt_hdr_pkt_len pkt (Int32.of_int (Cstruct.len pkt));
