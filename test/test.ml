@@ -187,7 +187,19 @@ let t_mpint () =
    *)
   Cstruct.set_uint8 buf 4 0x80;
   let e = get_error (Decode.get_mpint buf) in
-  assert (e = "Negative mpint")
+  assert (e = "Negative mpint");
+
+  (*
+   * Case 5: Make sure state transitions are ok.
+   *)
+  let t, _ = Server.make (Nocrypto.Rsa.generate 2048) in
+  let client_version = "SSH-2.0-OpenSSH_6.9\r\n" in
+  match Server.handle t (Cstruct.of_string client_version) with
+  | Ok (t, buf) ->
+    assert ((Cstruct.len buf) = 0);
+    assert (t.Server.client_version = (Some "OpenSSH_6.9"));
+    ()
+  | Error e -> failwith e
 
 let run_test test =
   let f = fst test in
@@ -207,4 +219,5 @@ let all_tests = [
 ]
 
 let _ =
+  Nocrypto.Rng.reseed (Cstruct.of_string "180586");
   List.iter run_test all_tests;

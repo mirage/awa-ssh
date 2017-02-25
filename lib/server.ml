@@ -50,7 +50,7 @@ let make host_key =
             new_keys_ctos = None;
             new_keys_stoc = None; }
   in
-  t, banner_buf, server_kex
+  t, Cstruct.append banner_buf server_kex
 
 let input_msg t msgbuf =
   let open Ssh in
@@ -101,3 +101,10 @@ let output_msg t msg =
                 new_keys_stoc = None }
 
   | _ -> ok t
+
+let handle t buf =
+  match t.client_version with
+  | None ->
+    Decode.get_version buf >>= fun (client_version, buf) ->
+    ok ({t with client_version}, buf)
+  | Some _ -> failwith "boom"
