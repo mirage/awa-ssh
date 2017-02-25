@@ -18,6 +18,58 @@ open Sexplib.Conv
 open Rresult.R
 open Util
 
+let get_version buf =
+  (* Fetches next line, returns maybe a string and the remainder of buf *)
+  let fetchline buf =
+    if (Cstruct.len buf) < 2 then
+      None
+    else
+      let s = Cstruct.to_string buf in
+      let n = try String.index s '\n' with Not_found -> 0 in
+      if n = 0 || ((String.get s (pred n)) <> '\r')  then
+        None
+      else
+        let line = String.sub s 0 (pred n) in
+        let line_len = String.length line in
+        Some (line, Cstruct.shift buf (line_len + 2))
+  in
+  (* Extract SSH version from line *)
+  let processline line =
+    let line_len = String.length line in
+    if line_len < 4 || String.sub line 0 4 <> "SSH-" then
+      ok None
+    else if line_len < 9 then
+      error "Version line is too short"
+    else
+      let tokens = Str.split_delim (Str.regexp "-") line in
+      if List.length tokens <> 3 then
+        error "Can't parse version line"
+      else
+        let version = List.nth tokens 1 in
+        let peer_version = List.nth tokens 2 in
+        if version <> "2.0" then
+          error ("Bad version " ^ version)
+        else
+          ok (Some peer_version)
+  in
+  (* Scan all lines until an error or SSH version is found *)
+  let rec scan buf =
+    match fetchline buf with
+    | None -> if (Cstruct.len buf) > 1024 then
+        error "Buffer is too big"
+      else
+        ok (None, buf)
+    | Some (line, buf) ->
+      processline line >>= function
+      | Some peer_version -> ok (Some peer_version, buf)
+      | None ->
+        if (Cstruct.len buf) > 2 then
+          scan buf
+        else
+          ok (None, buf)
+  in
+  scan buf
+
 let get_message_id buf =
   trap_error (fun () ->
       let id = (Cstruct.get_uint8 buf 0) in

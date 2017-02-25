@@ -68,10 +68,9 @@ let t_banner () =
   ]
   in
   List.iter (fun s ->
-      let buf = Cstruct.of_string s in
-      match (Ssh.scan_version buf) with
-      | Result.Ok Some _ -> ()
-      | Result.Ok None -> failwith "expected some"
+      match Decode.get_version (Cstruct.of_string s) with
+      | Result.Ok (Some s, _) -> ()
+      | Result.Ok (None, _) -> failwith "expected some"
       | Result.Error e -> failwith e)
     good_strings;
 
@@ -85,10 +84,9 @@ let t_banner () =
   ]
   in
   List.iter (fun s ->
-      let buf = Cstruct.of_string s in
-      match (Ssh.scan_version buf) with
-      | Result.Ok Some _ -> failwith "expected none or error"
-      | Result.Ok None -> ()
+      match Decode.get_version (Cstruct.of_string s) with
+      | Result.Ok (Some _, _) -> failwith "expected none or error"
+      | Result.Ok (None, _) -> ()
       | Result.Error e -> ())
     bad_strings
 

@@ -26,47 +26,6 @@ type pkt_hdr = {
 
 let max_pkt_len = Int32.of_int 64000    (* 64KB should be enough *)
 
-let scan_version buf =
-  let s = Cstruct.to_string buf in
-  let len = String.length s in
-  let not_found =
-    if len < (1024 * 64) then
-      ok None
-    else
-      error "Buffer is too big"
-  in
-  let rec scan start off =
-    if off = len then
-      not_found
-    else
-      match (String.get s (pred off), String.get s off) with
-      | ('\r', '\n') ->
-        let line = String.sub s start (off - start - 1) in
-        let line_len = String.length line in
-        if line_len < 4 ||
-           String.sub line 0 4 <> "SSH-" then
-          scan (succ off) (succ off)
-        else if (line_len < 9) then
-          error "Version line is too short"
-        else
-          let tokens = Str.split_delim (Str.regexp "-") line in
-          if List.length tokens <> 3 then
-            error "Can't parse version line"
-          else
-            let version = List.nth tokens 1 in
-            let peer_version = List.nth tokens 2 in
-            if version <> "2.0" then
-              error ("Bad version " ^ version)
-            else
-              safe_shift buf (succ off) >>= fun buf ->
-              ok (Some (peer_version, buf))
-      | _ -> scan start (succ off)
-  in
-  if len < 2 then
-    not_found
-  else
-    scan 0 1
-
 let scan_pkt buf =
   let len = Cstruct.len buf in
   let partial () =
