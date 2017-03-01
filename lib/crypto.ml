@@ -64,8 +64,9 @@ let cipher_enc_dec enc ~key ~iv buf =
 let cipher_encrypt = cipher_enc_dec true
 let cipher_decrypt = cipher_enc_dec false
 
-let encrypt keys seq cipher mac msg =
+let encrypt keys seq msg =
   let open Encode in
+  let cipher = fst keys.Kex.cipher in
   let block_len = max 8 (Cipher.block_len cipher) in
 
   (*
@@ -94,8 +95,10 @@ let encrypt keys seq cipher mac msg =
   let enc, next_iv = cipher_encrypt ~key:keys.Kex.cipher ~iv:keys.Kex.iv pkt in
   (Cstruct.append enc hash), next_iv
 
-let decrypt keys cipher buf =
+(* XXX check seq on decrypt *)
+let decrypt keys buf =
   let len = Cstruct.len buf in
+  let cipher = fst keys.Kex.cipher in
   let block_len = max 8 (Cipher.block_len cipher) in
   let digest_len = Hmac.digest_len (fst keys.Kex.mac) in
   if len < (block_len + digest_len) then
