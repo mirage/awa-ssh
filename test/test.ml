@@ -100,8 +100,8 @@ let t_key_exchange () =
   let buf = Cstruct.create 64 in
   Ssh.set_pkt_hdr_pkt_len buf 60l;
   Ssh.set_pkt_hdr_pad_len buf 0;
-  let pkt, clen = get_some @@ get_ok_s @@ Decode.get_pkt buf in
-  assert (clen = 64);
+  let pkt, rbuf = get_some @@ get_ok_s @@ Decode.get_pkt buf in
+  assert ((Cstruct.len rbuf) = 0);
   (*
    * Case 2: Similar to 1, but the packet is missing 1 byte.
    * This should not return a packet.
@@ -128,7 +128,7 @@ let t_key_exchange () =
   Ssh.set_pkt_hdr_pkt_len buf 0l;
   Ssh.set_pkt_hdr_pad_len buf 0;
   let e = get_error (Decode.get_pkt buf) in
-  assert (e = "Malformed packet")
+  assert (e = "Bogus pkt len")
 
 
 let t_namelist () =

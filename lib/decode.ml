@@ -229,41 +229,35 @@ let get_message buf =
 
 let get_pkt buf =
   let open Ssh in
-  let len = Cstruct.len buf in
   let partial () =
-    if len < max_pkt_len then
+    if (Cstruct.len buf) < max_pkt_len then
       ok None
     else
       error "Buffer is too big"
   in
-  if len < 4 then
+  if (Cstruct.len buf) < 5 then               (* pkt len + padding *)
     partial ()
   else
     let pkt_len32 = get_pkt_hdr_pkt_len buf in
     let pkt_len = Int32.to_int pkt_len32 in
     let pad_len = get_pkt_hdr_pad_len buf in
-    (* XXX remember mac_len *)
-    guard
-      (pkt_len <> 0 &&
-       ((u32_compare pkt_len32 (Int32.of_int max_pkt_len)) < 0) &&
-       (pkt_len > pad_len + 1))
-      "Malformed packet"
+    guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len"
     >>= fun () ->
-    assert (len > 4);
-    if pkt_len > (len - 4) then
+    let pkt = Cstruct.shift buf 4 in
+    if (Cstruct.len pkt) < pkt_len then
       partial ()
     else
+      (* Make sure nobody tricks us with bogus pad len *)
+      guard (pad_len < pkt_len) "Bogus pad len"
+      >>= fun () ->
       let payload_len = pkt_len - pad_len - 1 in
-      let clen =
-        4 +                (* pkt_len field itself *)
-        pkt_len +          (* size of this packet  *)
-        pad_len            (* padding after packet *)
-                           (* XXX mac_len missing !*)
-      in
-      safe_sub buf sizeof_pkt_hdr payload_len >>= fun pkt ->
-      ok (Some (pkt, clen))
+      guard (payload_len > 0) "Bogus payload_len" >>= fun () ->
+      let payload = Cstruct.shift pkt 1 in
+      let buf = Cstruct.shift payload payload_len in
+      let payload = Cstruct.set_len payload payload_len in
+      ok (Some (payload, buf))
 
 let scan_message buf =
   get_pkt buf >>= function
   | None -> ok None
-  | Some (pkt, clen) -> get_message pkt >>= fun msg -> ok (Some msg)
+  | Some (pkt, _) -> get_message pkt >>= fun msg -> ok (Some msg)

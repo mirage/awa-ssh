@@ -18,14 +18,13 @@ open Sexplib.Conv
 open Rresult.R
 open Util
 
-(*
- * NOTE: Sequence must be already in buf !!!
- *)
-let hmac hkey buf =
+let hmac hkey seq buf =
   let open Hmac in
   let open Nocrypto.Hash in
   let hmac = fst hkey in
   let key = snd hkey in
+  let seqbuf = Cstruct.create 4 in
+  Cstruct.BE.set_uint32 seqbuf 0 seq;
   let take_96 buf =
     if (Cstruct.len buf) < 12 then
       failwith "digest is too short."
@@ -33,12 +32,12 @@ let hmac hkey buf =
       Cstruct.set_len buf 12
   in
   match hmac with
-  | Md5 -> MD5.hmac ~key buf
-  | Md5_96 -> MD5.hmac ~key buf |> take_96
-  | Sha1 -> SHA1.hmac ~key buf
-  | Sha1_96 -> SHA1.hmac ~key buf |> take_96
-  | Sha2_256 -> SHA256.hmac ~key buf
-  | Sha2_512 -> SHA512.hmac ~key buf
+  | Md5 -> MD5.hmacv ~key [ seqbuf; buf ]
+  | Md5_96 -> MD5.hmacv ~key [ seqbuf; buf ] |> take_96
+  | Sha1 -> SHA1.hmacv ~key [ seqbuf; buf ]
+  | Sha1_96 -> SHA1.hmacv ~key [ seqbuf; buf ] |> take_96
+  | Sha2_256 -> SHA256.hmacv ~key [ seqbuf; buf ]
+  | Sha2_512 -> SHA512.hmacv ~key [ seqbuf; buf ]
 
 (* For some reason Nocrypto CTR modifies ctr in place, CBC returns next *)
 let cipher_enc_dec enc ~key ~iv buf =
@@ -91,36 +90,27 @@ let encrypt keys seq msg =
   let pkt = Cstruct.shift buf 4 in
   Ssh.set_pkt_hdr_pkt_len pkt (Int32.of_int (Cstruct.len pkt));
   Ssh.set_pkt_hdr_pad_len pkt padlen;
-  let hash = hmac keys.Kex.mac buf in
+  let hash = hmac keys.Kex.mac seq buf in
   let enc, next_iv = cipher_encrypt ~key:keys.Kex.cipher ~iv:keys.Kex.iv pkt in
   (Cstruct.append enc hash), next_iv
 
-(* XXX check seq on decrypt *)
-let decrypt keys buf =
-  let len = Cstruct.len buf in
+let decrypt keys seq buf =
   let cipher = fst keys.Kex.cipher in
   let block_len = max 8 (Cipher.block_len cipher) in
   let digest_len = Hmac.digest_len (fst keys.Kex.mac) in
-  if len < (block_len + digest_len) then
+  if (Cstruct.len buf) < (block_len + digest_len) then
     ok None
   else
     let dec, next_iv =
       cipher_decrypt ~key:keys.Kex.cipher ~iv:keys.Kex.iv buf in
-    let pkt_len = Ssh.get_pkt_hdr_pkt_len buf |> Int32.to_int in
-    let pad_len = Ssh.get_pkt_hdr_pad_len buf in
-    if len > (pkt_len + digest_len) then
-      ok None
-    else
-      (* Pkt is the beggining of pkt, unterminated *)
-      let pkt = Cstruct.set_len dec pkt_len in
-      (* Payload is the beggining of message *)
-      let payload = Cstruct.shift pkt (Ssh.sizeof_pkt_hdr + pad_len) in
-      (* Check digest *)
-      safe_shift buf pkt_len >>= fun digest ->
-      let digest1 = Cstruct.set_len digest digest_len in
-      let digest2 = hmac keys.Kex.mac pkt in
-      guard (Cstruct.equal digest1 digest2) "Bad digest" >>= fun () ->
-      (* Point to the end of buf *)
-      safe_shift buf (pkt_len + digest_len) >>= fun buf ->
-      Decode.get_message payload >>= fun msg ->
-      ok (Some (msg, buf, next_iv))
+    Decode.get_pkt dec >>= function
+    | None -> ok None           (* partial packet *)
+    | Some (payload, digest) ->
+      if (Cstruct.len digest) < digest_len then
+        ok None
+      else
+        let digest1 = Cstruct.set_len digest digest_len in
+        let digest2 = hmac keys.Kex.mac seq payload in
+        guard (Cstruct.equal digest1 digest2) "Bad digest" >>= fun () ->
+        Decode.get_message payload >>= fun msg ->
+        ok (Some (msg, buf, { keys with Kex.iv = next_iv }))
