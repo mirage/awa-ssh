@@ -43,7 +43,7 @@ let hmac hkey buf =
 (* For some reason Nocrypto CTR modifies ctr in place, CBC returns next *)
 let cipher_enc_dec enc ~key ~iv buf =
   let open Nocrypto.Cipher_block in
-  match key with
+  match (snd key) with
   | Cipher.Aes_ctr_key key ->
     let f = if enc then AES.CTR.encrypt else AES.CTR.decrypt in
     let buf = f ~key ~ctr:iv buf in
@@ -94,10 +94,10 @@ let encrypt keys seq cipher mac msg =
   let enc, next_iv = cipher_encrypt ~key:keys.Kex.cipher ~iv:keys.Kex.iv pkt in
   (Cstruct.append enc hash), next_iv
 
-let decrypt keys cipher mac buf =
+let decrypt keys cipher buf =
   let len = Cstruct.len buf in
   let block_len = max 8 (Cipher.block_len cipher) in
-  let digest_len = Hmac.digest_len mac in
+  let digest_len = Hmac.digest_len (fst keys.Kex.mac) in
   if len < (block_len + digest_len) then
     ok None
   else

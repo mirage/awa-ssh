@@ -27,9 +27,11 @@ type t =
   | Aes192_cbc
   | Aes256_cbc
 
-type key =
+type aes_key =
   | Aes_ctr_key of CTR.key
   | Aes_cbc_key of CBC.key
+
+type key = t * aes_key
 
 let to_string = function
   | Aes128_ctr -> "aes128-ctr"

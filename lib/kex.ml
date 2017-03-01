@@ -164,9 +164,9 @@ let derive_keys digestv k h session_id neg =
     let open Cipher in
     match cipher with
     | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
-      Aes_ctr_key (AES.CTR.of_secret h)
+      (cipher, Aes_ctr_key (AES.CTR.of_secret h))
     | Aes128_cbc | Aes192_cbc | Aes256_cbc ->
-      Aes_cbc_key (AES.CBC.of_secret h)
+      (cipher, Aes_cbc_key (AES.CBC.of_secret h))
   in
   let ctos = { iv     = hash 'A';
                cipher = hash 'C' |> key_of cipher_ctos;
