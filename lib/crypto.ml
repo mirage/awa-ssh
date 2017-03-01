@@ -91,7 +91,7 @@ let encrypt keys seq cipher mac msg =
   Ssh.set_pkt_hdr_pkt_len pkt (Int32.of_int (Cstruct.len pkt));
   Ssh.set_pkt_hdr_pad_len pkt padlen;
   let hash = hmac keys.Kex.mac buf in
-  let enc, next_iv = cipher_encrypt ~key:keys.Kex.enc ~iv:keys.Kex.iiv pkt in
+  let enc, next_iv = cipher_encrypt ~key:keys.Kex.enc ~iv:keys.Kex.iv pkt in
   (Cstruct.append enc hash), next_iv
 
 let decrypt keys cipher mac buf =
@@ -101,7 +101,7 @@ let decrypt keys cipher mac buf =
   if len < (block_len + digest_len) then
     ok None
   else
-    let dec, next_iv = cipher_decrypt ~key:keys.Kex.enc ~iv:keys.Kex.iiv buf in
+    let dec, next_iv = cipher_decrypt ~key:keys.Kex.enc ~iv:keys.Kex.iv buf in
     let pkt_len = Ssh.get_pkt_hdr_pkt_len buf |> Int32.to_int in
     let pad_len = Ssh.get_pkt_hdr_pad_len buf in
     if len > (pkt_len + digest_len) then

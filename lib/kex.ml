@@ -136,7 +136,7 @@ let negotiate ~s ~c =
       (* ignore language_ctos and language_stoc *)
 
 type keys = {
-  iiv : Cstruct.t;  (* Initial IV *)
+  iv : Cstruct.t;   (* Initial IV *)
   enc : Cipher.key; (* Encryption key *)
   mac : Hmac.key;   (* Integrity key *)
 }
@@ -168,11 +168,11 @@ let derive_keys digestv k h session_id neg =
     | Aes128_cbc | Aes192_cbc | Aes256_cbc ->
       Aes_cbc_key (AES.CBC.of_secret h)
   in
-  let ctos = { iiv = hash 'A';
+  let ctos = { iv  = hash 'A';
                enc = hash 'C' |> key_of cipher_ctos;
                mac = (mac_ctos, hash 'E'); }
   in
-  let stoc = { iiv = hash 'B';
+  let stoc = { iv = hash 'B';
                enc = hash 'D' |> key_of cipher_stoc;
                mac = (mac_stoc, hash 'F'); }
   in
