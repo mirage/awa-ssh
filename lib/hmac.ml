@@ -27,6 +27,8 @@ type t =
   | Sha2_256
   | Sha2_512
 
+type key = t * Cstruct.t
+
 let to_string = function
   | Md5      -> "hmac-md5"
   | Md5_96   -> "hmac-md5-96"

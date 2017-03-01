@@ -21,9 +21,11 @@ open Util
 (*
  * NOTE: Sequence must be already in buf !!!
  *)
-let hmac ~key hmac buf =
+let hmac hkey buf =
   let open Hmac in
   let open Nocrypto.Hash in
+  let hmac = fst hkey in
+  let key = snd hkey in
   let take_96 buf =
     if (Cstruct.len buf) < 12 then
       failwith "digest is too short."
@@ -88,7 +90,7 @@ let encrypt keys seq cipher mac msg =
   let pkt = Cstruct.shift buf 4 in
   Ssh.set_pkt_hdr_pkt_len pkt (Int32.of_int (Cstruct.len pkt));
   Ssh.set_pkt_hdr_pad_len pkt padlen;
-  let hash = hmac ~key:keys.Kex.mac mac buf in
+  let hash = hmac keys.Kex.mac buf in
   let enc, next_iv = cipher_encrypt ~key:keys.Kex.enc ~iv:keys.Kex.iiv pkt in
   (Cstruct.append enc hash), next_iv
 
@@ -112,7 +114,7 @@ let decrypt keys cipher mac buf =
       (* Check digest *)
       safe_shift buf pkt_len >>= fun digest ->
       let digest1 = Cstruct.set_len digest digest_len in
-      let digest2 = hmac ~key:keys.Kex.mac mac pkt in
+      let digest2 = hmac keys.Kex.mac pkt in
       guard (Cstruct.equal digest1 digest2) "Bad digest" >>= fun () ->
       (* Point to the end of buf *)
       safe_shift buf (pkt_len + digest_len) >>= fun buf ->

@@ -136,15 +136,17 @@ let negotiate ~s ~c =
       (* ignore language_ctos and language_stoc *)
 
 type keys = {
-  iiv : Cstruct.t; (* Initial IV *)
+  iiv : Cstruct.t;  (* Initial IV *)
   enc : Cipher.key; (* Encryption key *)
-  mac : Cstruct.t; (* Integrity key *)
+  mac : Hmac.key;   (* Integrity key *)
 }
 
 let derive_keys digestv k h session_id neg =
   let need = keylen_needed neg in
   let cipher_ctos = neg.encryption_algorithm_ctos in
   let cipher_stoc = neg.encryption_algorithm_stoc in
+  let mac_ctos = neg.mac_algorithm_ctos in
+  let mac_stoc = neg.mac_algorithm_stoc in
   let k = Encode.(to_cstruct @@ put_mpint k (create ())) in
   let x = Cstruct.create 1 in
   let rec expand kn =
@@ -168,11 +170,11 @@ let derive_keys digestv k h session_id neg =
   in
   let ctos = { iiv = hash 'A';
                enc = hash 'C' |> key_of cipher_ctos;
-               mac = hash 'E'; }
+               mac = (mac_ctos, hash 'E'); }
   in
   let stoc = { iiv = hash 'B';
                enc = hash 'D' |> key_of cipher_stoc;
-               mac = hash 'F'; }
+               mac = (mac_stoc, hash 'F'); }
   in
   (ctos, stoc)
 
