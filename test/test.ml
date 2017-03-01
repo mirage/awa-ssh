@@ -100,7 +100,7 @@ let t_key_exchange () =
   let buf = Cstruct.create 64 in
   Ssh.set_pkt_hdr_pkt_len buf 60l;
   Ssh.set_pkt_hdr_pad_len buf 0;
-  let pkt, clen = get_some @@ get_ok_s @@ Ssh.scan_pkt buf in
+  let pkt, clen = get_some @@ get_ok_s @@ Decode.get_pkt buf in
   assert (clen = 64);
   (*
    * Case 2: Similar to 1, but the packet is missing 1 byte.
@@ -109,7 +109,7 @@ let t_key_exchange () =
   let buf = Cstruct.create 63 in
   Ssh.set_pkt_hdr_pkt_len buf 60l;
   Ssh.set_pkt_hdr_pad_len buf 0;
-  assert_none @@ get_ok_s @@ Ssh.scan_pkt buf;
+  assert_none @@ get_ok_s @@ Decode.get_pkt buf;
 
   (* Read a pcap file and see if it makes sense. *)
   let file = "test/kex.packet" in
@@ -127,7 +127,7 @@ let t_key_exchange () =
   let buf = Cstruct.create 64 in
   Ssh.set_pkt_hdr_pkt_len buf 0l;
   Ssh.set_pkt_hdr_pad_len buf 0;
-  let e = get_error (Ssh.scan_pkt buf) in
+  let e = get_error (Decode.get_pkt buf) in
   assert (e = "Malformed packet")
 
 
