@@ -65,44 +65,36 @@ let cipher_decrypt = cipher_enc_dec false
 
 let encrypt keys seq msg =
   let open Encode in
-  let cipher = fst keys.Kex.cipher in
+  let open Kex in
+  let cipher = fst keys.cipher in
   let block_len = max 8 (Cipher.block_len cipher) in
 
-  (*
-   * Reserve 4 bytes for the sequence number which will be used on hmac.
-   * Reserve sizeof_pkt_hdr so we can patch len/padlen after knowing how much
-   * we need.
-   *)
-  let buf = reserve (4 + Ssh.sizeof_pkt_hdr)  (create ()) |>
-            put_message msg     (* payload *)
-  in
+  let buf = reserve Ssh.sizeof_pkt_hdr (create ()) |> put_message msg in
   (* packet_length + padding_length + payload - sequence_length *)
-  let len = (used buf) - 4 in
+  let len = used buf in
   (* calculate padding *)
   let padlen =
     let x = block_len - (len mod block_len) in
     if x < 4 then x + block_len else x
   in
   assert (padlen < 256);
-  let buf = put_random padlen buf |> to_cstruct in
-  Cstruct.BE.set_uint32 buf 0 seq;
-  (* At this point buf points to the sequence number *)
-  let pkt = Cstruct.shift buf 4 in
+  let pkt = put_random padlen buf |> to_cstruct in
   Ssh.set_pkt_hdr_pkt_len pkt (Int32.of_int (Cstruct.len pkt));
   Ssh.set_pkt_hdr_pad_len pkt padlen;
-  let hash = hmac keys.Kex.mac seq buf in
-  let enc, next_iv = cipher_encrypt ~key:keys.Kex.cipher ~iv:keys.Kex.iv pkt in
-  (Cstruct.append enc hash), next_iv
+  let digest = hmac keys.mac seq pkt in
+  let enc, next_iv = cipher_encrypt ~key:keys.cipher ~iv:keys.iv pkt in
+  (* XXX slow copy *)
+  (Cstruct.append enc digest), next_iv
 
 let decrypt keys seq buf =
-  let cipher = fst keys.Kex.cipher in
+  let open Kex in
+  let cipher = fst keys.cipher in
   let block_len = max 8 (Cipher.block_len cipher) in
-  let digest_len = Hmac.digest_len (fst keys.Kex.mac) in
+  let digest_len = Hmac.digest_len (fst keys.mac) in
   if (Cstruct.len buf) < (block_len + digest_len) then
     ok None
   else
-    let dec, next_iv =
-      cipher_decrypt ~key:keys.Kex.cipher ~iv:keys.Kex.iv buf in
+    let dec, next_iv = cipher_decrypt ~key:keys.cipher ~iv:keys.iv buf in
     Decode.get_pkt dec >>= function
     | None -> ok None           (* partial packet *)
     | Some (payload, digest) ->
@@ -110,7 +102,7 @@ let decrypt keys seq buf =
         ok None
       else
         let digest1 = Cstruct.set_len digest digest_len in
-        let digest2 = hmac keys.Kex.mac seq payload in
+        let digest2 = hmac keys.mac seq payload in
         guard (Cstruct.equal digest1 digest2) "Bad digest" >>= fun () ->
         Decode.get_message payload >>= fun msg ->
-        ok (Some (msg, buf, { keys with Kex.iv = next_iv }))
+        ok (Some (msg, buf, { keys with iv = next_iv }))
