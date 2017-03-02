@@ -28,8 +28,6 @@ type t = {
   neg_kex : Kex.negotiation option;    (* Negotiated KEX *)
   host_key : Nocrypto.Rsa.priv;        (* Server host key *)
   session_id : Cstruct.t option;       (* First calculated H *)
-  seq_ctos : int32;                    (* Client to server sequence number *)
-  seq_stoc : int32;                    (* Server to client sequence number *)
   keys_ctos : Kex.keys option;         (* Client to server (input) keys *)
   keys_stoc : Kex.keys option;         (* Server to cleint (output) keys *)
   new_keys_ctos : Kex.keys option;     (* Install when we receive NEWKEYS *)
@@ -47,8 +45,6 @@ let make host_key =
             neg_kex = None;
             host_key;
             session_id = None;
-            seq_ctos = Int32.zero;
-            seq_stoc = Int32.zero;
             keys_ctos = None;
             keys_stoc = None;
             new_keys_ctos = None;
@@ -126,6 +122,6 @@ let handle t buf =
     match t.keys_ctos with
     | None -> failwith "boom"
     | Some keys ->
-      Crypto.decrypt keys t.seq_ctos buf >>= function
+      Crypto.decrypt keys buf >>= function
       | None -> ok (t, buf)
       | Some (msg, buf, iv) -> ok (t, buf)
