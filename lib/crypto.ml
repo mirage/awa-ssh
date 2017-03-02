@@ -18,12 +18,13 @@ open Sexplib.Conv
 open Rresult.R
 open Util
 
-let hmac hkey buf =
+let hmac keys buf =
   let open Hmac in
+  let open Kex in
   let open Nocrypto.Hash in
-  let hmac = hkey.hmac in
-  let key = hkey.key in
-  let seq = hkey.seq in
+  let hmac = keys.mac.hmac in
+  let key = keys.mac.key in
+  let seq = keys.mac.seq in
   let seqbuf = Cstruct.create 4 in
   Cstruct.BE.set_uint32 seqbuf 0 seq;
   let take_96 buf =
@@ -32,13 +33,16 @@ let hmac hkey buf =
     else
       Cstruct.set_len buf 12
   in
-  match hmac with
-  | Md5 -> MD5.hmacv ~key [ seqbuf; buf ]
-  | Md5_96 -> MD5.hmacv ~key [ seqbuf; buf ] |> take_96
-  | Sha1 -> SHA1.hmacv ~key [ seqbuf; buf ]
-  | Sha1_96 -> SHA1.hmacv ~key [ seqbuf; buf ] |> take_96
-  | Sha2_256 -> SHA256.hmacv ~key [ seqbuf; buf ]
-  | Sha2_512 -> SHA512.hmacv ~key [ seqbuf; buf ]
+  let digest = match hmac with
+    | Md5 -> MD5.hmacv ~key [ seqbuf; buf ]
+    | Md5_96 -> MD5.hmacv ~key [ seqbuf; buf ] |> take_96
+    | Sha1 -> SHA1.hmacv ~key [ seqbuf; buf ]
+    | Sha1_96 -> SHA1.hmacv ~key [ seqbuf; buf ] |> take_96
+    | Sha2_256 -> SHA256.hmacv ~key [ seqbuf; buf ]
+    | Sha2_512 -> SHA512.hmacv ~key [ seqbuf; buf ]
+  in
+  let keys = { keys with mac = { keys.mac with seq = Int32.succ seq } } in
+  digest, keys
 
 (* For some reason Nocrypto CTR modifies ctr in place, CBC returns next *)
 let cipher_enc_dec enc keys buf =
@@ -55,13 +59,13 @@ let cipher_enc_dec enc keys buf =
     Cstruct.blit iv 0 next_iv 0 iv_len;
     (* Update ctr with number of blocks *)
     Counter.add16 next_iv 0 blocks;
-    buf, next_iv
+    buf, Kex.{ keys with iv = next_iv }
 
   | Cipher.Aes_cbc_key key ->
     let f = if enc then AES.CBC.encrypt else AES.CBC.decrypt in
     let buf = f ~key ~iv buf in
     let next_iv = AES.CBC.next_iv ~iv buf in
-    buf, next_iv
+    buf, Kex.{ keys with iv = next_iv }
 
 let cipher_encrypt = cipher_enc_dec true
 let cipher_decrypt = cipher_enc_dec false
@@ -84,10 +88,10 @@ let encrypt keys msg =
   let pkt = put_random padlen buf |> to_cstruct in
   Ssh.set_pkt_hdr_pkt_len pkt (Int32.of_int (Cstruct.len pkt));
   Ssh.set_pkt_hdr_pad_len pkt padlen;
-  let digest = hmac keys.mac pkt in
-  let enc, next_iv = cipher_encrypt keys pkt in
+  let digest, keys = hmac keys pkt in
+  let enc, keys = cipher_encrypt keys pkt in
   (* XXX slow copy *)
-  (Cstruct.append enc digest), next_iv
+  (Cstruct.append enc digest), keys
 
 let decrypt keys buf =
   let open Kex in
@@ -97,7 +101,7 @@ let decrypt keys buf =
   if (Cstruct.len buf) < (block_len + digest_len) then
     ok None
   else
-    let dec, next_iv = cipher_decrypt keys buf in
+    let dec, keys = cipher_decrypt keys buf in
     Decode.get_pkt dec >>= function
     | None -> ok None           (* partial packet *)
     | Some (payload, digest) ->
@@ -105,7 +109,7 @@ let decrypt keys buf =
         ok None
       else
         let digest1 = Cstruct.set_len digest digest_len in
-        let digest2 = hmac keys.mac payload in
+        let digest2, keys = hmac keys payload in
         guard (Cstruct.equal digest1 digest2) "Bad digest" >>= fun () ->
         Decode.get_message payload >>= fun msg ->
-        ok (Some (msg, buf, { keys with iv = next_iv }))
+        ok (Some (msg, buf, keys))
