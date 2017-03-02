@@ -28,8 +28,9 @@ type t =
   | Sha2_512
 
 type key = {
-  hmac : t;
-  key  : Cstruct.t;
+  hmac : t;            (* Hmac algorithm *)
+  key  : Cstruct.t;    (* The actual hmac key *)
+  seq  : int32;        (* Sequence number for hmac *)
 }
 
 let to_string = function

@@ -56,6 +56,17 @@ let make host_key =
   in
   t, Cstruct.append banner_buf server_kex
 
+let patch_new_keys old_keys new_keys =
+  let open Kex in
+  let open Hmac in
+  guard_some new_keys "No new_keys_ctos" >>= fun new_keys ->
+  let new_seq = match old_keys with
+    | None -> Int32.zero
+    | Some keys -> keys.mac.seq
+  in
+  let new_mac = { new_keys.mac with seq = new_seq } in
+  ok { new_keys with mac = new_mac }
+
 let input_msg t msgbuf =
   let open Ssh in
   let open Nocrypto in
@@ -89,7 +100,7 @@ let input_msg t msgbuf =
           Ssh_msg_newkeys ])
 
   | Ssh_msg_newkeys ->
-    guard_some t.new_keys_ctos "No new_keys_ctos" >>= fun new_keys_ctos ->
+    patch_new_keys t.keys_ctos t.new_keys_ctos >>= fun new_keys_ctos ->
     ok ({ t with keys_ctos = Some new_keys_ctos;
                  new_keys_ctos = None },
         [])
@@ -100,7 +111,7 @@ let output_msg t msg =
   let open Ssh in
   match msg with
   | Ssh_msg_newkeys ->
-    guard_some t.new_keys_stoc "Expected new keys" >>= fun new_keys_stoc ->
+    patch_new_keys t.keys_stoc t.new_keys_stoc >>= fun new_keys_stoc ->
     ok { t with keys_stoc = Some new_keys_stoc;
                 new_keys_stoc = None }
 
