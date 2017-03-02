@@ -170,11 +170,11 @@ let derive_keys digestv k h session_id neg =
   in
   let ctos = { iv     = hash 'A';
                cipher = hash 'C' |> key_of cipher_ctos;
-               mac    = (mac_ctos, hash 'E'); }
+               mac    = Hmac.{ hmac = mac_ctos; key = hash 'E' } }
   in
   let stoc = { iv     = hash 'B';
                cipher = hash 'D' |> key_of cipher_stoc;
-               mac    = (mac_stoc, hash 'F'); }
+               mac    = Hmac.{ hmac = mac_stoc; key = hash 'F' } }
   in
   (ctos, stoc)
 

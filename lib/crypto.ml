@@ -21,8 +21,8 @@ open Util
 let hmac hkey seq buf =
   let open Hmac in
   let open Nocrypto.Hash in
-  let hmac = fst hkey in
-  let key = snd hkey in
+  let hmac = hkey.hmac in
+  let key = hkey.key in
   let seqbuf = Cstruct.create 4 in
   Cstruct.BE.set_uint32 seqbuf 0 seq;
   let take_96 buf =
@@ -90,7 +90,7 @@ let decrypt keys seq buf =
   let open Kex in
   let cipher = fst keys.cipher in
   let block_len = max 8 (Cipher.block_len cipher) in
-  let digest_len = Hmac.digest_len (fst keys.mac) in
+  let digest_len = Hmac.(digest_len keys.mac.hmac) in
   if (Cstruct.len buf) < (block_len + digest_len) then
     ok None
   else
