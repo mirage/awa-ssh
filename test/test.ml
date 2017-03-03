@@ -32,18 +32,14 @@ let blue fmt   = colored_or_not ("\027[36m"^^fmt^^"\027[m") fmt
 let secret_a = Cstruct.of_string "Pyotr Alexeyevich Kropotkin 1842"
 let secret_b = Cstruct.of_string "Buenaventura Durruti - CNT/FAI!!"
 
-let aes_ctr_key_a =
-  Cipher.Aes128_ctr,
-  Cipher.Aes_ctr_key (Nocrypto.Cipher_block.AES.CTR.of_secret secret_a)
-let aes_ctr_key_b =
-  Cipher.Aes128_ctr,
-  Cipher.Aes_ctr_key (Nocrypto.Cipher_block.AES.CTR.of_secret secret_b)
-let aes_cbc_key_a =
-  Cipher.Aes128_cbc,
-  Cipher.Aes_cbc_key (Nocrypto.Cipher_block.AES.CBC.of_secret secret_a)
-let aes_cbc_key_b =
-  Cipher.Aes128_cbc,
-  Cipher.Aes_cbc_key (Nocrypto.Cipher_block.AES.CBC.of_secret secret_b)
+let cipher_key_of cipher key =
+  let open Nocrypto.Cipher_block.AES in
+  let open Cipher in
+  match cipher with
+  | Aes128_ctr | Aes192_ctr | Aes256_ctr as c ->
+    (c, Aes_ctr_key (CTR.of_secret key))
+  | Aes128_cbc | Aes192_cbc | Aes256_cbc as c ->
+    (c, Aes_cbc_key (CBC.of_secret key))
 
 let hmac_key_of hmac key = Hmac.{ hmac; key; seq = Int32.zero }
 
@@ -149,7 +145,7 @@ let t_key_exchange () =
   let msg, rbuf = get_some @@ get_ok_s @@ Packet.get_plain buf in
   let () = match msg with
     | Ssh.Ssh_msg_kexinit kex ->
-      printf "%s\n%!" (Sexplib.Sexp.to_string_hum (Ssh.sexp_of_kex_pkt kex));
+      (* printf "%s\n%!" (Sexplib.Sexp.to_string_hum (Ssh.sexp_of_kex_pkt kex)); *)
       ()
     | _ -> failwith "Expected Ssh_msg_kexinit"
   in
@@ -234,25 +230,37 @@ let t_mpint () =
   | Error e -> failwith e
 
 let t_crypto () =
-  let txt = "abcdefghijklm" in
-  let keys = Kex.{ iv  = iv_16_a;
-                   cipher = aes_ctr_key_a;
-                   mac = sha1_key_a }
+  let test keys =
+    let open Kex in
+    let txt = "abcdefghijklmnopqrstuvxz" in
+    let msg = Ssh.Ssh_msg_ignore txt in
+    let buf_enc, keys_next = Packet.encrypt keys msg in
+    let msg, buf, keys_next2 =
+      get_some @@ get_ok_s @@ Packet.decrypt keys buf_enc
+    in
+    let () = match msg with
+      | Ssh.Ssh_msg_ignore s ->
+        assert (s = txt)
+      | _ -> failwith "bad msg"
+    in
+    assert ((Cstruct.len buf) = 0)
+    (* Side effect below ! *)
+    (* Nocrypto.Cipher_block.Counter.add16 keys.Kex.iv 0 Int64.(succ one); *)
+    (* assert (Cstruct.equal keys.Kex.iv keys_next.Kex.iv); *)
+    (* assert (Cstruct.equal keys.Kex.iv keys_next2.Kex.iv) *)
   in
-  let msg = Ssh.Ssh_msg_ignore txt in
-  let buf_enc, keys_next = Packet.encrypt keys msg in
-  let msg, buf, keys_next2 =
-    get_some @@ get_ok_s @@ Packet.decrypt keys buf_enc
+  let make cipher hmac =
+    let open Cipher in
+    let iv = iv_16_a in
+    let cipher = cipher_key_of cipher secret_a in
+    let mac = hmac_key_of hmac secret_a in
+    Kex.{ iv; cipher; mac }
   in
-  let () = match msg with
-    | Ssh.Ssh_msg_ignore s -> assert (s = txt)
-    | _ -> failwith "bad msg"
-  in
-  assert ((Cstruct.len buf) = 0);
-  (* Side effect below ! *)
-  Nocrypto.Cipher_block.Counter.add16 keys.Kex.iv 0 Int64.(succ one);
-  assert (Cstruct.equal keys.Kex.iv keys_next.Kex.iv);
-  assert (Cstruct.equal keys.Kex.iv keys_next2.Kex.iv)
+  List.iter (fun cipher ->
+      List.iter (fun hmac ->
+          test (make cipher hmac))
+        Hmac.preferred)
+    Cipher.preferred
 
 let run_test test =
   let f = fst test in
