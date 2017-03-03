@@ -246,35 +246,3 @@ let get_payload buf =
   let payload = Cstruct.set_len payload payload_len in
   ok payload
 
-(*
- * This is used before we exchange keys,
- * get_payload repeats some of the computations.
- *)
-let get_pkt buf =
-  let open Ssh in
-  let partial () =
-    if (Cstruct.len buf) < max_pkt_len then
-      ok None
-    else
-      error "Buffer is too big"
-  in
-  if (Cstruct.len buf) < 5 then               (* pkt len + padding *)
-    partial ()
-  else
-    let pkt_len = Int32.to_int (get_pkt_hdr_pkt_len buf) in
-    let pad_len = get_pkt_hdr_pad_len buf in
-    guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len"
-    >>= fun () ->
-    if (Cstruct.len buf) < (pkt_len + 4) then
-      partial ()
-    else
-      (* Make sure nobody tricks us with bogus pad len *)
-      guard (pad_len < pkt_len) "Bogus pad len" >>= fun () ->
-      get_payload buf >>= fun payload ->
-      let buf = Cstruct.shift buf (pkt_len + 4) in
-      ok (Some (payload, buf))
-
-let scan_message buf =
-  get_pkt buf >>= function
-  | None -> ok None
-  | Some (pkt, _) -> get_message pkt >>= fun msg -> ok (Some msg)

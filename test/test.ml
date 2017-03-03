@@ -124,31 +124,31 @@ let t_banner () =
 
 let t_key_exchange () =
   (*
-   * Case 1: A buffer with 64 bytes and payload with 60 bytes.
-   * The pkt_len header is 4 bytes, so a payload of 60 + 4 requires 64 bytes,
-   * which means, this is a complete packet, all should be consumed.
+   * Case 1: Full buff consumed
    *)
-
-  let buf = Cstruct.create 64 in
-  Ssh.set_pkt_hdr_pkt_len buf 60l;
-  Ssh.set_pkt_hdr_pad_len buf 0;
-  let pkt, rbuf = get_some @@ get_ok_s @@ Decode.get_pkt buf in
+  let msg = Ssh.Ssh_msg_ignore "a" in
+  let buf = Packet.plain msg in
+  let msg2, rbuf = get_some @@ get_ok_s @@ Packet.get_plain buf in
+  assert (msg = msg2);
   assert ((Cstruct.len rbuf) = 0);
+
   (*
-   * Case 2: Similar to 1, but the packet is missing 1 byte.
-   * This should not return a packet.
+   * Case 2: 1 byte left
    *)
-  let buf = Cstruct.create 63 in
-  Ssh.set_pkt_hdr_pkt_len buf 60l;
-  Ssh.set_pkt_hdr_pad_len buf 0;
-  assert_none @@ get_ok_s @@ Decode.get_pkt buf;
+  let msg = Ssh.Ssh_msg_ignore "a" in
+  let buf = Packet.plain msg in
+  let buf = Cstruct.append buf (Cstruct.of_string "b") in
+  let msg2, rbuf = get_some @@ get_ok_s @@ Packet.get_plain buf in
+  assert (msg = msg2);
+  assert ((Cstruct.len rbuf) = 1);
 
   (* Read a pcap file and see if it makes sense. *)
   let file = "test/kex.packet" in
   let fd = Unix.(openfile file [O_RDONLY] 0) in
   let buf = Unix_cstruct.of_fd fd in
-  let () = match (get_some @@ get_ok_s @@ Decode.scan_message buf) with
-    | Ssh.Ssh_msg_kexinit kex -> (* get_ok_s @@ handle_kex Server kex; *)
+  let msg, rbuf = get_some @@ get_ok_s @@ Packet.get_plain buf in
+  let () = match msg with
+    | Ssh.Ssh_msg_kexinit kex ->
       printf "%s\n%!" (Sexplib.Sexp.to_string_hum (Ssh.sexp_of_kex_pkt kex));
       ()
     | _ -> failwith "Expected Ssh_msg_kexinit"
@@ -159,9 +159,9 @@ let t_key_exchange () =
   let buf = Cstruct.create 64 in
   Ssh.set_pkt_hdr_pkt_len buf 0l;
   Ssh.set_pkt_hdr_pad_len buf 0;
-  let e = get_error (Decode.get_pkt buf) in
-  assert (e = "Bogus pkt len")
-
+  let e = get_error (Packet.get_plain buf) in
+  assert (e = "Bogus pkt len");
+  ()
 
 let t_namelist () =
   let s = ["The";"Conquest";"Of";"Bread"] in
@@ -240,9 +240,9 @@ let t_crypto () =
                    mac = sha1_key_a }
   in
   let msg = Ssh.Ssh_msg_ignore txt in
-  let buf_enc, keys_next = Crypto.encrypt keys msg in
+  let buf_enc, keys_next = Packet.encrypt keys msg in
   let msg, buf, keys_next2 =
-    get_some @@ get_ok_s @@ Crypto.decrypt keys buf_enc
+    get_some @@ get_ok_s @@ Packet.decrypt keys buf_enc
   in
   let () = match msg with
     | Ssh.Ssh_msg_ignore s -> assert (s = txt)

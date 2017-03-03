@@ -118,10 +118,4 @@ let handle t buf =
   | None ->
     Decode.get_version buf >>= fun (client_version, buf) ->
     ok ({t with client_version}, buf)
-  | Some _ ->
-    match t.keys_ctos with
-    | None -> failwith "boom"
-    | Some keys ->
-      Crypto.decrypt keys buf >>= function
-      | None -> ok (t, buf)
-      | Some (msg, buf, keys) -> ok (t, buf)
+  | Some _ -> failwith "boom"

@@ -44,15 +44,6 @@ let hmac keys buf =
   let keys = { keys with mac = { keys.mac with seq = Int32.succ seq } } in
   digest, keys
 
-let peek_pkt_len keys buf =
-  let open Nocrypto.Cipher_block in
-  let buf = Cstruct.set_len buf 4 in
-  let hdr = match (snd (keys.Kex.cipher)) with
-    | Cipher.Aes_ctr_key key -> AES.CTR.decrypt ~key ~ctr:keys.Kex.iv buf
-    | Cipher.Aes_cbc_key key -> AES.CBC.decrypt ~key ~iv:keys.Kex.iv buf
-  in
-  Ssh.get_pkt_hdr_pkt_len hdr |> Int32.to_int
-
 (* For some reason Nocrypto CTR modifies ctr in place, CBC returns next *)
 let cipher_enc_dec enc keys buf =
   let open Nocrypto.Cipher_block in
@@ -79,13 +70,81 @@ let cipher_enc_dec enc keys buf =
 let cipher_encrypt = cipher_enc_dec true
 let cipher_decrypt = cipher_enc_dec false
 
+let peek_len keys buf =
+  let open Nocrypto.Cipher_block in
+  let buf = Cstruct.set_len buf 4 in
+  let hdr = match (snd (keys.Kex.cipher)) with
+    | Cipher.Aes_ctr_key key -> AES.CTR.decrypt ~key ~ctr:keys.Kex.iv buf
+    | Cipher.Aes_cbc_key key -> AES.CBC.decrypt ~key ~iv:keys.Kex.iv buf
+  in
+  Ssh.get_pkt_hdr_pkt_len hdr |> Int32.to_int
+
+let partial buf =
+  if (Cstruct.len buf) < Ssh.max_pkt_len then
+    ok None
+  else
+    error "Buffer is too big"
+
+let get_plain buf =
+  let open Ssh in
+  if (Cstruct.len buf) < sizeof_pkt_hdr then
+    partial buf
+  else
+    let pkt_len = Ssh.get_pkt_hdr_pkt_len buf |> Int32.to_int in
+    guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len" >>= fun () ->
+    if (Cstruct.len buf) < (pkt_len + 4) then
+      partial buf
+    else
+      let pkt = Cstruct.set_len buf (pkt_len + 4) in
+      let pad_len = get_pkt_hdr_pad_len buf in
+      guard (pad_len < pkt_len) "Bogus pad len" >>= fun () ->
+      Decode.get_payload pkt >>= fun payload ->
+      Decode.get_message payload >>= fun msg ->
+      let buf = Cstruct.shift buf (pkt_len + 4) in
+      ok (Some (msg, buf))
+
+let decrypt keys buf =
+  let open Ssh in
+  let open Kex in
+  let block_len = max 8 (Cipher.block_len (fst keys.cipher)) in
+  let digest_len = Hmac.(digest_len keys.mac.hmac) in
+  if (Cstruct.len buf) < (sizeof_pkt_hdr + digest_len + block_len) then
+    partial buf
+  else
+    let pkt_len = peek_len keys buf in
+    guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len" >>= fun () ->
+    if (Cstruct.len buf) < (pkt_len + 4 + digest_len) then
+      partial buf
+    else
+      let pkt_enc = Cstruct.set_len buf (pkt_len + 4) in
+      let pkt_dec, keys = cipher_decrypt keys pkt_enc in
+      let digest1 = Cstruct.shift buf (pkt_len + 4) in
+      let digest1 = Cstruct.set_len digest1 digest_len in
+      let digest2, keys = hmac keys pkt_dec in
+      guard (Cstruct.equal digest1 digest2) "Bad digest" >>= fun () ->
+      let pad_len = get_pkt_hdr_pad_len pkt_dec in
+      guard (pad_len < pkt_len) "Bogus pad len" >>= fun () ->
+      Decode.get_payload pkt_dec >>= fun payload ->
+      Decode.get_message payload >>= fun msg ->
+      let buf = Cstruct.shift buf (4 + pkt_len + digest_len) in
+      ok (Some (msg, buf, keys))
+
+let plain msg =
+  let open Encode in
+  let buf =
+    reserve Ssh.sizeof_pkt_hdr (create ()) |> put_message msg |> to_cstruct
+  in
+  Ssh.set_pkt_hdr_pkt_len buf (Int32.of_int ((Cstruct.len buf) - 4));
+  Ssh.set_pkt_hdr_pad_len buf 0;
+  buf
+
 let encrypt keys msg =
   let open Encode in
   let open Kex in
   let cipher = fst keys.cipher in
   let block_len = max 8 (Cipher.block_len cipher) in
-  let buf = reserve Ssh.sizeof_pkt_hdr (create ()) |> put_message msg in
   (* packet_length + padding_length + payload - sequence_length *)
+  let buf = reserve Ssh.sizeof_pkt_hdr (create ()) |> put_message msg in
   let len = used buf in
   (* calculate padding *)
   let padlen =
@@ -99,29 +158,3 @@ let encrypt keys msg =
   let digest, keys = hmac keys pkt in
   let enc, keys = cipher_encrypt keys pkt in
   Cstruct.append enc digest, keys
-
-let decrypt keys buf =
-  let open Kex in
-  let cipher = fst keys.cipher in
-  let block_len = max 8 (Cipher.block_len cipher) in
-  let digest_len = Hmac.(digest_len keys.mac.hmac) in
-  if (Cstruct.len buf) < (block_len + digest_len) then
-    ok None
-  else
-    let pkt_len = peek_pkt_len keys buf in
-    guard (pkt_len > 0 && pkt_len < Ssh.max_pkt_len)
-      "Bogus pkt len"
-    >>= fun () ->
-    if (Cstruct.len buf) < (pkt_len + 4 + digest_len) then
-      ok None (* partial *)
-    else
-      let pkt_enc = Cstruct.set_len buf (pkt_len + 4) in
-      let pkt_dec, keys = cipher_decrypt keys pkt_enc in
-      let digest1 = Cstruct.shift buf (pkt_len + 4) in
-      let digest1 = Cstruct.set_len digest1 digest_len in
-      let digest2, keys = hmac keys pkt_dec in
-      guard (Cstruct.equal digest1 digest2) "Bad digest" >>= fun () ->
-      let buf = Cstruct.shift buf (pkt_len + 4 + digest_len) in
-      Decode.get_payload pkt_dec >>= fun payload ->
-      Decode.get_message payload >>= fun msg ->
-      ok (Some (msg, buf, keys))
