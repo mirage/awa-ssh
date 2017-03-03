@@ -43,20 +43,6 @@ let cipher_key_of cipher key =
 
 let hmac_key_of hmac key = Hmac.{ hmac; key; seq = Int32.zero }
 
-let md5_key_a = hmac_key_of Hmac.Md5 secret_a
-let md5_key_a = hmac_key_of Hmac.Md5 secret_b
-
-let sha1_key_a = hmac_key_of Hmac.Sha1 secret_a
-let sha1_key_b = hmac_key_of Hmac.Sha1 secret_b
-
-let sha2_256_key_a = hmac_key_of Hmac.Sha2_256 secret_a
-let sha2_256_key_b = hmac_key_of Hmac.Sha2_256 secret_b
-
-let iv_16_a = Cstruct.set_len secret_a 16
-let iv_16_b = Cstruct.set_len secret_b 16
-let iv_32_a = secret_a
-let iv_32_b = secret_b
-
 let assert_failure x =
   let ok = try
       ignore @@ x ();
@@ -119,10 +105,11 @@ let t_banner () =
     bad_strings
 
 let t_parsing () =
+  let open Ssh in
   (*
    * Case 1: Full buff consumed
    *)
-  let msg = Ssh.Ssh_msg_ignore "a" in
+  let msg = Ssh_msg_ignore "a" in
   let buf = Packet.plain msg in
   let msg2, rbuf = get_some @@ get_ok_s @@ Packet.get_plain buf in
   assert (msg = msg2);
@@ -131,7 +118,7 @@ let t_parsing () =
   (*
    * Case 2: 1 byte left
    *)
-  let msg = Ssh.Ssh_msg_ignore "a" in
+  let msg = Ssh_msg_ignore "a" in
   let buf = Packet.plain msg in
   let buf = Cstruct.append buf (Cstruct.of_string "b") in
   let msg2, rbuf = get_some @@ get_ok_s @@ Packet.get_plain buf in
@@ -140,10 +127,62 @@ let t_parsing () =
 
   (* Case 3: Test a zero pkt_len *)
   let buf = Cstruct.create 64 in
-  Ssh.set_pkt_hdr_pkt_len buf 0l;
-  Ssh.set_pkt_hdr_pad_len buf 0;
+  set_pkt_hdr_pkt_len buf 0l;
+  set_pkt_hdr_pad_len buf 0;
   let e = get_error (Packet.get_plain buf) in
-  assert (e = "Bogus pkt len")
+  assert (e = "Bogus pkt len");
+
+  let id msg =
+    let buf = Packet.plain msg in
+    let msg2, buf = get_some @@ get_ok_s @@ Packet.get_plain buf in
+    assert ((Cstruct.len buf) = 0);
+    match msg, msg2 with
+    | Ssh_msg_userauth_request (s1a, s2a, s3a, ba, s4a, ca),
+      Ssh_msg_userauth_request (s1b, s2b, s3b, bb, s4b, cb) ->
+      assert ((s1a, s2a, s3a, ba, s4a) = (s1b, s2b, s3b, bb, s4b));
+      assert (Cstruct.equal ca cb)
+    | Ssh_msg_kexdh_reply (pub_rsa1, mpint1, cstring1),
+      Ssh_msg_kexdh_reply (pub_rsa2, mpint2, cstring2) ->
+      assert (pub_rsa1 = pub_rsa2 && mpint1 = mpint2);
+      assert (Cstruct.equal cstring1 cstring2)
+    | msg, msg2 -> assert (msg = msg2)
+  in
+  let long = Int32.of_int 180586 in
+  let mpint = Nocrypto.Numeric.Z.of_int 180586 in
+  let cstring = Cstruct.of_string "The Conquest of Bread" in
+  (* XXX slow *)
+  let pub_rsa = Nocrypto.Rsa.(generate 2048 |> pub_of_priv) in
+  let l =
+    [ Ssh_msg_disconnect (long, "foo", "bar");
+      Ssh_msg_ignore "Fora Temer";
+      Ssh_msg_unimplemented long;
+      Ssh_msg_debug (false, "Fora", "Temer");
+      Ssh_msg_service_request "Viva Che";
+      Ssh_msg_service_accept "Ricardo Flores Magon";
+      (* Ssh_msg_kexinit foo; *)
+      Ssh_msg_kexdh_init mpint;
+      Ssh_msg_kexdh_reply (pub_rsa, mpint, cstring);
+      Ssh_msg_newkeys;
+      Ssh_msg_userauth_request ("a", "b", "c", true, "d", cstring);
+      Ssh_msg_userauth_failure (["Fora"; "Temer"], true);
+      Ssh_msg_userauth_success;
+      Ssh_msg_userauth_banner ("Fora", "Temer");
+      (* Ssh_msg_global_request; *)
+      (* Ssh_msg_request_success; *)
+      (* Ssh_msg_request_failure; *)
+      (* Ssh_msg_channel_open; *)
+      (* Ssh_msg_channel_open_confirmation; *)
+      (* Ssh_msg_channel_open_failure; *)
+      Ssh_msg_channel_window_adjust (long, Int32.succ long);
+      (* Ssh_msg_channel_data; *)
+      (* Ssh_msg_channel_extended_data; *)
+      Ssh_msg_channel_eof long;
+      Ssh_msg_channel_close long;
+      (* Ssh_msg_channel_request; *)
+      Ssh_msg_channel_success long;
+      Ssh_msg_channel_failure long; ]
+  in
+  List.iter (fun m -> id m) l
 
 let t_key_exchange () =
   (* Read a pcap file and see if it makes sense. *)
@@ -251,7 +290,7 @@ let t_crypto () =
   in
   let make cipher hmac =
     let open Cipher in
-    let iv = iv_16_a in
+    let iv = Cstruct.set_len secret_a 16 in
     let cipher = cipher_key_of cipher secret_a in
     let mac = hmac_key_of hmac secret_a in
     Kex.{ iv; cipher; mac }

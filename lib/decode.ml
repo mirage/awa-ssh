@@ -191,7 +191,14 @@ let get_message buf =
     get_mpint buf >>= fun (f, buf) ->
     get_cstring buf >>= fun (hsig, buf) ->
     ok (Ssh_msg_kexdh_reply (k_s, f, hsig))
-  | SSH_MSG_USERAUTH_REQUEST -> unimplemented ()
+  | SSH_MSG_USERAUTH_REQUEST ->
+    get_string buf >>= fun (s1, buf) ->
+    get_string buf >>= fun (s2, buf) ->
+    get_string buf >>= fun (s3, buf) ->
+    get_bool buf >>= fun (b, buf) ->
+    get_string buf >>= fun (s4, buf) ->
+    get_cstring buf >>= fun (c, buf) ->
+    ok (Ssh_msg_userauth_request (s1, s2, s3, b, s4, c))
   | SSH_MSG_USERAUTH_FAILURE ->
     get_nl buf >>= fun (nl, buf) ->
     get_bool buf >>= fun (psucc, buf) ->

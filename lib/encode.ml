@@ -167,7 +167,14 @@ let put_message msg buf =
       put_key k_s |>
       put_mpint f |>
       put_cstring hsig
-    | Ssh_msg_userauth_request _ -> unimplemented ()
+    | Ssh_msg_userauth_request (s1, s2, s3, b, s4, c) ->
+      put_id SSH_MSG_USERAUTH_REQUEST buf |>
+      put_string s1 |>
+      put_string s2 |>
+      put_string s3 |>
+      put_bool b |>
+      put_string s4 |>
+      put_cstring c
     | Ssh_msg_userauth_failure (nl, psucc) ->
       put_id SSH_MSG_USERAUTH_FAILURE buf |>
       put_nl nl |>
