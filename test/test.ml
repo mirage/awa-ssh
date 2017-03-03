@@ -118,7 +118,7 @@ let t_banner () =
       | Result.Error e -> ())
     bad_strings
 
-let t_key_exchange () =
+let t_parsing () =
   (*
    * Case 1: Full buff consumed
    *)
@@ -138,6 +138,14 @@ let t_key_exchange () =
   assert (msg = msg2);
   assert ((Cstruct.len rbuf) = 1);
 
+  (* Case 3: Test a zero pkt_len *)
+  let buf = Cstruct.create 64 in
+  Ssh.set_pkt_hdr_pkt_len buf 0l;
+  Ssh.set_pkt_hdr_pad_len buf 0;
+  let e = get_error (Packet.get_plain buf) in
+  assert (e = "Bogus pkt len")
+
+let t_key_exchange () =
   (* Read a pcap file and see if it makes sense. *)
   let file = "test/kex.packet" in
   let fd = Unix.(openfile file [O_RDONLY] 0) in
@@ -149,15 +157,7 @@ let t_key_exchange () =
       ()
     | _ -> failwith "Expected Ssh_msg_kexinit"
   in
-  Unix.close fd;
-
-  (* Case 3: Test a zero pkt_len *)
-  let buf = Cstruct.create 64 in
-  Ssh.set_pkt_hdr_pkt_len buf 0l;
-  Ssh.set_pkt_hdr_pad_len buf 0;
-  let e = get_error (Packet.get_plain buf) in
-  assert (e = "Bogus pkt len");
-  ()
+  Unix.close fd
 
 let t_namelist () =
   let s = ["The";"Conquest";"Of";"Bread"] in
@@ -273,6 +273,7 @@ let run_test test =
   printf "%s\n%!" (green "ok")
 
 let all_tests = [
+  (t_parsing, "basic parsing");
   (t_banner, "version banner");
   (t_key_exchange, "key exchange");
   (t_namelist, "namelist conversions");
