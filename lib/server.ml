@@ -124,4 +124,4 @@ let handle t buf =
     | Some keys ->
       Crypto.decrypt keys buf >>= function
       | None -> ok (t, buf)
-      | Some (msg, buf, iv) -> ok (t, buf)
+      | Some (msg, buf, keys) -> ok (t, buf)

@@ -29,6 +29,38 @@ let green fmt  = colored_or_not ("\027[32m"^^fmt^^"\027[m") fmt
 let yellow fmt = colored_or_not ("\027[33m"^^fmt^^"\027[m") fmt
 let blue fmt   = colored_or_not ("\027[36m"^^fmt^^"\027[m") fmt
 
+let secret_a = Cstruct.of_string "Pyotr Alexeyevich Kropotkin 1842"
+let secret_b = Cstruct.of_string "Buenaventura Durruti - CNT/FAI!!"
+
+let aes_ctr_key_a =
+  Cipher.Aes128_ctr,
+  Cipher.Aes_ctr_key (Nocrypto.Cipher_block.AES.CTR.of_secret secret_a)
+let aes_ctr_key_b =
+  Cipher.Aes128_ctr,
+  Cipher.Aes_ctr_key (Nocrypto.Cipher_block.AES.CTR.of_secret secret_b)
+let aes_cbc_key_a =
+  Cipher.Aes128_cbc,
+  Cipher.Aes_cbc_key (Nocrypto.Cipher_block.AES.CBC.of_secret secret_a)
+let aes_cbc_key_b =
+  Cipher.Aes128_cbc,
+  Cipher.Aes_cbc_key (Nocrypto.Cipher_block.AES.CBC.of_secret secret_b)
+
+let hmac_key_of hmac key = Hmac.{ hmac; key; seq = Int32.zero }
+
+let md5_key_a = hmac_key_of Hmac.Md5 secret_a
+let md5_key_a = hmac_key_of Hmac.Md5 secret_b
+
+let sha1_key_a = hmac_key_of Hmac.Sha1 secret_a
+let sha1_key_b = hmac_key_of Hmac.Sha1 secret_b
+
+let sha2_256_key_a = hmac_key_of Hmac.Sha2_256 secret_a
+let sha2_256_key_b = hmac_key_of Hmac.Sha2_256 secret_b
+
+let iv_16_a = Cstruct.set_len secret_a 16
+let iv_16_b = Cstruct.set_len secret_b 16
+let iv_32_a = secret_a
+let iv_32_b = secret_b
+
 let assert_failure x =
   let ok = try
       ignore @@ x ();
@@ -201,6 +233,27 @@ let t_mpint () =
     ()
   | Error e -> failwith e
 
+let t_crypto () =
+  let txt = "abcdefghijklm" in
+  let keys = Kex.{ iv  = iv_16_a;
+                   cipher = aes_ctr_key_a;
+                   mac = sha1_key_a }
+  in
+  let msg = Ssh.Ssh_msg_ignore txt in
+  let buf_enc, keys_next = Crypto.encrypt keys msg in
+  let msg, buf, keys_next2 =
+    get_some @@ get_ok_s @@ Crypto.decrypt keys buf_enc
+  in
+  let () = match msg with
+    | Ssh.Ssh_msg_ignore s -> assert (s = txt)
+    | _ -> failwith "bad msg"
+  in
+  assert ((Cstruct.len buf) = 0);
+  (* Side effect below ! *)
+  Nocrypto.Cipher_block.Counter.add16 keys.Kex.iv 0 Int64.(succ one);
+  assert (Cstruct.equal keys.Kex.iv keys_next.Kex.iv);
+  assert (Cstruct.equal keys.Kex.iv keys_next2.Kex.iv)
+
 let run_test test =
   let f = fst test in
   let name = snd test in
@@ -216,6 +269,7 @@ let all_tests = [
   (t_key_exchange, "key exchange");
   (t_namelist, "namelist conversions");
   (t_mpint, "mpint conversions");
+  (t_crypto, "encrypt/decrypt");
 ]
 
 let _ =

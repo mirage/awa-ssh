@@ -227,6 +227,29 @@ let get_message buf =
     get_uint32 buf >>= fun (channel, buf) ->
     ok (Ssh_msg_channel_failure channel)
 
+let get_payload buf =
+  let open Ssh in
+  guard ((Cstruct.len buf) >= 5) "Buf too short"
+  >>= fun () ->
+  let pkt_len = get_pkt_hdr_pkt_len buf |> Int32.to_int in
+  let pad_len = get_pkt_hdr_pad_len buf in
+  guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len"
+  >>= fun () ->
+  guard (pad_len < pkt_len) "Bogus pad len"
+  >>= fun () ->
+  guard ((Cstruct.len buf) = (pkt_len + 4)) "Bogus buf len"
+  >>= fun () ->
+  let payload_len = pkt_len - pad_len - 1 in
+  guard (payload_len > 0) "Bogus payload_len"
+  >>= fun () ->
+  let payload = Cstruct.shift buf 5 in
+  let payload = Cstruct.set_len payload payload_len in
+  ok payload
+
+(*
+ * This is used before we exchange keys,
+ * get_payload repeats some of the computations.
+ *)
 let get_pkt buf =
   let open Ssh in
   let partial () =
@@ -238,23 +261,17 @@ let get_pkt buf =
   if (Cstruct.len buf) < 5 then               (* pkt len + padding *)
     partial ()
   else
-    let pkt_len32 = get_pkt_hdr_pkt_len buf in
-    let pkt_len = Int32.to_int pkt_len32 in
+    let pkt_len = Int32.to_int (get_pkt_hdr_pkt_len buf) in
     let pad_len = get_pkt_hdr_pad_len buf in
     guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len"
     >>= fun () ->
-    let pkt = Cstruct.shift buf 4 in
-    if (Cstruct.len pkt) < pkt_len then
+    if (Cstruct.len buf) < (pkt_len + 4) then
       partial ()
     else
       (* Make sure nobody tricks us with bogus pad len *)
-      guard (pad_len < pkt_len) "Bogus pad len"
-      >>= fun () ->
-      let payload_len = pkt_len - pad_len - 1 in
-      guard (payload_len > 0) "Bogus payload_len" >>= fun () ->
-      let payload = Cstruct.shift pkt 1 in
-      let buf = Cstruct.shift payload payload_len in
-      let payload = Cstruct.set_len payload payload_len in
+      guard (pad_len < pkt_len) "Bogus pad len" >>= fun () ->
+      get_payload buf >>= fun payload ->
+      let buf = Cstruct.shift buf (pkt_len + 4) in
       ok (Some (payload, buf))
 
 let scan_message buf =
