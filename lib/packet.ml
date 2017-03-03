@@ -70,9 +70,10 @@ let cipher_enc_dec enc keys buf =
 let cipher_encrypt = cipher_enc_dec true
 let cipher_decrypt = cipher_enc_dec false
 
-let peek_len keys buf =
+let peek_len keys block_len buf =
   let open Nocrypto.Cipher_block in
-  let buf = Cstruct.set_len buf 4 in
+  assert (block_len <= (Cstruct.len buf));
+  let buf = Cstruct.set_len buf block_len in
   let hdr = match (snd (keys.Kex.cipher)) with
     | Cipher.Aes_ctr_key key -> AES.CTR.decrypt ~key ~ctr:keys.Kex.iv buf
     | Cipher.Aes_cbc_key key -> AES.CBC.decrypt ~key ~iv:keys.Kex.iv buf
@@ -111,7 +112,7 @@ let decrypt keys buf =
   if (Cstruct.len buf) < (sizeof_pkt_hdr + digest_len + block_len) then
     partial buf
   else
-    let pkt_len = peek_len keys buf in
+    let pkt_len = peek_len keys block_len buf in
     guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len" >>= fun () ->
     if (Cstruct.len buf) < (pkt_len + 4 + digest_len) then
       partial buf
