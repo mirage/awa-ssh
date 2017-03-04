@@ -86,8 +86,11 @@ let partial buf =
   else
     error "Buffer is too big"
 
-let to_msg buf =
-  Decode.get_payload buf >>= Decode.get_message
+let to_msg pkt =
+  Decode.get_payload pkt >>= Decode.get_message
+
+let to_msgbuf pkt =
+  Decode.get_payload pkt
 
 let get_plain buf =
   let open Ssh in

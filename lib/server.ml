@@ -32,6 +32,7 @@ type t = {
   keys_stoc : Kex.keys option;         (* Server to cleint (output) keys *)
   new_keys_ctos : Kex.keys option;     (* Install when we receive NEWKEYS *)
   new_keys_stoc : Kex.keys option;     (* Install after we send NEWKEYS *)
+  input_buffer : Cstruct.t;            (* Unprocessed input *)
 }
 
 let make host_key =
@@ -48,9 +49,13 @@ let make host_key =
             keys_ctos = None;
             keys_stoc = None;
             new_keys_ctos = None;
-            new_keys_stoc = None; }
+            new_keys_stoc = None;
+            input_buffer = Cstruct.create 0 }
   in
   t, Cstruct.append banner_buf server_kex
+
+let of_buf t buf =
+  { t with input_buffer = buf }
 
 let patch_new_keys old_keys new_keys =
   let open Kex in
@@ -63,7 +68,40 @@ let patch_new_keys old_keys new_keys =
   let new_mac = { new_keys.mac with seq = new_seq } in
   ok { new_keys with mac = new_mac }
 
-let input_msg t msgbuf =
+let input_buf t buf =
+  let join b1 b2 =
+    if (Cstruct.len b1) = 0 then
+      b2
+    else if (Cstruct.len b2) = 0 then
+      b1
+    else
+      Cstruct.append b1 b2
+  in
+  of_buf t (join t.input_buffer buf)
+
+let pop_msg2 t buf =
+  let plain buf =
+    Packet.get_plain buf >>= function
+    | None -> ok (t, None)
+    | Some (pkt, buf) ->
+      Packet.to_msgbuf pkt >>= fun msgbuf ->
+      ok (of_buf t buf, Some msgbuf)
+  in
+  let decrypt keys buf =
+    Packet.decrypt keys buf >>= function
+    | None -> ok (t, None)
+    | Some (pkt, buf, keys) ->
+      let t = { t with keys_stoc = Some keys } in
+      Packet.to_msgbuf pkt >>= fun msgbuf ->
+      ok (of_buf t buf, Some msgbuf)
+  in
+  match t.keys_stoc with
+  | None -> plain buf
+  | Some keys -> decrypt keys buf
+
+let pop_msg t = pop_msg2 t t.input_buffer
+
+let handle_msg t msgbuf =
   let open Ssh in
   let open Nocrypto in
   Decode.get_message msgbuf >>= function
@@ -104,18 +142,29 @@ let input_msg t msgbuf =
   | _ -> error "unhandled stuff"
 
 let output_msg t msg =
-  let open Ssh in
-  match msg with
-  | Ssh_msg_newkeys ->
-    patch_new_keys t.keys_stoc t.new_keys_stoc >>= fun new_keys_stoc ->
-    ok { t with keys_stoc = Some new_keys_stoc;
-                new_keys_stoc = None }
+  (* Do state transitions *)
+  (match msg with
+   | Ssh.Ssh_msg_newkeys ->
+     patch_new_keys t.keys_stoc t.new_keys_stoc >>= fun new_keys_stoc ->
+     ok { t with keys_stoc = Some new_keys_stoc;
+                 new_keys_stoc = None }
+   | _ -> ok t)
+  (* Build output buffer *)
+  >>= fun t ->
+  match t.keys_ctos with
+  | None -> ok (t, Packet.plain msg)
+  | Some keys ->
+    let enc, keys = Packet.encrypt keys msg in
+    ok ({ t with keys_ctos = Some keys }, enc)
 
-  | _ -> ok t
-
-let handle t buf =
-  match t.client_version with
-  | None ->
-    Decode.get_version buf >>= fun (client_version, buf) ->
-    ok ({t with client_version}, buf)
-  | Some _ -> failwith "boom"
+let output_msgs t = function
+  | [] -> invalid_arg "empty msg list"
+  | [msg] -> output_msg t msg
+  | msgs ->
+    List.fold_left
+      (fun a msg ->
+         a >>= fun (t, buf) ->
+         output_msg t msg >>= fun (t, msgbuf) ->
+         ok (t, Cstruct.append buf msgbuf))
+      (ok (t, Cstruct.create 0))
+      msgs
