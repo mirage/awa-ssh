@@ -111,7 +111,8 @@ let t_parsing () =
    *)
   let msg = Ssh_msg_ignore "a" in
   let buf = Packet.plain msg in
-  let msg2, rbuf = get_some @@ get_ok_s @@ Packet.get_plain buf in
+  let pkt, rbuf = get_some @@ get_ok_s @@ Packet.get_plain buf in
+  let msg2 = get_ok_s @@ Packet.to_msg pkt in
   assert (msg = msg2);
   assert ((Cstruct.len rbuf) = 0);
 
@@ -121,7 +122,8 @@ let t_parsing () =
   let msg = Ssh_msg_ignore "a" in
   let buf = Packet.plain msg in
   let buf = Cstruct.append buf (Cstruct.of_string "b") in
-  let msg2, rbuf = get_some @@ get_ok_s @@ Packet.get_plain buf in
+  let pkt, rbuf = get_some @@ get_ok_s @@ Packet.get_plain buf in
+  let msg2 = get_ok_s @@ Packet.to_msg pkt in
   assert (msg = msg2);
   assert ((Cstruct.len rbuf) = 1);
 
@@ -134,7 +136,8 @@ let t_parsing () =
 
   let id msg =
     let buf = Packet.plain msg in
-    let msg2, buf = get_some @@ get_ok_s @@ Packet.get_plain buf in
+    let pkt, buf = get_some @@ get_ok_s @@ Packet.get_plain buf in
+    let msg2 = get_ok_s @@ Packet.to_msg pkt in
     assert ((Cstruct.len buf) = 0);
     match msg, msg2 with
     | Ssh_msg_userauth_request (s1a, s2a, s3a, ba, s4a, ca),
@@ -189,7 +192,8 @@ let t_key_exchange () =
   let file = "test/kex.packet" in
   let fd = Unix.(openfile file [O_RDONLY] 0) in
   let buf = Unix_cstruct.of_fd fd in
-  let msg, rbuf = get_some @@ get_ok_s @@ Packet.get_plain buf in
+  let pkt, rbuf = get_some @@ get_ok_s @@ Packet.get_plain buf in
+  let msg = get_ok_s @@ Packet.to_msg pkt in
   let () = match msg with
     | Ssh.Ssh_msg_kexinit kex ->
       (* printf "%s\n%!" (Sexplib.Sexp.to_string_hum (Ssh.sexp_of_kex_pkt kex)); *)
@@ -274,9 +278,10 @@ let t_crypto () =
     let txt = "abcdefghijklmnopqrstuvxz" in
     let msg = Ssh.Ssh_msg_ignore txt in
     let buf_enc, keys_next = Packet.encrypt keys msg in
-    let msg, buf, keys_next2 =
+    let pkt, buf, keys_next2 =
       get_some @@ get_ok_s @@ Packet.decrypt keys buf_enc
     in
+    let msg = get_ok_s @@ Packet.to_msg pkt in
     let () = match msg with
       | Ssh.Ssh_msg_ignore s ->
         assert (s = txt)

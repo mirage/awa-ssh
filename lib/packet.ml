@@ -86,6 +86,9 @@ let partial buf =
   else
     error "Buffer is too big"
 
+let to_msg buf =
+  Decode.get_payload buf >>= Decode.get_message
+
 let get_plain buf =
   let open Ssh in
   if (Cstruct.len buf) < sizeof_pkt_hdr then
@@ -99,10 +102,8 @@ let get_plain buf =
       let pkt = Cstruct.set_len buf (pkt_len + 4) in
       let pad_len = get_pkt_hdr_pad_len buf in
       guard (pad_len < pkt_len) "Bogus pad len" >>= fun () ->
-      Decode.get_payload pkt >>= fun payload ->
-      Decode.get_message payload >>= fun msg ->
       let buf = Cstruct.shift buf (pkt_len + 4) in
-      ok (Some (msg, buf))
+      ok (Some (pkt, buf))
 
 let decrypt keys buf =
   let open Ssh in
@@ -125,10 +126,8 @@ let decrypt keys buf =
       guard (Cstruct.equal digest1 digest2) "Bad digest" >>= fun () ->
       let pad_len = get_pkt_hdr_pad_len pkt_dec in
       guard (pad_len < pkt_len) "Bogus pad len" >>= fun () ->
-      Decode.get_payload pkt_dec >>= fun payload ->
-      Decode.get_message payload >>= fun msg ->
       let buf = Cstruct.shift buf (4 + pkt_len + digest_len) in
-      ok (Some (msg, buf, keys))
+      ok (Some (pkt_dec, buf, keys))
 
 let plain msg =
   let open Encode in
