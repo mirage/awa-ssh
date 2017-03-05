@@ -98,13 +98,14 @@ let get_plain buf =
     partial buf
   else
     let pkt_len = Ssh.get_pkt_hdr_pkt_len buf |> Int32.to_int in
-    guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len" >>= fun () ->
+    guard (pkt_len > 0 && pkt_len < max_pkt_len) "encrypt: Bogus pkt len"
+    >>= fun () ->
     if (Cstruct.len buf) < (pkt_len + 4) then
       partial buf
     else
       let pkt = Cstruct.set_len buf (pkt_len + 4) in
       let pad_len = get_pkt_hdr_pad_len buf in
-      guard (pad_len < pkt_len) "Bogus pad len" >>= fun () ->
+      guard (pad_len < pkt_len) "encrypt: Bogus pad len" >>= fun () ->
       let buf = Cstruct.shift buf (pkt_len + 4) in
       ok (Some (pkt, buf))
 
@@ -117,7 +118,8 @@ let decrypt keys buf =
     partial buf
   else
     let pkt_len = peek_len keys block_len buf in
-    guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len" >>= fun () ->
+    guard (pkt_len > 0 && pkt_len < max_pkt_len) "decrypt: Bogus pkt len"
+    >>= fun () ->
     if (Cstruct.len buf) < (pkt_len + 4 + digest_len) then
       partial buf
     else
@@ -126,9 +128,9 @@ let decrypt keys buf =
       let digest1 = Cstruct.shift buf (pkt_len + 4) in
       let digest1 = Cstruct.set_len digest1 digest_len in
       let digest2, keys = hmac keys pkt_dec in
-      guard (Cstruct.equal digest1 digest2) "Bad digest" >>= fun () ->
+      guard (Cstruct.equal digest1 digest2) "decrypt: Bad digest" >>= fun () ->
       let pad_len = get_pkt_hdr_pad_len pkt_dec in
-      guard (pad_len < pkt_len) "Bogus pad len" >>= fun () ->
+      guard (pad_len < pkt_len) "decrypt: Bogus pad len" >>= fun () ->
       let buf = Cstruct.shift buf (4 + pkt_len + digest_len) in
       ok (Some (pkt_dec, buf, keys))
 
