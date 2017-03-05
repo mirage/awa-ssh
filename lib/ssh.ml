@@ -26,7 +26,6 @@ type pkt_hdr = {
 
 let max_pkt_len = 64000    (* 64KB should be enough *)
 
-
 [%%cenum
 type message_id =
   | SSH_MSG_DISCONNECT                [@id 1]
@@ -95,6 +94,13 @@ type kex_pkt = {
   input_buf : Cstruct.t option;     (* Used to save incoming kexinit buffer *)
 } [@@deriving sexp]
 
+type mpint = Nocrypto.Numeric.Z.t
+
+let sexp_of_mpint mpint =
+  (* let buf = Nocrypto.Numeric.Z.to_cstruct_be mpint in *)
+  (* Sexplib.Type.Atom (Cstruct.to_string buf) *)
+  Sexplib.Type.Atom "big number"
+
 type message =
   | Ssh_msg_disconnect of (int32 * string * string)
   | Ssh_msg_ignore of string
@@ -103,8 +109,8 @@ type message =
   | Ssh_msg_service_request of string
   | Ssh_msg_service_accept of string
   | Ssh_msg_kexinit of kex_pkt
-  | Ssh_msg_kexdh_init of Nocrypto.Numeric.Z.t
-  | Ssh_msg_kexdh_reply of (Nocrypto.Rsa.pub * Nocrypto.Numeric.Z.t * Cstruct.t)
+  | Ssh_msg_kexdh_init of mpint
+  | Ssh_msg_kexdh_reply of (Nocrypto.Rsa.pub * mpint * Cstruct.t)
   | Ssh_msg_newkeys
   | Ssh_msg_userauth_request of (string * string * string * bool * string * Cstruct.t)
   | Ssh_msg_userauth_failure of (string list * bool)
@@ -125,4 +131,7 @@ type message =
   | Ssh_msg_channel_success of int32
   | Ssh_msg_channel_failure of int32
   | Ssh_msg_version of string       (* Mocked version *)
+  [@@deriving sexp_of]
 
+let message_to_string msg =
+  Sexplib.Sexp.to_string_hum (sexp_of_message msg)
