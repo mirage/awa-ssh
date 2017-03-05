@@ -21,7 +21,7 @@ open Awa
 
 let printf = Printf.printf
 
-let tty_out = Unix.isatty Unix.stdout
+let tty_out = Unix.isatty Unix.stdout && Unix.getenv "TERM" <> "dumb"
 let colored_or_not cfmt fmt =
   if tty_out then (Printf.sprintf cfmt) else (Printf.sprintf fmt)
 let red fmt    = colored_or_not ("\027[31m"^^fmt^^"\027[m") fmt
