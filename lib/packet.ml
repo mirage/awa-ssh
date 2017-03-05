@@ -93,9 +93,6 @@ let partial buf =
 let to_msg pkt =
   Decode.get_payload pkt >>= Decode.get_message
 
-let to_msgbuf pkt =
-  Decode.get_payload pkt
-
 let decrypt keys buf =
   let open Ssh in
   let open Kex in
