@@ -37,7 +37,7 @@ type t = {
 
 let make host_key =
   let open Ssh in
-  let banner_msg = Ssh_msg_version (version_banner ^ "\r\n") in
+  let banner_msg = Ssh_msg_version version_banner in
   let kex = Kex.make_pkt () in
   let kex_msg = Ssh.Ssh_msg_kexinit kex in
   let server_kex = Encode.buf_of_kex_pkt kex in
