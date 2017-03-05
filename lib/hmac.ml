@@ -20,6 +20,7 @@ open Util
 open Nocrypto.Hash
 
 type t =
+  | Plaintext
   | Md5
   | Md5_96
   | Sha1
@@ -34,6 +35,7 @@ type key = {
 }
 
 let to_string = function
+  | Plaintext-> "none"
   | Md5      -> "hmac-md5"
   | Md5_96   -> "hmac-md5-96"
   | Sha1     -> "hmac-sha1"
@@ -42,6 +44,7 @@ let to_string = function
   | Sha2_512 -> "hmac-sha2-512"
 
 let of_string = function
+ | "none"          -> ok Plaintext
  | "hmac-md5"      -> ok Md5
  | "hmac-md5-96"   -> ok Md5_96
  | "hmac-sha1"     -> ok Sha1
@@ -51,6 +54,7 @@ let of_string = function
  | s -> error ("Unknown mac " ^ s)
 
 let digest_len = function
+  | Plaintext-> 0
   | Md5      -> MD5.digest_size
   | Md5_96   -> 12
   | Sha1     -> SHA1.digest_size

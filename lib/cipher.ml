@@ -20,6 +20,7 @@ open Util
 open Nocrypto.Cipher_block.AES
 
 type t =
+  | Plaintext
   | Aes128_ctr
   | Aes192_ctr
   | Aes256_ctr
@@ -27,13 +28,15 @@ type t =
   | Aes192_cbc
   | Aes256_cbc
 
-type aes_key =
+type cipher_key =
+  | Plaintext_key
   | Aes_ctr_key of CTR.key
   | Aes_cbc_key of CBC.key
 
-type key = t * aes_key
+type key = t * cipher_key
 
 let to_string = function
+  | Plaintext   -> "none"
   | Aes128_ctr -> "aes128-ctr"
   | Aes192_ctr -> "aes192-ctr"
   | Aes256_ctr -> "aes256-ctr"
@@ -42,6 +45,7 @@ let to_string = function
   | Aes256_cbc -> "aes256-cbc"
 
 let of_string = function
+  | "none"       -> ok Plaintext
   | "aes128-ctr" -> ok Aes128_ctr
   | "aes192-ctr" -> ok Aes192_ctr
   | "aes256-ctr" -> ok Aes256_ctr
@@ -51,6 +55,7 @@ let of_string = function
   | s -> error ("Unknown cipher " ^ s)
 
 let key_len = function
+  | Plaintext  -> 0
   | Aes128_ctr -> 16
   | Aes192_ctr -> 24
   | Aes256_ctr -> 32
@@ -59,10 +64,12 @@ let key_len = function
   | Aes256_cbc -> 32
 
 let iv_len = function
+  | Plaintext -> 0
   | Aes128_ctr | Aes192_ctr | Aes256_ctr -> CTR.block_size
   | Aes128_cbc | Aes192_cbc | Aes256_cbc -> CBC.block_size
 
 let block_len = function
+  | Plaintext -> 8
   | Aes128_ctr | Aes192_ctr | Aes256_ctr -> CTR.block_size
   | Aes128_cbc | Aes192_cbc | Aes256_cbc -> CBC.block_size
 

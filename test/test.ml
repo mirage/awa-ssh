@@ -36,6 +36,7 @@ let cipher_key_of cipher key =
   let open Nocrypto.Cipher_block.AES in
   let open Cipher in
   match cipher with
+  | Plaintext -> Plaintext, Plaintext_key
   | Aes128_ctr | Aes192_ctr | Aes256_ctr as c ->
     (c, Aes_ctr_key (CTR.of_secret key))
   | Aes128_cbc | Aes192_cbc | Aes256_cbc as c ->

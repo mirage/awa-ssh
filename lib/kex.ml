@@ -142,6 +142,14 @@ type keys = {
   mac    : Hmac.key;   (* Integrity key *)
 }
 
+let plaintext_keys = {
+  iv = Cstruct.create 0;
+  cipher = Cipher.(Plaintext, Plaintext_key);
+  mac = Hmac.{ hmac = Plaintext;
+               key = Cstruct.create 0;
+               seq = Int32.zero }
+}
+
 let derive_keys digestv k h session_id neg =
   let need = keylen_needed neg in
   let cipher_ctos = neg.encryption_algorithm_ctos in
@@ -164,6 +172,7 @@ let derive_keys digestv k h session_id neg =
     let open Nocrypto.Cipher_block in
     let open Cipher in
     match cipher with
+    | Plaintext -> failwith "Deriving plaintext"
     | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
       (cipher, Aes_ctr_key (AES.CTR.of_secret h))
     | Aes128_cbc | Aes192_cbc | Aes256_cbc ->

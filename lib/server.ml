@@ -28,8 +28,8 @@ type t = {
   neg_kex : Kex.negotiation option;    (* Negotiated KEX *)
   host_key : Nocrypto.Rsa.priv;        (* Server host key *)
   session_id : Cstruct.t option;       (* First calculated H *)
-  keys_ctos : Kex.keys option;         (* Client to server (input) keys *)
-  keys_stoc : Kex.keys option;         (* Server to cleint (output) keys *)
+  keys_ctos : Kex.keys;                (* Client to server (input) keys *)
+  keys_stoc : Kex.keys;                (* Server to cleint (output) keys *)
   new_keys_ctos : Kex.keys option;     (* Install when we receive NEWKEYS *)
   new_keys_stoc : Kex.keys option;     (* Install after we send NEWKEYS *)
   input_buffer : Cstruct.t;            (* Unprocessed input *)
@@ -48,8 +48,8 @@ let make host_key =
             neg_kex = None;
             host_key;
             session_id = None;
-            keys_ctos = None;
-            keys_stoc = None;
+            keys_ctos = Kex.plaintext_keys;
+            keys_stoc = Kex.plaintext_keys;
             new_keys_ctos = None;
             new_keys_stoc = None;
             input_buffer = Cstruct.create 0 }
@@ -59,15 +59,15 @@ let make host_key =
 let of_buf t buf =
   { t with input_buffer = buf }
 
+(*
+ * Can we patch new_keys on input directly ???
+ * This code is horrible
+ *)
 let patch_new_keys old_keys new_keys =
   let open Kex in
   let open Hmac in
   guard_some new_keys "No new_keys_ctos" >>= fun new_keys ->
-  let new_seq = match old_keys with
-    | None -> Int32.zero
-    | Some keys -> keys.mac.seq
-  in
-  let new_mac = { new_keys.mac with seq = new_seq } in
+  let new_mac = { new_keys.mac with seq = old_keys.mac.seq } in
   ok { new_keys with mac = new_mac }
 
 let input_buf t buf =
@@ -82,27 +82,17 @@ let pop_msg2 t buf =
       let msg = Ssh.Ssh_msg_version v in
       ok (of_buf t buf, Some msg)
   in
-  let plain t buf =
-    Packet.get_plain buf >>= function
-    | None -> ok (t, None)
-    | Some (pkt, buf) ->
-      Packet.to_msg pkt >>= fun msg ->
-      ok (of_buf t buf, Some msg)
-  in
   let decrypt t keys buf =
     Packet.decrypt keys buf >>= function
     | None -> ok (t, None)
     | Some (pkt, buf, keys) ->
-      let t = { t with keys_stoc = Some keys } in
+      let t = { t with keys_stoc = keys } in
       Packet.to_msg pkt >>= fun msg ->
       ok (of_buf t buf, Some msg)
   in
   match t.client_version with
   | None -> version t buf
-  | Some _ ->
-    match t.keys_stoc with
-    | None -> plain t buf
-    | Some keys -> decrypt t keys buf
+  | Some _ -> decrypt t t.keys_ctos buf
 
 let pop_msg t = pop_msg2 t t.input_buffer
 
@@ -140,7 +130,7 @@ let handle_msg t msg =
 
   | Ssh_msg_newkeys ->
     patch_new_keys t.keys_ctos t.new_keys_ctos >>= fun new_keys_ctos ->
-    ok ({ t with keys_ctos = Some new_keys_ctos;
+    ok ({ t with keys_ctos = new_keys_ctos;
                  new_keys_ctos = None },
         [])
 
@@ -154,20 +144,18 @@ let output_msg t msg =
   (match msg with
    | Ssh.Ssh_msg_newkeys ->
      patch_new_keys t.keys_stoc t.new_keys_stoc >>= fun new_keys_stoc ->
-     ok { t with keys_stoc = Some new_keys_stoc;
+     ok { t with keys_stoc = new_keys_stoc;
                  new_keys_stoc = None }
    | _ -> ok t)
   (* Build output buffer *)
   >>= fun t ->
-  match t.keys_ctos with
-  | None ->
-    (* XXX Too hackish, fix me with love *)
-    (match msg with
-     | Ssh.Ssh_msg_version v -> ok (t, Cstruct.of_string (v ^ "\r\n"))
-     | msg -> ok (t, Packet.plain msg))
-  | Some keys ->
-    let enc, keys = Packet.encrypt keys msg in
-    ok ({ t with keys_ctos = Some keys }, enc)
+  (* XXX Too hackish, fix me with love *)
+  match msg with
+  | Ssh.Ssh_msg_version v ->
+    ok (t, Cstruct.of_string (v ^ "\r\n"))
+  | msg ->
+    let enc, keys = Packet.encrypt t.keys_stoc msg in
+    ok ({ t with keys_stoc = keys }, enc)
 
 let output_msgs t = function
   | [] -> invalid_arg "empty msg list"

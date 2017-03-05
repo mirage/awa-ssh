@@ -34,6 +34,7 @@ let hmac keys buf =
       Cstruct.set_len buf 12
   in
   let digest = match hmac with
+    | Plaintext -> Cstruct.create 0
     | Md5 -> MD5.hmacv ~key [ seqbuf; buf ]
     | Md5_96 -> MD5.hmacv ~key [ seqbuf; buf ] |> take_96
     | Sha1 -> SHA1.hmacv ~key [ seqbuf; buf ]
@@ -50,6 +51,8 @@ let cipher_enc_dec enc keys buf =
   let key = keys.Kex.cipher in
   let iv = keys.Kex.iv in
   match (snd key) with
+  | Cipher.Plaintext_key -> buf, keys
+
   | Cipher.Aes_ctr_key key ->
     let f = if enc then AES.CTR.encrypt else AES.CTR.decrypt in
     let buf = f ~key ~ctr:iv buf in
@@ -75,6 +78,7 @@ let peek_len keys block_len buf =
   assert (block_len <= (Cstruct.len buf));
   let buf = Cstruct.set_len buf block_len in
   let hdr = match (snd (keys.Kex.cipher)) with
+    | Cipher.Plaintext_key -> buf
     | Cipher.Aes_ctr_key key -> AES.CTR.decrypt ~key ~ctr:keys.Kex.iv buf
     | Cipher.Aes_cbc_key key -> AES.CBC.decrypt ~key ~iv:keys.Kex.iv buf
   in
