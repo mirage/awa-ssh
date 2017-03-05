@@ -33,8 +33,8 @@ let algorithm_to_string = function
   | Diffie_hellman_group1_sha1  -> "diffie-hellman-group1-sha1"
 
 let group_of_algorithm = function
-  | Diffie_hellman_group14_sha1 -> Nocrypto.Dh.Group.oakley_2
-  | Diffie_hellman_group1_sha1  -> Nocrypto.Dh.Group.oakley_14
+  | Diffie_hellman_group14_sha1 -> Nocrypto.Dh.Group.oakley_14
+  | Diffie_hellman_group1_sha1  -> Nocrypto.Dh.Group.oakley_2
 
 let preferred = [ Diffie_hellman_group14_sha1; Diffie_hellman_group1_sha1 ]
 
