@@ -44,6 +44,15 @@ let cipher_key_of cipher key =
 
 let hmac_key_of hmac key = Hmac.{ hmac; key; seq = Int32.zero }
 
+let encrypt_plain msg =
+  fst (Packet.encrypt Kex.plaintext_keys msg)
+
+let decrypt_plain buf =
+  match Packet.decrypt Kex.plaintext_keys buf with
+  | Ok (Some (pkt, buf, _)) -> ok (Some (pkt, buf))
+  | Ok None -> ok None
+  | Error e -> error e
+
 let assert_failure x =
   let ok = try
       ignore @@ x ();
@@ -111,8 +120,8 @@ let t_parsing () =
    * Case 1: Full buff consumed
    *)
   let msg = Ssh_msg_ignore "a" in
-  let buf = Packet.plain msg in
-  let pkt, rbuf = get_some @@ get_ok_s @@ Packet.get_plain buf in
+  let buf = encrypt_plain msg in
+  let pkt, rbuf = get_some @@ get_ok_s @@ decrypt_plain buf in
   let msg2 = get_ok_s @@ Packet.to_msg pkt in
   assert (msg = msg2);
   assert ((Cstruct.len rbuf) = 0);
@@ -121,9 +130,9 @@ let t_parsing () =
    * Case 2: 1 byte left
    *)
   let msg = Ssh_msg_ignore "a" in
-  let buf = Packet.plain msg in
+  let buf, _ = Packet.encrypt Kex.plaintext_keys msg in
   let buf = Cstruct.append buf (Cstruct.of_string "b") in
-  let pkt, rbuf = get_some @@ get_ok_s @@ Packet.get_plain buf in
+  let pkt, rbuf = get_some @@ get_ok_s @@ decrypt_plain buf in
   let msg2 = get_ok_s @@ Packet.to_msg pkt in
   assert (msg = msg2);
   assert ((Cstruct.len rbuf) = 1);
@@ -132,12 +141,12 @@ let t_parsing () =
   let buf = Cstruct.create 64 in
   set_pkt_hdr_pkt_len buf 0l;
   set_pkt_hdr_pad_len buf 0;
-  let e = get_error (Packet.get_plain buf) in
-  assert (e = "get_plain: Bogus pkt len");
+  let e = get_error (decrypt_plain buf) in
+  assert (e = "decrypt: Bogus pkt len");
 
   let id msg =
-    let buf = Packet.plain msg in
-    let pkt, buf = get_some @@ get_ok_s @@ Packet.get_plain buf in
+    let buf = encrypt_plain msg in
+    let pkt, buf = get_some @@ get_ok_s @@ decrypt_plain buf in
     let msg2 = get_ok_s @@ Packet.to_msg pkt in
     assert ((Cstruct.len buf) = 0);
     match msg, msg2 with
@@ -194,7 +203,7 @@ let t_key_exchange () =
   let file = "test/kex.packet" in
   let fd = Unix.(openfile file [O_RDONLY] 0) in
   let buf = Unix_cstruct.of_fd fd in
-  let pkt, rbuf = get_some @@ get_ok_s @@ Packet.get_plain buf in
+  let pkt, rbuf = get_some @@ get_ok_s @@ decrypt_plain buf in
   let msg = get_ok_s @@ Packet.to_msg pkt in
   let () = match msg with
     | Ssh.Ssh_msg_kexinit kex ->

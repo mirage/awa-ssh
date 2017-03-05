@@ -96,23 +96,6 @@ let to_msg pkt =
 let to_msgbuf pkt =
   Decode.get_payload pkt
 
-let get_plain buf =
-  let open Ssh in
-  if (Cstruct.len buf) < sizeof_pkt_hdr then
-    partial buf
-  else
-    let pkt_len = Ssh.get_pkt_hdr_pkt_len buf |> Int32.to_int in
-    guard (pkt_len > 0 && pkt_len < max_pkt_len) "get_plain: Bogus pkt len"
-    >>= fun () ->
-    if (Cstruct.len buf) < (pkt_len + 4) then
-      partial buf
-    else
-      let pkt = Cstruct.set_len buf (pkt_len + 4) in
-      let pad_len = get_pkt_hdr_pad_len buf in
-      guard (pad_len < pkt_len) "get_plain: Bogus pad len" >>= fun () ->
-      let buf = Cstruct.shift buf (pkt_len + 4) in
-      ok (Some (pkt, buf))
-
 let decrypt keys buf =
   let open Ssh in
   let open Kex in
@@ -137,15 +120,6 @@ let decrypt keys buf =
       guard (pad_len < pkt_len) "decrypt: Bogus pad len" >>= fun () ->
       let buf = Cstruct.shift buf (4 + pkt_len + digest_len) in
       ok (Some (pkt_dec, buf, keys))
-
-let plain msg =
-  let open Encode in
-  let buf =
-    reserve Ssh.sizeof_pkt_hdr (create ()) |> put_message msg |> to_cstruct
-  in
-  Ssh.set_pkt_hdr_pkt_len buf (Int32.of_int ((Cstruct.len buf) - 4));
-  Ssh.set_pkt_hdr_pad_len buf 0;
-  buf
 
 let encrypt keys msg =
   let open Encode in
