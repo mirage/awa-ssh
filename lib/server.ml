@@ -79,9 +79,8 @@ let pop_msg2 t buf =
     match client_version with
     | None -> ok (t, None)
     | Some v ->
-      let t = { t with client_version } in
       let msg = Ssh.Ssh_msg_version v in
-      ok (t, Some msg)
+      ok (of_buf t buf, Some msg)
   in
   let plain t buf =
     Packet.get_plain buf >>= function
@@ -161,7 +160,11 @@ let output_msg t msg =
   (* Build output buffer *)
   >>= fun t ->
   match t.keys_ctos with
-  | None -> ok (t, Packet.plain msg)
+  | None ->
+    (* XXX Too hackish, fix me with love *)
+    (match msg with
+     | Ssh.Ssh_msg_version v -> ok (t, Cstruct.of_string (v ^ "\r\n"))
+     | msg -> ok (t, Packet.plain msg))
   | Some keys ->
     let enc, keys = Packet.encrypt keys msg in
     ok ({ t with keys_ctos = Some keys }, enc)
