@@ -38,3 +38,12 @@ let u32_compare a b = (* ignore the sign *)
   let (>|>) x y = Int32.shift_right_logical x y in
   let c = Int32.compare (a >|> 1) (b >|> 1) in
   if c = 0 then Int32.compare (a &&& 1l) (b &&& 1l) else c
+
+(* Smarter than Cstruct.append *)
+let join_buf b1 b2 =
+  if (Cstruct.len b1) = 0 then
+    b2
+  else if (Cstruct.len b2) = 0 then
+    b1
+  else
+    Cstruct.append b1 b2

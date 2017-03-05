@@ -69,15 +69,7 @@ let patch_new_keys old_keys new_keys =
   ok { new_keys with mac = new_mac }
 
 let input_buf t buf =
-  let join b1 b2 =
-    if (Cstruct.len b1) = 0 then
-      b2
-    else if (Cstruct.len b2) = 0 then
-      b1
-    else
-      Cstruct.append b1 b2
-  in
-  of_buf t (join t.input_buffer buf)
+  of_buf t (join_buf t.input_buffer buf)
 
 let pop_msg2 t buf =
   let plain buf =
