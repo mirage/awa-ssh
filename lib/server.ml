@@ -145,7 +145,10 @@ let handle_msg t msg =
                  new_keys_ctos = None },
         [])
 
-  | _ -> error "unhandled stuff"
+  | Ssh_msg_version v ->
+    ok ({ t with client_version = Some v }, [])
+
+  | msg -> error ("unhandled msg: " ^ (message_to_string msg))
 
 let output_msg t msg =
   (* Do state transitions *)
