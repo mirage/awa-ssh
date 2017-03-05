@@ -132,7 +132,7 @@ let t_parsing () =
   set_pkt_hdr_pkt_len buf 0l;
   set_pkt_hdr_pad_len buf 0;
   let e = get_error (Packet.get_plain buf) in
-  assert (e = "Bogus pkt len");
+  assert (e = "get_plain: Bogus pkt len");
 
   let id msg =
     let buf = Packet.plain msg in
@@ -259,8 +259,9 @@ let t_mpint () =
    *)
   Cstruct.set_uint8 buf 4 0x80;
   let e = get_error (Decode.get_mpint buf) in
-  assert (e = "Negative mpint");
+  assert (e = "Negative mpint")
 
+let t_version () =
   (*
    * Case 5: Make sure state transitions are ok.
    *)
@@ -272,6 +273,7 @@ let t_mpint () =
     match get_some msg with
     | Ssh.Ssh_msg_version v ->
       assert (v = "OpenSSH_6.9");
+      let t, _ =  get_ok_s @@ Server.handle_msg t (Ssh.Ssh_msg_version v) in
       assert (t.Server.client_version = (Some "OpenSSH_6.9"))
     | _ -> failwith "Expected Ssh_version"
 
@@ -325,6 +327,7 @@ let all_tests = [
   (t_key_exchange, "key exchange");
   (t_namelist, "namelist conversions");
   (t_mpint, "mpint conversions");
+  (t_version, "version exchange");
   (t_crypto, "encrypt/decrypt");
 ]
 

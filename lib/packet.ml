@@ -98,14 +98,14 @@ let get_plain buf =
     partial buf
   else
     let pkt_len = Ssh.get_pkt_hdr_pkt_len buf |> Int32.to_int in
-    guard (pkt_len > 0 && pkt_len < max_pkt_len) "encrypt: Bogus pkt len"
+    guard (pkt_len > 0 && pkt_len < max_pkt_len) "get_plain: Bogus pkt len"
     >>= fun () ->
     if (Cstruct.len buf) < (pkt_len + 4) then
       partial buf
     else
       let pkt = Cstruct.set_len buf (pkt_len + 4) in
       let pad_len = get_pkt_hdr_pad_len buf in
-      guard (pad_len < pkt_len) "encrypt: Bogus pad len" >>= fun () ->
+      guard (pad_len < pkt_len) "get_plain: Bogus pad len" >>= fun () ->
       let buf = Cstruct.shift buf (pkt_len + 4) in
       ok (Some (pkt, buf))
 
