@@ -161,7 +161,7 @@ let t_parsing () =
       Ssh_msg_ignore "Fora Temer";
       Ssh_msg_unimplemented long;
       Ssh_msg_debug (false, "Fora", "Temer");
-      Ssh_msg_service_request "Viva Che";
+      Ssh_msg_service_request "Fora Temer";
       Ssh_msg_service_accept "Ricardo Flores Magon";
       (* Ssh_msg_kexinit foo; *)
       Ssh_msg_kexdh_init mpint;
