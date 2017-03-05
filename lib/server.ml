@@ -32,7 +32,29 @@ type t = {
   new_keys_ctos : Kex.keys option;     (* Install when we receive NEWKEYS *)
   new_keys_stoc : Kex.keys option;     (* Install after we send NEWKEYS *)
   input_buffer : Cstruct.t;            (* Unprocessed input *)
+  expect_f :                           (* Which messages are expected *)
+    Ssh.message -> (unit, string) Result.result;
 }
+
+let expect_version = function
+  | Ssh.Ssh_msg_version _ -> ok ()
+  | msg -> error ("Unexpected msg: " ^ (Ssh.message_to_string msg))
+
+let expect_kexinit = function
+  | Ssh.Ssh_msg_kexinit _ -> ok ()
+  | msg -> error ("Unexpected msg: " ^ (Ssh.message_to_string msg))
+
+let expect_kexdh_init = function
+  | Ssh.Ssh_msg_kexdh_init _ -> ok ()
+  | msg -> error ("Unexpected msg: " ^ (Ssh.message_to_string msg))
+
+let expect_newkeys = function
+  | Ssh.Ssh_msg_newkeys -> ok ()
+  | msg -> error ("Unexpected msg: " ^ (Ssh.message_to_string msg))
+
+let expect_any msg = ok ()
+
+let guard_msg t msg = t.expect_f msg
 
 let make host_key =
   let open Ssh in
@@ -51,7 +73,8 @@ let make host_key =
             keys_stoc = Kex.plaintext_keys;
             new_keys_ctos = None;
             new_keys_stoc = None;
-            input_buffer = Cstruct.create 0 }
+            input_buffer = Cstruct.create 0;
+            expect_f = expect_version; }
   in
   t, [ banner_msg; kex_msg ]
 
@@ -98,12 +121,16 @@ let pop_msg t = pop_msg2 t t.input_buffer
 let handle_msg t msg =
   let open Ssh in
   let open Nocrypto in
+  guard_msg t msg >>= fun () ->
   match msg with
   | Ssh_msg_kexinit kex ->
     Decode.get_kex_pkt t.server_kex >>= fun (server_kex, _) ->
     Kex.negotiate ~s:server_kex ~c:kex
     >>= fun neg ->
-    ok ({ t with client_kex = kex.input_buf; neg_kex = Some neg }, [])
+    ok ({ t with client_kex = kex.input_buf;
+                 neg_kex = Some neg;
+                 expect_f = expect_kexdh_init },
+        [])
 
   | Ssh_msg_kexdh_init e ->
     guard_some t.neg_kex "No negotiated kex" >>= fun neg ->
@@ -123,18 +150,22 @@ let handle_msg t msg =
     let new_keys_ctos, new_keys_stoc = Kex.Dh.derive_keys k h session_id neg in
     ok ({t with session_id = Some session_id;
                 new_keys_ctos = Some new_keys_ctos;
-                new_keys_stoc = Some new_keys_stoc; },
+                new_keys_stoc = Some new_keys_stoc;
+                expect_f = expect_newkeys },
         [ Ssh_msg_kexdh_reply (pub_host_key, f, signature);
           Ssh_msg_newkeys ])
 
   | Ssh_msg_newkeys ->
     patch_new_keys t.keys_ctos t.new_keys_ctos >>= fun new_keys_ctos ->
+    (* TODO Make sure it's not plaintext, paranoia *)
     ok ({ t with keys_ctos = new_keys_ctos;
-                 new_keys_ctos = None },
+                 new_keys_ctos = None;
+                 expect_f = expect_any },
         [])
 
   | Ssh_msg_version v ->
-    ok ({ t with client_version = Some v }, [])
+    ok ({ t with client_version = Some v;
+                 expect_f = expect_kexinit }, [])
 
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))
 
