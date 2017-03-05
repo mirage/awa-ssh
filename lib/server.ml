@@ -23,7 +23,7 @@ type t = {
   client_version : string option;      (* Without crlf *)
   server_version : string;             (* Without crlf *)
   client_kex : Cstruct.t option;       (* Last KEXINIT received *)
-  server_kex : Cstruct.t;              (* Last KEXINIT sent by us *)
+  server_kex : Ssh.kex_pkt;            (* Last KEXINIT sent by us *)
   neg_kex : Kex.negotiation option;    (* Negotiated KEX *)
   host_key : Nocrypto.Rsa.priv;        (* Server host key *)
   session_id : Cstruct.t option;       (* First calculated H *)
@@ -59,9 +59,8 @@ let guard_msg t msg = t.expect_f msg
 let make host_key =
   let open Ssh in
   let banner_msg = Ssh_msg_version version_banner in
-  let kex = Kex.make_pkt () in
-  let kex_msg = Ssh.Ssh_msg_kexinit kex in
-  let server_kex = Encode.buf_of_kex_pkt kex in
+  let server_kex = Kex.make_pkt () in
+  let kex_msg = Ssh.Ssh_msg_kexinit server_kex in
   let t = { client_version = None;
             server_version = version_banner;
             server_kex;
@@ -124,8 +123,7 @@ let handle_msg t msg =
   guard_msg t msg >>= fun () ->
   match msg with
   | Ssh_msg_kexinit kex ->
-    Decode.get_kex_pkt t.server_kex >>= fun (server_kex, _) ->
-    Kex.negotiate ~s:server_kex ~c:kex
+    Kex.negotiate ~s:t.server_kex ~c:kex
     >>= fun neg ->
     ok ({ t with client_kex = kex.input_buf;
                  neg_kex = Some neg;
@@ -140,7 +138,7 @@ let handle_msg t msg =
     guard_some t.client_kex "No client kex" >>= fun i_c ->
     let v_c = Cstruct.of_string v_c in
     let v_s = Cstruct.of_string t.server_version in
-    let i_s = t.server_kex in
+    let i_s = Encode.buf_of_kex_pkt t.server_kex in
     let pub_host_key = Rsa.pub_of_priv t.host_key in
     let k_s = Encode.buf_of_key pub_host_key in
     Kex.(Dh.generate neg.kex_algorithm e) >>= fun (y, f, k) ->
