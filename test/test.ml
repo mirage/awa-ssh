@@ -270,7 +270,7 @@ let t_mpint () =
   | Error e -> failwith e
   | Ok (t, msg) ->
     match get_some msg with
-    | Ssh.Ssh_version v ->
+    | Ssh.Ssh_msg_version v ->
       assert (v = "OpenSSH_6.9");
       assert (t.Server.client_version = (Some "OpenSSH_6.9"))
     | _ -> failwith "Expected Ssh_version"

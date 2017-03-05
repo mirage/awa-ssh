@@ -124,5 +124,5 @@ type message =
   | Ssh_msg_channel_request
   | Ssh_msg_channel_success of int32
   | Ssh_msg_channel_failure of int32
-  | Ssh_version of string       (* Mocked version *)
+  | Ssh_msg_version of string       (* Mocked version *)
 
