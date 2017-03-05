@@ -91,7 +91,8 @@ type kex_pkt = {
   compression_algorithms_stoc : string list;
   languages_ctos : string list;
   languages_stoc : string list;
-  first_kex_packet_follows : bool
+  first_kex_packet_follows : bool;
+  input_buf : Cstruct.t option;     (* Used to save incoming kexinit buffer *)
 } [@@deriving sexp]
 
 type message =
@@ -123,4 +124,5 @@ type message =
   | Ssh_msg_channel_request
   | Ssh_msg_channel_success of int32
   | Ssh_msg_channel_failure of int32
+  | Ssh_version of string       (* Mocked version *)
 

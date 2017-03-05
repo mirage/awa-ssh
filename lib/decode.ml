@@ -126,6 +126,7 @@ let get_nl buf =
 
 let get_kex_pkt buf =
   let open Ssh in
+  let input_buf = Some buf in
   let cookiebegin = buf in
   (* Jump over cookie *)
   safe_shift buf 16 >>= fun buf ->
@@ -151,7 +152,8 @@ let get_kex_pkt buf =
         compression_algorithms_stoc;
         languages_ctos;
         languages_stoc;
-        first_kex_packet_follows },
+        first_kex_packet_follows;
+        input_buf },
       buf)
 
 let get_message buf =

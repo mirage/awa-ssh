@@ -72,36 +72,48 @@ let input_buf t buf =
   of_buf t (join_buf t.input_buffer buf)
 
 let pop_msg2 t buf =
-  let plain buf =
+  let version t buf =
+    Decode.get_version buf >>= fun (client_version, buf) ->
+    match client_version with
+    | None -> ok (t, None)
+    | Some v ->
+      let t = { t with client_version } in
+      let msg = Ssh.Ssh_version v in
+      ok (t, Some msg)
+  in
+  let plain t buf =
     Packet.get_plain buf >>= function
     | None -> ok (t, None)
     | Some (pkt, buf) ->
-      Packet.to_msgbuf pkt >>= fun msgbuf ->
-      ok (of_buf t buf, Some msgbuf)
+      Packet.to_msg pkt >>= fun msg ->
+      ok (of_buf t buf, Some msg)
   in
-  let decrypt keys buf =
+  let decrypt t keys buf =
     Packet.decrypt keys buf >>= function
     | None -> ok (t, None)
     | Some (pkt, buf, keys) ->
       let t = { t with keys_stoc = Some keys } in
-      Packet.to_msgbuf pkt >>= fun msgbuf ->
-      ok (of_buf t buf, Some msgbuf)
+      Packet.to_msg pkt >>= fun msg ->
+      ok (of_buf t buf, Some msg)
   in
-  match t.keys_stoc with
-  | None -> plain buf
-  | Some keys -> decrypt keys buf
+  match t.client_version with
+  | None -> version t buf
+  | Some _ ->
+    match t.keys_stoc with
+    | None -> plain t buf
+    | Some keys -> decrypt t keys buf
 
 let pop_msg t = pop_msg2 t t.input_buffer
 
-let handle_msg t msgbuf =
+let handle_msg t msg =
   let open Ssh in
   let open Nocrypto in
-  Decode.get_message msgbuf >>= function
+  match msg with
   | Ssh_msg_kexinit kex ->
     Decode.get_kex_pkt t.server_kex >>= fun (server_kex, _) ->
     Kex.negotiate ~s:server_kex ~c:kex
     >>= fun neg ->
-    ok ({ t with client_kex = Some msgbuf; neg_kex = Some neg }, [])
+    ok ({ t with client_kex = kex.input_buf; neg_kex = Some neg }, [])
 
   | Ssh_msg_kexdh_init e ->
     guard_some t.neg_kex "No negotiated kex" >>= fun neg ->

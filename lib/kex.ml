@@ -51,7 +51,8 @@ let make_pkt () =
     compression_algorithms_stoc = [ "none" ];
     languages_ctos = [];
     languages_stoc = [];
-    first_kex_packet_follows = false }
+    first_kex_packet_follows = false;
+    input_buf = None }
 
 type negotiation = {
   kex_algorithm : algorithm;

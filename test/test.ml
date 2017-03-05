@@ -264,15 +264,16 @@ let t_mpint () =
   (*
    * Case 5: Make sure state transitions are ok.
    *)
-  (* let t, _ = Server.make (Nocrypto.Rsa.generate 2048) in *)
-  (* let client_version = "SSH-2.0-OpenSSH_6.9\r\n" in *)
-  (* match Server.input_buffer t (Cstruct.of_string client_version) with *)
-  (* | Ok (t, buf, _) -> *)
-  (*   assert ((Cstruct.len buf) = 0); *)
-  (*   assert (t.Server.client_version = (Some "OpenSSH_6.9")); *)
-  (*   () *)
-  (* | Error e -> failwith e *)
-  ()
+  let t, _ = Server.make (Nocrypto.Rsa.generate 2048) in
+  let client_version = "SSH-2.0-OpenSSH_6.9\r\n" in
+  match Server.pop_msg2 t (Cstruct.of_string client_version) with
+  | Error e -> failwith e
+  | Ok (t, msg) ->
+    match get_some msg with
+    | Ssh.Ssh_version v ->
+      assert (v = "OpenSSH_6.9");
+      assert (t.Server.client_version = (Some "OpenSSH_6.9"))
+    | _ -> failwith "Expected Ssh_version"
 
 let t_crypto () =
   let test keys =
