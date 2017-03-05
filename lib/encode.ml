@@ -213,4 +213,4 @@ let put_message msg buf =
       put_id SSH_MSG_CHANNEL_FAILURE buf |>
       put_uint32 channel
     | Ssh_version version ->            (* Mocked up version message *)
-      put_raw (Cstruct.of_string version) buf
+      put_raw (Cstruct.of_string (version ^ "\r\n")) buf
