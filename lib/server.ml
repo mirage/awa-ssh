@@ -36,8 +36,10 @@ type t = {
 }
 
 let make host_key =
-  let banner_buf = Printf.sprintf "%s\r\n" version_banner |> Cstruct.of_string in
+  let open Ssh in
+  let banner_msg = Ssh_version (version_banner ^ "\r\n") in
   let kex = Kex.make_pkt () in
+  let kex_msg = Ssh.Ssh_msg_kexinit kex in
   let server_kex = Encode.buf_of_kex_pkt kex in
   let t = { client_version = None;
             server_version = version_banner;
@@ -52,7 +54,7 @@ let make host_key =
             new_keys_stoc = None;
             input_buffer = Cstruct.create 0 }
   in
-  t, Cstruct.append banner_buf server_kex
+  t, [ banner_msg; kex_msg ]
 
 let of_buf t buf =
   { t with input_buffer = buf }
