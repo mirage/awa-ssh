@@ -82,17 +82,17 @@ let pop_msg2 t buf =
       let msg = Ssh.Ssh_msg_version v in
       ok (of_buf t buf, Some msg)
   in
-  let decrypt t keys buf =
-    Packet.decrypt keys buf >>= function
+  let decrypt t buf =
+    Packet.decrypt t.keys_ctos buf >>= function
     | None -> ok (t, None)
-    | Some (pkt, buf, keys) ->
-      let t = { t with keys_stoc = keys } in
+    | Some (pkt, buf, keys_ctos) ->
       Packet.to_msg pkt >>= fun msg ->
+      let t = { t with keys_ctos } in
       ok (of_buf t buf, Some msg)
   in
   match t.client_version with
   | None -> version t buf
-  | Some _ -> decrypt t t.keys_ctos buf
+  | Some _ -> decrypt t buf
 
 let pop_msg t = pop_msg2 t t.input_buffer
 
