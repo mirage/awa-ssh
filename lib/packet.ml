@@ -112,9 +112,11 @@ let decrypt keys buf =
       let digest1 = Cstruct.shift buf (pkt_len + 4) in
       let digest1 = Cstruct.set_len digest1 digest_len in
       let digest2, keys = hmac keys pkt_dec in
-      guard (Cstruct.equal digest1 digest2) "decrypt: Bad digest" >>= fun () ->
+      guard (Cstruct.equal digest1 digest2)
+        "decrypt: Bad digest" >>= fun () ->
       let pad_len = get_pkt_hdr_pad_len pkt_dec in
-      guard (pad_len < pkt_len) "decrypt: Bogus pad len" >>= fun () ->
+      guard (pad_len >= 4 && pad_len <= 255 && pad_len < pkt_len)
+        "decrypt: Bogus pad len"  >>= fun () ->
       let buf = Cstruct.shift buf (4 + pkt_len + digest_len) in
       ok (Some (pkt_dec, buf, keys))
 
@@ -131,7 +133,7 @@ let encrypt keys msg =
     let x = block_len - (len mod block_len) in
     if x < 4 then x + block_len else x
   in
-  assert (padlen < 256);
+  assert (padlen >= 4 && padlen <= 255);
   let pkt = put_random padlen buf |> to_cstruct in
   Ssh.set_pkt_hdr_pkt_len pkt (Int32.of_int ((Cstruct.len pkt) - 4));
   Ssh.set_pkt_hdr_pad_len pkt padlen;
