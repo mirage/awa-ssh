@@ -64,12 +64,6 @@ type negotiation = {
   compression_algorithm_stoc : compression_algorithm;
 }
 
-let keylen_needed (neg : negotiation) =
-  let ctos = neg.encryption_algorithm_ctos in
-  let stoc = neg.encryption_algorithm_stoc in
-  max (Cipher.iv_len ctos)    @@ max (Cipher.iv_len stoc) @@
-  max (Cipher.block_len ctos) @@ Cipher.block_len stoc
-
 let negotiate ~s ~c =
   let pick_common f ~s ~c e =
     try
@@ -150,22 +144,22 @@ let plaintext_keys = {
 }
 
 let derive_keys digestv k h session_id neg =
-  let need = keylen_needed neg in
   let cipher_ctos = neg.encryption_algorithm_ctos in
   let cipher_stoc = neg.encryption_algorithm_stoc in
   let mac_ctos = neg.mac_algorithm_ctos in
   let mac_stoc = neg.mac_algorithm_stoc in
   let k = Encode.(to_cstruct @@ put_mpint k (create ())) in
   let x = Cstruct.create 1 in
-  let rec expand kn =
+  let rec expand kn need =
     if (Cstruct.len kn) >= need then
       kn
     else
-      expand (digestv [k; h; kn])
+      expand (digestv [k; h; kn]) need
   in
-  let hash ch =
+  let hash ch need =
     Cstruct.set_char x 0 ch;
-    expand (digestv [k; h; x; session_id])
+    let hash = expand (digestv [k; h; x; session_id]) need in
+    Cstruct.set_len hash need
   in
   let key_of cipher h =
     let open Nocrypto.Cipher_block in
@@ -173,21 +167,24 @@ let derive_keys digestv k h session_id neg =
     match cipher with
     | Plaintext -> failwith "Deriving plaintext"
     | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
-      (cipher, Aes_ctr_key (AES.CTR.of_secret h))
+      cipher, Aes_ctr_key (AES.CTR.of_secret h)
     | Aes128_cbc | Aes192_cbc | Aes256_cbc ->
-      (cipher, Aes_cbc_key (AES.CBC.of_secret h))
+      cipher, Aes_cbc_key (AES.CBC.of_secret h)
   in
-  let ctos = { iv     = hash 'A';
-               cipher = hash 'C' |> key_of cipher_ctos;
-               mac    = Hmac.{ hmac = mac_ctos;
-                               key = hash 'E';
-                               seq = Int32.zero } }
+  let ctos = {
+    iv     = hash 'A' (Cipher.iv_len cipher_ctos);
+    cipher = hash 'C' (Cipher.key_len cipher_ctos) |> key_of cipher_ctos;
+    mac    = Hmac.{ hmac = mac_ctos;
+                    key = hash 'E' 0;
+                    seq = Int32.zero }
+  }
   in
-  let stoc = { iv     = hash 'B';
-               cipher = hash 'D' |> key_of cipher_stoc;
-               mac    = Hmac.{ hmac = mac_stoc;
-                               key = hash 'F';
-                               seq = Int32.zero } }
+  let stoc = {
+    iv     = hash 'B' (Cipher.iv_len cipher_stoc);
+    cipher = hash 'D' (Cipher.key_len cipher_stoc) |> key_of cipher_stoc;
+    mac    = Hmac.{ hmac = mac_stoc;
+                    key = hash 'F' 0;
+                    seq = Int32.zero } }
   in
   (ctos, stoc)
 
