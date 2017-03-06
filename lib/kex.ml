@@ -176,7 +176,7 @@ let derive_keys digestv k h session_id neg =
     iv     = hash 'A' (Cipher.iv_len cipher_ctos);
     cipher = hash 'C' (Cipher.key_len cipher_ctos) |> key_of cipher_ctos;
     mac    = Hmac.{ hmac = mac_ctos;
-                    key = hash 'E' (digest_len mac_ctos);
+                    key = hash 'E' (key_len mac_ctos);
                     seq = Int32.zero }
   }
   in
@@ -184,7 +184,7 @@ let derive_keys digestv k h session_id neg =
     iv     = hash 'B' (Cipher.iv_len cipher_stoc);
     cipher = hash 'D' (Cipher.key_len cipher_stoc) |> key_of cipher_stoc;
     mac    = Hmac.{ hmac = mac_stoc;
-                    key = hash 'F' (digest_len mac_stoc);
+                    key = hash 'F' (key_len mac_stoc);
                     seq = Int32.zero }
   }
   in

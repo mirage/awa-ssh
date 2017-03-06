@@ -62,6 +62,15 @@ let digest_len = function
   | Sha2_256 -> SHA256.digest_size
   | Sha2_512 -> SHA512.digest_size
 
+let key_len = function
+  | Plaintext-> 0
+  | Md5      -> MD5.digest_size
+  | Md5_96   -> MD5.digest_size
+  | Sha1     -> SHA1.digest_size
+  | Sha1_96  -> SHA1.digest_size
+  | Sha2_256 -> SHA256.digest_size
+  | Sha2_512 -> SHA512.digest_size
+
 let known s = is_ok (of_string s)
 
 let preferred = [ Md5; Sha1; Sha2_256;
