@@ -99,11 +99,6 @@ let put_mpint mpint t =
   in
   put_raw mpbuf t
 
-let put_key (rsa : Nocrypto.Rsa.pub) t =
-  Nocrypto.Rsa.(put_string "ssh-rsa" t |>
-                put_mpint rsa.e |>
-                put_mpint rsa.n)
-
 let put_kex kex t =
   let open Ssh in
   let nll = [ kex.kex_algorithms;
@@ -122,12 +117,16 @@ let put_kex kex t =
   put_bool kex.first_kex_packet_follows |>
   put_uint32 Int32.zero
 
-let buf_of_key rsa =
-  put_key rsa (create ()) |> to_cstruct
-
-let buf_of_kex_pkt kex =
+let blob_of_kex_pkt kex =
   put_id Ssh.SSH_MSG_KEXINIT (create ()) |>
   put_kex kex |> to_cstruct
+
+let blob_of_key (rsa : Nocrypto.Rsa.pub) =
+  let open Nocrypto.Rsa in
+  put_string "ssh-rsa" (create ()) |>
+  put_mpint rsa.e |>
+  put_mpint rsa.n |>
+  to_cstruct
 
 let put_message msg buf =
   let open Ssh in
@@ -165,7 +164,7 @@ let put_message msg buf =
       put_mpint e
     | Ssh_msg_kexdh_reply (k_s, f, hsig) ->
       put_id SSH_MSG_KEXDH_REPLY buf |>
-      put_key k_s |>
+      put_cstring (blob_of_key k_s) |>
       put_mpint f |>
       put_cstring hsig
     | Ssh_msg_userauth_request (s1, s2, s3, b, s4, c) ->

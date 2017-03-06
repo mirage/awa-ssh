@@ -188,7 +188,8 @@ let get_message buf =
   | SSH_MSG_KEXDH_INIT -> get_mpint buf >>= fun (e, buf) ->
     ok (Ssh_msg_kexdh_init e)
   | SSH_MSG_KEXDH_REPLY ->
-    get_key buf >>= fun (k_s, buf) ->
+    get_cstring buf >>= fun (blob, buf) ->
+    get_key blob >>= fun (k_s, blob) ->
     get_mpint buf >>= fun (f, buf) ->
     get_cstring buf >>= fun (hsig, buf) ->
     ok (Ssh_msg_kexdh_reply (k_s, f, hsig))
