@@ -149,33 +149,34 @@ let derive_keys digestv k h session_id neg =
   let mac_ctos = neg.mac_algorithm_ctos in
   let mac_stoc = neg.mac_algorithm_stoc in
   let k = Encode.(to_cstruct @@ put_mpint k (create ())) in
-  let x = Cstruct.create 1 in
-  let rec expand kn need =
-    if (Cstruct.len kn) >= need then
-      kn
-    else
-      expand (digestv [k; h; kn]) need
-  in
   let hash ch need =
+    let rec expand kn =
+      if (Cstruct.len kn) >= need then
+        kn
+      else
+        let kn' = digestv [k; h; kn] in
+        expand (Cstruct.append kn kn')
+    in
+    let x = Cstruct.create 1 in
     Cstruct.set_char x 0 ch;
-    let hash = expand (digestv [k; h; x; session_id]) need in
-    Cstruct.set_len hash need
+    let k1 = digestv [k; h; x; session_id] in
+    Cstruct.set_len (expand k1) need
   in
-  let key_of cipher h =
+  let key_of cipher secret =
     let open Nocrypto.Cipher_block in
     let open Cipher in
     match cipher with
     | Plaintext -> failwith "Deriving plaintext"
     | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
-      cipher, Aes_ctr_key (AES.CTR.of_secret h)
+      cipher, Aes_ctr_key (AES.CTR.of_secret secret)
     | Aes128_cbc | Aes192_cbc | Aes256_cbc ->
-      cipher, Aes_cbc_key (AES.CBC.of_secret h)
+      cipher, Aes_cbc_key (AES.CBC.of_secret secret)
   in
   let ctos = {
     iv     = hash 'A' (Cipher.iv_len cipher_ctos);
     cipher = hash 'C' (Cipher.key_len cipher_ctos) |> key_of cipher_ctos;
     mac    = Hmac.{ hmac = mac_ctos;
-                    key = hash 'E' 0;
+                    key = hash 'E' (digest_len mac_ctos);
                     seq = Int32.zero }
   }
   in
@@ -183,8 +184,9 @@ let derive_keys digestv k h session_id neg =
     iv     = hash 'B' (Cipher.iv_len cipher_stoc);
     cipher = hash 'D' (Cipher.key_len cipher_stoc) |> key_of cipher_stoc;
     mac    = Hmac.{ hmac = mac_stoc;
-                    key = hash 'F' 0;
-                    seq = Int32.zero } }
+                    key = hash 'F' (digest_len mac_stoc);
+                    seq = Int32.zero }
+  }
   in
   (ctos, stoc)
 
