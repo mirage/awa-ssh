@@ -22,7 +22,7 @@ let version_banner = "SSH-2.0-awa_ssh_0.1"
 type t = {
   client_version : string option;      (* Without crlf *)
   server_version : string;             (* Without crlf *)
-  client_kex : Cstruct.t option;       (* Last KEXINIT received *)
+  client_kex : Ssh.kex_pkt option;     (* Last KEXINIT received *)
   server_kex : Ssh.kex_pkt;            (* Last KEXINIT sent by us *)
   neg_kex : Kex.negotiation option;    (* Negotiated KEX *)
   host_key : Nocrypto.Rsa.priv;        (* Server host key *)
@@ -123,9 +123,10 @@ let handle_msg t msg =
   guard_msg t msg >>= fun () ->
   match msg with
   | Ssh_msg_kexinit kex ->
+    guard_some kex.input_buf "No kex input_buf kex" >>= fun _ ->
     Kex.negotiate ~s:t.server_kex ~c:kex
     >>= fun neg ->
-    ok ({ t with client_kex = kex.input_buf;
+    ok ({ t with client_kex = Some kex;
                  neg_kex = Some neg;
                  expect_f = expect_kexdh_init },
         [])
@@ -135,7 +136,8 @@ let handle_msg t msg =
     guard_some t.client_version "No client version" >>= fun v_c ->
     guard_none t.new_keys_stoc "Already got new_keys_stoc" >>= fun () ->
     guard_none t.new_keys_ctos "Already got new_keys_ctos" >>= fun () ->
-    guard_some t.client_kex "No client kex" >>= fun i_c ->
+    guard_some t.client_kex "No client kex" >>= fun client_kex ->
+    guard_some client_kex.input_buf "No kex input_buf" >>= fun i_c ->
     let v_c = Cstruct.of_string v_c in
     let v_s = Cstruct.of_string t.server_version in
     let i_s = Encode.blob_of_kex_pkt t.server_kex in
