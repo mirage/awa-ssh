@@ -88,6 +88,7 @@ let t_banner () =
     "SSH-2.0-OpenSSH_6.9\r\n";
     "Some crap before\r\nSSH-2.0-OpenSSH_6.9\r\n";
     "SSH-2.0-OpenSSH_6.9\r\nSomeCrap After\r\n";
+    "SSH-2.0-OpenSSH_7.4p1 Debian-6\r\n";
   ]
   in
   List.iter (fun s ->
@@ -281,9 +282,9 @@ let t_version () =
   | Ok (t, msg) ->
     match get_some msg with
     | Ssh.Ssh_msg_version v ->
-      assert (v = "OpenSSH_6.9");
+      assert (v = "SSH-2.0-OpenSSH_6.9");
       let t, _ =  get_ok_s @@ Server.handle_msg t (Ssh.Ssh_msg_version v) in
-      assert (t.Server.client_version = (Some "OpenSSH_6.9"))
+      assert (t.Server.client_version = (Some "SSH-2.0-OpenSSH_6.9"))
     | _ -> failwith "Expected Ssh_version"
 
 let t_crypto () =
