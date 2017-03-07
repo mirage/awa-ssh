@@ -40,16 +40,20 @@ let get_version buf =
     else if line_len < 9 then
       error "Version line is too short"
     else
-      let tokens = Str.split_delim (Str.regexp "-") line in
+      (* Strip the comments *)
+      let version_line = try
+          String.sub line 0 (String.index line ' ')
+        with Not_found -> line
+      in
+      let tokens = Str.split_delim (Str.regexp "-") version_line in
       if List.length tokens <> 3 then
         error "Can't parse version line"
       else
         let version = List.nth tokens 1 in
-        let peer_version = List.nth tokens 2 in
         if version <> "2.0" then
           error ("Bad version " ^ version)
         else
-          ok (Some peer_version)
+          ok (Some version_line)
   in
   (* Scan all lines until an error or SSH version is found *)
   let rec scan buf =
