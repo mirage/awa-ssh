@@ -168,22 +168,22 @@ let handle_msg t msg =
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))
 
 let output_msg t msg =
-  (* Do state transitions *)
   (match msg with
-   | Ssh.Ssh_msg_newkeys ->
-     patch_new_keys t.keys_stoc t.new_keys_stoc >>= fun new_keys_stoc ->
-     ok { t with keys_stoc = new_keys_stoc;
-                 new_keys_stoc = None }
-   | _ -> ok t)
-  (* Build output buffer *)
-  >>= fun t ->
-  (* XXX Too hackish, fix me with love *)
+   | Ssh.Ssh_msg_version v ->
+     ok (t, Cstruct.of_string (v ^ "\r\n"))
+   | msg ->
+     let enc, keys = Packet.encrypt t.keys_stoc msg in
+     ok ({ t with keys_stoc = keys }, enc))
+  >>= fun (t, buf) ->
+  (* Do state transitions *)
   match msg with
-  | Ssh.Ssh_msg_version v ->
-    ok (t, Cstruct.of_string (v ^ "\r\n"))
-  | msg ->
-    let enc, keys = Packet.encrypt t.keys_stoc msg in
-    ok ({ t with keys_stoc = keys }, enc)
+  | Ssh.Ssh_msg_newkeys ->
+    patch_new_keys t.keys_stoc t.new_keys_stoc >>= fun new_keys_stoc ->
+    let t = { t with keys_stoc = new_keys_stoc;
+                     new_keys_stoc = None }
+    in
+    ok (t, buf)
+  | _ -> ok (t, buf)
 
 let output_msgs t = function
   | [] -> invalid_arg "empty msg list"
