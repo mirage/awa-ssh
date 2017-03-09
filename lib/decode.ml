@@ -195,7 +195,10 @@ let get_message buf =
     get_cstring buf >>= fun (blob, buf) ->
     get_key blob >>= fun (k_s, blob) ->
     get_mpint buf >>= fun (f, buf) ->
-    get_cstring buf >>= fun (hsig, buf) ->
+    get_cstring buf >>= fun (sigblob, buf) ->
+    get_string sigblob >>= fun (ktype, sigblob) ->
+    guard (ktype = "ssh-rsa") "Unknown signature key type" >>= fun () ->
+    get_cstring sigblob >>= fun (hsig, sigblob) ->
     ok (Ssh_msg_kexdh_reply (k_s, f, hsig))
   | SSH_MSG_USERAUTH_REQUEST ->
     get_string buf >>= fun (s1, buf) ->

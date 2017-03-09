@@ -47,3 +47,8 @@ let join_buf b1 b2 =
     b1
   else
     Cstruct.append b1 b2
+
+let cs_of_bytes l =
+  let buf = Cstruct.create (List.length l) in
+  List.iteri (fun i byte -> Cstruct.set_uint8 buf i byte) l;
+  buf

@@ -128,6 +128,11 @@ let blob_of_key (rsa : Nocrypto.Rsa.pub) =
   put_mpint rsa.n |>
   to_cstruct
 
+let blob_of_key_signature signature =
+  put_string "ssh-rsa" (create ()) |>
+  put_cstring signature |>
+  to_cstruct
+
 let put_message msg buf =
   let open Ssh in
   let unimplemented () = failwith "implement me" in
@@ -166,7 +171,7 @@ let put_message msg buf =
       put_id SSH_MSG_KEXDH_REPLY buf |>
       put_cstring (blob_of_key k_s) |>
       put_mpint f |>
-      put_cstring hsig
+      put_cstring (blob_of_key_signature hsig)
     | Ssh_msg_userauth_request (s1, s2, s3, b, s4, c) ->
       put_id SSH_MSG_USERAUTH_REQUEST buf |>
       put_string s1 |>
