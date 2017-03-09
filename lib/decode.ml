@@ -130,6 +130,8 @@ let get_nl buf =
 let get_kex_pkt buf =
   let open Ssh in
   let input_buf = Some buf in
+  get_message_id buf >>= fun (msgid, buf) ->
+  assert (msgid = SSH_MSG_KEXINIT);
   let cookiebegin = buf in
   (* Jump over cookie *)
   safe_shift buf 16 >>= fun buf ->
@@ -161,6 +163,7 @@ let get_kex_pkt buf =
 
 let get_message buf =
   let open Ssh in
+  let msgbuf = buf in
   get_message_id buf >>= fun (msgid, buf) ->
   let unimplemented () =
     error (Printf.sprintf "Message %d unimplemented" (message_id_to_int msgid))
@@ -187,7 +190,7 @@ let get_message buf =
   | SSH_MSG_SERVICE_ACCEPT ->
     get_string buf >>= fun (x, buf) -> ok (Ssh_msg_service_accept x)
   | SSH_MSG_KEXINIT ->
-    get_kex_pkt buf >>= fun (kex, buf) -> ok (Ssh_msg_kexinit kex)
+    get_kex_pkt msgbuf >>= fun (kex, buf) -> ok (Ssh_msg_kexinit kex)
   | SSH_MSG_NEWKEYS -> ok Ssh_msg_newkeys
   | SSH_MSG_KEXDH_INIT -> get_mpint buf >>= fun (e, buf) ->
     ok (Ssh_msg_kexdh_init e)

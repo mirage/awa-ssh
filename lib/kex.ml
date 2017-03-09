@@ -216,6 +216,7 @@ module Dh = struct
     put_cstring v_s |>
     put_cstring i_c |>
     put_cstring i_s |>
+    put_cstring k_s |>
     put_mpint e |>
     put_mpint f |>
     put_mpint k |>
