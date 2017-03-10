@@ -99,7 +99,7 @@ let put_mpint mpint t =
   in
   put_raw mpbuf t
 
-let put_kex kex t =
+let put_kexinit kex t =
   let open Ssh in
   let nll = [ kex.kex_algorithms;
               kex.server_host_key_algorithms;
@@ -117,9 +117,9 @@ let put_kex kex t =
   put_bool kex.first_kex_packet_follows |>
   put_uint32 Int32.zero
 
-let blob_of_kex_pkt kex =
+let blob_of_kexinit kex =
   put_id Ssh.SSH_MSG_KEXINIT (create ()) |>
-  put_kex kex |> to_cstruct
+  put_kexinit kex |> to_cstruct
 
 let blob_of_key (rsa : Nocrypto.Rsa.pub) =
   let open Nocrypto.Rsa in
@@ -161,7 +161,7 @@ let put_message msg buf =
       put_string s
     | Ssh_msg_kexinit kex ->
       put_id SSH_MSG_KEXINIT buf |>
-      put_kex kex
+      put_kexinit kex
     | Ssh_msg_newkeys ->
       put_id SSH_MSG_NEWKEYS buf
     | Ssh_msg_kexdh_init e ->

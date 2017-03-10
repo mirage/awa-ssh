@@ -22,8 +22,8 @@ let version_banner = "SSH-2.0-awa_ssh_0.1"
 type t = {
   client_version : string option;      (* Without crlf *)
   server_version : string;             (* Without crlf *)
-  client_kex : Ssh.kex_pkt option;     (* Last KEXINIT received *)
-  server_kex : Ssh.kex_pkt;            (* Last KEXINIT sent by us *)
+  client_kexinit : Ssh.kex_pkt option; (* Last KEXINIT received *)
+  server_kexinit : Ssh.kex_pkt;        (* Last KEXINIT sent by us *)
   neg_kex : Kex.negotiation option;    (* Negotiated KEX *)
   host_key : Nocrypto.Rsa.priv;        (* Server host key *)
   session_id : Cstruct.t option;       (* First calculated H *)
@@ -59,12 +59,12 @@ let guard_msg t msg = t.expect_f msg
 let make host_key =
   let open Ssh in
   let banner_msg = Ssh_msg_version version_banner in
-  let server_kex = Kex.make_pkt () in
-  let kex_msg = Ssh.Ssh_msg_kexinit server_kex in
+  let server_kexinit = Kex.make_pkt () in
+  let kex_msg = Ssh.Ssh_msg_kexinit server_kexinit in
   let t = { client_version = None;
             server_version = version_banner;
-            server_kex;
-            client_kex = None;
+            server_kexinit;
+            client_kexinit = None;
             neg_kex = None;
             host_key;
             session_id = None;
@@ -124,9 +124,9 @@ let handle_msg t msg =
   match msg with
   | Ssh_msg_kexinit kex ->
     guard_some kex.input_buf "No kex input_buf kex" >>= fun _ ->
-    Kex.negotiate ~s:t.server_kex ~c:kex
+    Kex.negotiate ~s:t.server_kexinit ~c:kex
     >>= fun neg ->
-    ok ({ t with client_kex = Some kex;
+    ok ({ t with client_kexinit = Some kex;
                  neg_kex = Some neg;
                  expect_f = expect_kexdh_init },
         [])
@@ -136,15 +136,15 @@ let handle_msg t msg =
     guard_some t.client_version "No client version" >>= fun client_version ->
     guard_none t.new_keys_stoc "Already got new_keys_stoc" >>= fun () ->
     guard_none t.new_keys_ctos "Already got new_keys_ctos" >>= fun () ->
-    guard_some t.client_kex "No client kex" >>= fun client_kex ->
-    guard_some client_kex.input_buf "No kex input_buf" >>= fun client_kex ->
+    guard_some t.client_kexinit "No client kex" >>= fun c ->
+    guard_some c.input_buf "No kex input_buf" >>= fun client_kexinit ->
     Kex.(Dh.generate neg.kex_algorithm e) >>= fun (y, f, k) ->
     let pub_host_key = Rsa.pub_of_priv t.host_key in
     let h = Kex.Dh.compute_hash
         ~v_c:(Cstruct.of_string client_version)
         ~v_s:(Cstruct.of_string t.server_version)
-        ~i_c:client_kex
-        ~i_s:(Encode.blob_of_kex_pkt t.server_kex)
+        ~i_c:client_kexinit
+        ~i_s:(Encode.blob_of_kexinit t.server_kexinit)
         ~k_s:(Encode.blob_of_key pub_host_key)
         ~e ~f ~k
     in
