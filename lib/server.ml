@@ -126,7 +126,6 @@ let handle_msg t msg =
                  neg_kex = Some neg;
                  expect_f = expect_kexdh_init },
         [])
-
   | Ssh_msg_kexdh_init e ->
     guard_some t.neg_kex "No negotiated kex" >>= fun neg ->
     guard_some t.client_version "No client version" >>= fun client_version ->
@@ -153,7 +152,6 @@ let handle_msg t msg =
                 expect_f = expect_newkeys },
         [ Ssh_msg_kexdh_reply (pub_host_key, f, signature);
           Ssh_msg_newkeys ])
-
   | Ssh_msg_newkeys ->
     patch_new_keys t.keys_ctos t.new_keys_ctos >>= fun new_keys_ctos ->
     (* TODO Make sure it's not plaintext, paranoia *)
@@ -161,11 +159,9 @@ let handle_msg t msg =
                  new_keys_ctos = None;
                  expect_f = expect_any },
         [])
-
   | Ssh_msg_version v ->
     ok ({ t with client_version = Some v;
                  expect_f = expect_kexinit }, [])
-
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))
 
 let output_msg t msg =
