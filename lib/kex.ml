@@ -33,13 +33,13 @@ let algorithm_to_string = function
   | Diffie_hellman_group1_sha1  -> "diffie-hellman-group1-sha1"
 
 let group_of_algorithm = function
-  | Diffie_hellman_group14_sha1 -> Nocrypto.Dh.Group.oakley_14
-  | Diffie_hellman_group1_sha1  -> Nocrypto.Dh.Group.oakley_2
+  | Diffie_hellman_group14_sha1 -> Dh.Group.oakley_14
+  | Diffie_hellman_group1_sha1  -> Dh.Group.oakley_2
 
 let preferred = [ Diffie_hellman_group14_sha1; Diffie_hellman_group1_sha1 ]
 
 let make_pkt () =
-  { cookie = Nocrypto.Rng.generate 16;
+  { cookie = Rng.generate 16;
     kex_algorithms = List.map algorithm_to_string preferred;
     server_host_key_algorithms = [ "ssh-rsa" ];
     encryption_algorithms_ctos = List.map Cipher.to_string Cipher.preferred;
@@ -163,7 +163,7 @@ let derive_keys digestv k h session_id neg =
     Cstruct.set_len (expand k1) need
   in
   let key_of cipher secret =
-    let open Nocrypto.Cipher_block in
+    let open Cipher_block in
     let open Cipher in
     match cipher with
     | Plaintext -> failwith "Deriving plaintext"
@@ -204,12 +204,12 @@ let rsa_sha1_oid = cs_of_bytes
       0x04; 0x14; ]                  (* Octet string, length 0x14 (20) *)
 
 let sign key hash =
-  Nocrypto.Rsa.PKCS1.sig_encode key
+  Rsa.PKCS1.sig_encode key
     (Cstruct.append rsa_sha1_oid (Hash.SHA1.digest hash))
 
 module Dh = struct
 
-  let derive_keys = derive_keys Nocrypto.Hash.SHA1.digestv
+  let derive_keys = derive_keys Hash.SHA1.digestv
 
   let compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
     let open Encode in
@@ -228,10 +228,10 @@ module Dh = struct
     let g = group_of_algorithm alg in
     let secret, my_pub = Dh.gen_key g in
     guard_some
-      (Nocrypto.Dh.shared g secret (Numeric.Z.to_cstruct_be peer_pub))
+      (Dh.shared g secret (Numeric.Z.to_cstruct_be peer_pub))
       "Can't compute shared secret"
     >>= fun shared ->
     (* secret is y, my_pub is f or e, shared is k *)
-    ok (secret, Numeric.Z.of_cstruct_be my_pub, Numeric.Z.of_cstruct_be shared)
+    ok Numeric.Z.(secret, of_cstruct_be my_pub, of_cstruct_be shared)
 
 end
