@@ -131,6 +131,7 @@ let get_message buf =
   let msgbuf = buf in
   get_message_id buf >>= fun (msgid, buf) ->
   let unimplemented () =
+    (* XXX should send SSH_MSG_UNIMPLEMENTED *)
     error (Printf.sprintf "Message %d unimplemented" (message_id_to_int msgid))
   in
   match msgid with
