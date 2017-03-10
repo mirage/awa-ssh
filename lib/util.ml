@@ -27,20 +27,17 @@ let guard_some x e = match x with Some x -> ok x | None -> error e
 
 let guard_none x e = match x with None -> ok () | Some _ -> error e
 
-let safe_shift buf off =
-  trap_error (fun () -> Cstruct.shift buf off) ()
-
-let safe_sub buf off len =
-  trap_error (fun () -> Cstruct.sub buf off len) ()
-
 let u32_compare a b = (* ignore the sign *)
   let (&&&) x y = Int32.logand x y in
   let (>|>) x y = Int32.shift_right_logical x y in
   let c = Int32.compare (a >|> 1) (b >|> 1) in
   if c = 0 then Int32.compare (a &&& 1l) (b &&& 1l) else c
 
+let cs_safe_shift buf off =
+  trap_error (fun () -> Cstruct.shift buf off) ()
+
 (* Smarter than Cstruct.append *)
-let join_buf b1 b2 =
+let cs_join b1 b2 =
   if (Cstruct.len b1) = 0 then
     b2
   else if (Cstruct.len b2) = 0 then

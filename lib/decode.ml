@@ -159,7 +159,7 @@ let get_message buf =
   | SSH_MSG_KEXINIT ->
     let cookiebegin = buf in
     (* Jump over cookie *)
-    safe_shift buf 16 >>= fun buf ->
+    cs_safe_shift buf 16 >>= fun buf ->
     get_nl buf >>= fun (kex_algs, buf) ->
     get_nl buf >>= fun (server_host_key_algs, buf) ->
     get_nl buf >>= fun (encryption_algs_ctos, buf) ->

@@ -88,7 +88,7 @@ let patch_new_keys old_keys new_keys =
   ok { new_keys with mac = new_mac }
 
 let input_buf t buf =
-  of_buf t (join_buf t.input_buffer buf)
+  of_buf t (cs_join t.input_buffer buf)
 
 let pop_msg2 t buf =
   let version t buf =
