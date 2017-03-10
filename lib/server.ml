@@ -20,19 +20,19 @@ open Util
 let version_banner = "SSH-2.0-awa_ssh_0.1"
 
 type t = {
-  client_version : string option;      (* Without crlf *)
-  server_version : string;             (* Without crlf *)
-  client_kexinit : Ssh.kex_pkt option; (* Last KEXINIT received *)
-  server_kexinit : Ssh.kex_pkt;        (* Last KEXINIT sent by us *)
-  neg_kex : Kex.negotiation option;    (* Negotiated KEX *)
-  host_key : Nocrypto.Rsa.priv;        (* Server host key *)
-  session_id : Cstruct.t option;       (* First calculated H *)
-  keys_ctos : Kex.keys;                (* Client to server (input) keys *)
-  keys_stoc : Kex.keys;                (* Server to cleint (output) keys *)
-  new_keys_ctos : Kex.keys option;     (* Install when we receive NEWKEYS *)
-  new_keys_stoc : Kex.keys option;     (* Install after we send NEWKEYS *)
-  input_buffer : Cstruct.t;            (* Unprocessed input *)
-  expect_f :                           (* Which messages are expected *)
+  client_version : string option;         (* Without crlf *)
+  server_version : string;                (* Without crlf *)
+  client_kexinit : Ssh.kex_pkt option;    (* Last KEXINIT received *)
+  server_kexinit : Ssh.kex_pkt;           (* Last KEXINIT sent by us *)
+  neg_kex        : Kex.negotiation option;(* Negotiated KEX *)
+  host_key       : Nocrypto.Rsa.priv;     (* Server host key *)
+  session_id     : Cstruct.t option;      (* First calculated H *)
+  keys_ctos      : Kex.keys;              (* Client to server (input) keys *)
+  keys_stoc      : Kex.keys;              (* Server to cleint (output) keys *)
+  new_keys_ctos  : Kex.keys option;       (* Install when we receive NEWKEYS *)
+  new_keys_stoc  : Kex.keys option;       (* Install after we send NEWKEYS *)
+  input_buffer   : Cstruct.t;             (* Unprocessed input *)
+  expect_f       :                        (* Which messages are expected *)
     Ssh.message -> (unit, string) Result.result;
 }
 
@@ -138,7 +138,7 @@ let handle_msg t msg =
     guard_none t.new_keys_ctos "Already got new_keys_ctos" >>= fun () ->
     guard_some t.client_kexinit "No client kex" >>= fun c ->
     guard_some c.input_buf "No kex input_buf" >>= fun client_kexinit ->
-    Kex.(Dh.generate neg.kex_algorithm e) >>= fun (y, f, k) ->
+    Kex.(Dh.generate neg.kex_alg e) >>= fun (y, f, k) ->
     let pub_host_key = Rsa.pub_of_priv t.host_key in
     let h = Kex.Dh.compute_hash
         ~v_c:(Cstruct.of_string client_version)

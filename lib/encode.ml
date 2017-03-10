@@ -101,14 +101,14 @@ let put_mpint mpint t =
 
 let put_kexinit kex t =
   let open Ssh in
-  let nll = [ kex.kex_algorithms;
-              kex.server_host_key_algorithms;
-              kex.encryption_algorithms_ctos;
-              kex.encryption_algorithms_stoc;
-              kex.mac_algorithms_ctos;
-              kex.mac_algorithms_stoc;
-              kex.compression_algorithms_ctos;
-              kex.compression_algorithms_stoc;
+  let nll = [ kex.kex_algs;
+              kex.server_host_key_algs;
+              kex.encryption_algs_ctos;
+              kex.encryption_algs_stoc;
+              kex.mac_algs_ctos;
+              kex.mac_algs_stoc;
+              kex.compression_algs_ctos;
+              kex.compression_algs_stoc;
               kex.languages_ctos;
               kex.languages_stoc; ]
   in

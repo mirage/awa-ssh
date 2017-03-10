@@ -65,40 +65,40 @@ type message_id =
   | SSH_MSG_CHANNEL_FAILURE           [@id 100]
 [@@uint8_t][@@sexp]]
 
-type server_host_key_algorithm =
+type server_host_key_alg =
   | Ssh_rsa
 
-let server_host_key_algorithm_of_string = function
+let server_host_key_alg_of_string = function
   | "ssh-rsa" -> ok Ssh_rsa
   | s -> error ("Unknown server host key algorithm " ^ s)
 
-let server_host_key_algorithm_to_string = function
+let server_host_key_alg_to_string = function
   | Ssh_rsa -> "ssh-rsa"
 
-type compression_algorithm =
+type compression_alg =
   | Nothing                        (* Can't use None :-D *)
 
-let compression_algorithm_of_string = function
+let compression_alg_of_string = function
   | "none" -> ok Nothing
   | s -> error ("Unknown compression algorithm " ^ s)
 
-let compression_algorithm_to_string = function
+let compression_alg_to_string = function
   | Nothing -> "none"
 
 type kex_pkt = {
-  cookie : Cstruct.t;
-  kex_algorithms : string list;
-  server_host_key_algorithms : string list;
-  encryption_algorithms_ctos : string list;
-  encryption_algorithms_stoc : string list;
-  mac_algorithms_ctos : string list;
-  mac_algorithms_stoc : string list;
-  compression_algorithms_ctos : string list;
-  compression_algorithms_stoc : string list;
-  languages_ctos : string list;
-  languages_stoc : string list;
+  cookie                   : Cstruct.t;
+  kex_algs                 : string list;
+  server_host_key_algs     : string list;
+  encryption_algs_ctos     : string list;
+  encryption_algs_stoc     : string list;
+  mac_algs_ctos            : string list;
+  mac_algs_stoc            : string list;
+  compression_algs_ctos    : string list;
+  compression_algs_stoc    : string list;
+  languages_ctos           : string list;
+  languages_stoc           : string list;
   first_kex_packet_follows : bool;
-  input_buf : Cstruct.t option;     (* Used to save incoming kexinit buffer *)
+  input_buf                : Cstruct.t option;   (* Incoming raw kexinit *)
 } [@@deriving sexp]
 
 type mpint = Nocrypto.Numeric.Z.t

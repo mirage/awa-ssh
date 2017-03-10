@@ -160,27 +160,27 @@ let get_message buf =
     let cookiebegin = buf in
     (* Jump over cookie *)
     safe_shift buf 16 >>= fun buf ->
-    get_nl buf >>= fun (kex_algorithms, buf) ->
-    get_nl buf >>= fun (server_host_key_algorithms, buf) ->
-    get_nl buf >>= fun (encryption_algorithms_ctos, buf) ->
-    get_nl buf >>= fun (encryption_algorithms_stoc, buf) ->
-    get_nl buf >>= fun (mac_algorithms_ctos, buf) ->
-    get_nl buf >>= fun (mac_algorithms_stoc, buf) ->
-    get_nl buf >>= fun (compression_algorithms_ctos, buf) ->
-    get_nl buf >>= fun (compression_algorithms_stoc, buf) ->
+    get_nl buf >>= fun (kex_algs, buf) ->
+    get_nl buf >>= fun (server_host_key_algs, buf) ->
+    get_nl buf >>= fun (encryption_algs_ctos, buf) ->
+    get_nl buf >>= fun (encryption_algs_stoc, buf) ->
+    get_nl buf >>= fun (mac_algs_ctos, buf) ->
+    get_nl buf >>= fun (mac_algs_stoc, buf) ->
+    get_nl buf >>= fun (compression_algs_ctos, buf) ->
+    get_nl buf >>= fun (compression_algs_stoc, buf) ->
     get_nl buf >>= fun (languages_ctos, buf) ->
     get_nl buf >>= fun (languages_stoc, buf) ->
     get_bool buf >>= fun (first_kex_packet_follows, buf) ->
     ok (Ssh_msg_kexinit
           { cookie = Cstruct.set_len cookiebegin 16;
-            kex_algorithms;
-            server_host_key_algorithms;
-            encryption_algorithms_ctos;
-            encryption_algorithms_stoc;
-            mac_algorithms_ctos;
-            mac_algorithms_stoc;
-            compression_algorithms_ctos;
-            compression_algorithms_stoc;
+            kex_algs;
+            server_host_key_algs;
+            encryption_algs_ctos;
+            encryption_algs_stoc;
+            mac_algs_ctos;
+            mac_algs_stoc;
+            compression_algs_ctos;
+            compression_algs_stoc;
             languages_ctos;
             languages_stoc;
             first_kex_packet_follows;

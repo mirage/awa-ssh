@@ -19,20 +19,20 @@ open Util
 open Ssh
 open Nocrypto
 
-type algorithm =
+type alg =
   | Diffie_hellman_group14_sha1
   | Diffie_hellman_group1_sha1
 
-let algorithm_of_string = function
+let alg_of_string = function
   | "diffie-hellman-group14-sha1" -> ok Diffie_hellman_group14_sha1
   | "diffie-hellman-group1-sha1"  -> ok Diffie_hellman_group1_sha1
-  | s -> error ("Unknown kex_algorithm " ^ s)
+  | s -> error ("Unknown kex_alg " ^ s)
 
-let algorithm_to_string = function
+let alg_to_string = function
   | Diffie_hellman_group14_sha1 -> "diffie-hellman-group14-sha1"
   | Diffie_hellman_group1_sha1  -> "diffie-hellman-group1-sha1"
 
-let group_of_algorithm = function
+let group_of_alg = function
   | Diffie_hellman_group14_sha1 -> Dh.Group.oakley_14
   | Diffie_hellman_group1_sha1  -> Dh.Group.oakley_2
 
@@ -40,28 +40,28 @@ let preferred = [ Diffie_hellman_group14_sha1; Diffie_hellman_group1_sha1 ]
 
 let make_pkt () =
   { cookie = Rng.generate 16;
-    kex_algorithms = List.map algorithm_to_string preferred;
-    server_host_key_algorithms = [ "ssh-rsa" ];
-    encryption_algorithms_ctos = List.map Cipher.to_string Cipher.preferred;
-    encryption_algorithms_stoc = List.map Cipher.to_string Cipher.preferred;
-    mac_algorithms_ctos = List.map Hmac.to_string Hmac.preferred;
-    mac_algorithms_stoc = List.map Hmac.to_string Hmac.preferred;
-    compression_algorithms_ctos = [ "none" ];
-    compression_algorithms_stoc = [ "none" ];
+    kex_algs = List.map alg_to_string preferred;
+    server_host_key_algs = [ "ssh-rsa" ];
+    encryption_algs_ctos = List.map Cipher.to_string Cipher.preferred;
+    encryption_algs_stoc = List.map Cipher.to_string Cipher.preferred;
+    mac_algs_ctos = List.map Hmac.to_string Hmac.preferred;
+    mac_algs_stoc = List.map Hmac.to_string Hmac.preferred;
+    compression_algs_ctos = [ "none" ];
+    compression_algs_stoc = [ "none" ];
     languages_ctos = [];
     languages_stoc = [];
     first_kex_packet_follows = false;
     input_buf = None }
 
 type negotiation = {
-  kex_algorithm : algorithm;
-  server_host_key_algorithm : server_host_key_algorithm;
-  encryption_algorithm_ctos : Cipher.t;
-  encryption_algorithm_stoc : Cipher.t;
-  mac_algorithm_ctos : Hmac.t;
-  mac_algorithm_stoc : Hmac.t;
-  compression_algorithm_ctos : compression_algorithm;
-  compression_algorithm_stoc : compression_algorithm;
+  kex_alg              : alg;
+  server_host_key_alg  : server_host_key_alg;
+  encryption_alg_ctos  : Cipher.t;
+  encryption_alg_stoc  : Cipher.t;
+  mac_alg_ctos         : Hmac.t;
+  mac_alg_stoc         : Hmac.t;
+  compression_alg_ctos : compression_alg;
+  compression_alg_stoc : compression_alg;
 }
 
 let negotiate ~s ~c =
@@ -72,61 +72,61 @@ let negotiate ~s ~c =
       Not_found -> error e
   in
   pick_common
-    algorithm_of_string
-    ~s:s.kex_algorithms
-    ~c:c.kex_algorithms
+    alg_of_string
+    ~s:s.kex_algs
+    ~c:c.kex_algs
     "Can't agree on kex algorithm"
-  >>= fun kex_algorithm ->
+  >>= fun kex_alg ->
   pick_common
-    server_host_key_algorithm_of_string
-    ~s:s.server_host_key_algorithms
-    ~c:c.server_host_key_algorithms
+    server_host_key_alg_of_string
+    ~s:s.server_host_key_algs
+    ~c:c.server_host_key_algs
     "Can't agree on server host key algorithm"
-  >>= fun server_host_key_algorithm ->
+  >>= fun server_host_key_alg ->
   pick_common
     Cipher.of_string
-    ~s:s.encryption_algorithms_ctos
-    ~c:c.encryption_algorithms_ctos
+    ~s:s.encryption_algs_ctos
+    ~c:c.encryption_algs_ctos
     "Can't agree on encryption algorithm client to server"
-  >>= fun encryption_algorithm_ctos ->
+  >>= fun encryption_alg_ctos ->
   pick_common
     Cipher.of_string
-    ~s:s.encryption_algorithms_stoc
-    ~c:c.encryption_algorithms_stoc
+    ~s:s.encryption_algs_stoc
+    ~c:c.encryption_algs_stoc
     "Can't agree on encryption algorithm server to client"
-  >>= fun encryption_algorithm_stoc ->
+  >>= fun encryption_alg_stoc ->
   pick_common
     Hmac.of_string
-    ~s:s.mac_algorithms_ctos
-    ~c:c.mac_algorithms_ctos
+    ~s:s.mac_algs_ctos
+    ~c:c.mac_algs_ctos
     "Can't agree on mac algorithm client to server"
-  >>= fun mac_algorithm_ctos ->
+  >>= fun mac_alg_ctos ->
   pick_common
     Hmac.of_string
-    ~s:s.mac_algorithms_stoc
-    ~c:c.mac_algorithms_stoc
+    ~s:s.mac_algs_stoc
+    ~c:c.mac_algs_stoc
     "Can't agree on mac algorithm server to client"
-  >>= fun mac_algorithm_stoc ->
+  >>= fun mac_alg_stoc ->
   pick_common
-    compression_algorithm_of_string
-    ~s:s.compression_algorithms_ctos
-    ~c:c.compression_algorithms_ctos
+    compression_alg_of_string
+    ~s:s.compression_algs_ctos
+    ~c:c.compression_algs_ctos
     "Can't agree on compression algorithm client to server"
-  >>= fun compression_algorithm_ctos ->
+  >>= fun compression_alg_ctos ->
   pick_common
-    compression_algorithm_of_string
-    ~s:s.compression_algorithms_stoc
-    ~c:c.compression_algorithms_stoc
+    compression_alg_of_string
+    ~s:s.compression_algs_stoc
+    ~c:c.compression_algs_stoc
     "Can't agree on compression algorithm server to client"
-  >>= fun compression_algorithm_stoc ->
-  ok { kex_algorithm;
-       server_host_key_algorithm;
-       encryption_algorithm_ctos;
-       encryption_algorithm_stoc;
-       mac_algorithm_ctos;
-       mac_algorithm_stoc;
-       compression_algorithm_ctos;
-       compression_algorithm_stoc }
+  >>= fun compression_alg_stoc ->
+  ok { kex_alg;
+       server_host_key_alg;
+       encryption_alg_ctos;
+       encryption_alg_stoc;
+       mac_alg_ctos;
+       mac_alg_stoc;
+       compression_alg_ctos;
+       compression_alg_stoc }
       (* ignore language_ctos and language_stoc *)
 
 type keys = {
@@ -144,10 +144,10 @@ let plaintext_keys = {
 }
 
 let derive_keys digestv k h session_id neg =
-  let cipher_ctos = neg.encryption_algorithm_ctos in
-  let cipher_stoc = neg.encryption_algorithm_stoc in
-  let mac_ctos = neg.mac_algorithm_ctos in
-  let mac_stoc = neg.mac_algorithm_stoc in
+  let cipher_ctos = neg.encryption_alg_ctos in
+  let cipher_stoc = neg.encryption_alg_stoc in
+  let mac_ctos = neg.mac_alg_ctos in
+  let mac_stoc = neg.mac_alg_stoc in
   let k = Encode.(to_cstruct @@ put_mpint k (create ())) in
   let hash ch need =
     let rec expand kn =
@@ -225,7 +225,7 @@ module Dh = struct
     Hash.SHA1.digest
 
   let generate alg peer_pub =
-    let g = group_of_algorithm alg in
+    let g = group_of_alg alg in
     let secret, my_pub = Dh.gen_key g in
     guard_some
       (Dh.shared g secret (Numeric.Z.to_cstruct_be peer_pub))
