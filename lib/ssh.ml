@@ -96,10 +96,7 @@ type kex_pkt = {
 
 type mpint = Nocrypto.Numeric.Z.t
 
-let sexp_of_mpint mpint =
-  (* let buf = Nocrypto.Numeric.Z.to_cstruct_be mpint in *)
-  (* Sexplib.Type.Atom (Cstruct.to_string buf) *)
-  Sexplib.Type.Atom "big number"
+let sexp_of_mpint mpint = sexp_of_string (Z.to_string mpint)
 
 type message =
   | Ssh_msg_disconnect of (int32 * string * string)
