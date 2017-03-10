@@ -133,18 +133,21 @@ let handle_msg t msg =
 
   | Ssh_msg_kexdh_init e ->
     guard_some t.neg_kex "No negotiated kex" >>= fun neg ->
-    guard_some t.client_version "No client version" >>= fun v_c ->
+    guard_some t.client_version "No client version" >>= fun client_version ->
     guard_none t.new_keys_stoc "Already got new_keys_stoc" >>= fun () ->
     guard_none t.new_keys_ctos "Already got new_keys_ctos" >>= fun () ->
     guard_some t.client_kex "No client kex" >>= fun client_kex ->
-    guard_some client_kex.input_buf "No kex input_buf" >>= fun i_c ->
-    let v_c = Cstruct.of_string v_c in
-    let v_s = Cstruct.of_string t.server_version in
-    let i_s = Encode.blob_of_kex_pkt t.server_kex in
-    let pub_host_key = Rsa.pub_of_priv t.host_key in
-    let k_s = Encode.blob_of_key pub_host_key in
+    guard_some client_kex.input_buf "No kex input_buf" >>= fun client_kex ->
     Kex.(Dh.generate neg.kex_algorithm e) >>= fun (y, f, k) ->
-    let h = Kex.Dh.compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k in
+    let pub_host_key = Rsa.pub_of_priv t.host_key in
+    let h = Kex.Dh.compute_hash
+        ~v_c:(Cstruct.of_string client_version)
+        ~v_s:(Cstruct.of_string t.server_version)
+        ~i_c:client_kex
+        ~i_s:(Encode.blob_of_kex_pkt t.server_kex)
+        ~k_s:(Encode.blob_of_key pub_host_key)
+        ~e ~f ~k
+    in
     let signature = Kex.sign t.host_key h in
     let session_id = match t.session_id with None -> h | Some x -> x in
     let new_keys_ctos, new_keys_stoc = Kex.Dh.derive_keys k h session_id neg in
