@@ -80,10 +80,6 @@ let make host_key =
 let of_buf t buf =
   { t with input_buffer = buf }
 
-(*
- * Can we patch new_keys on input directly ???
- * This code is horrible
- *)
 let patch_new_keys old_keys new_keys =
   let open Kex in
   let open Hmac in
