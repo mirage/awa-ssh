@@ -28,7 +28,7 @@ let max_pkt_len = 512 * 1024    (* 512KB should be enough *)
 let max_len = 256 * 1024        (* 256KB for a field is enough *)
 
 let guard_sshlen len =
-  guard (len >= 0 && len <= max_len) (Printf.sprintf "Bad length: %d" len)
+  guard (len >= 0 && len <= max_len) (sprintf "Bad length: %d" len)
 
 let guard_sshlen_exn len =
   match guard_sshlen len with Ok () -> () | Error e -> invalid_arg e

@@ -77,7 +77,7 @@ let get_message_id buf =
   trap_error (fun () ->
       let id = (Cstruct.get_uint8 buf 0) in
       match Ssh.int_to_message_id id with
-      | None -> invalid_arg (Printf.sprintf "Unknown message id %d" id)
+      | None -> invalid_arg (sprintf "Unknown message id %d" id)
       | Some msgid -> msgid, (Cstruct.shift buf 1)) ()
 
 let get_string buf =
@@ -133,7 +133,7 @@ let get_message buf =
   get_message_id buf >>= fun (msgid, buf) ->
   let unimplemented () =
     (* XXX should send SSH_MSG_UNIMPLEMENTED *)
-    error (Printf.sprintf "Message %d unimplemented" (message_id_to_int msgid))
+    error (sprintf "Message %d unimplemented" (message_id_to_int msgid))
   in
   match msgid with
   | SSH_MSG_DISCONNECT ->

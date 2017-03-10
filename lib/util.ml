@@ -52,3 +52,5 @@ let cs_of_bytes l =
   let buf = Cstruct.create (List.length l) in
   List.iteri (fun i byte -> Cstruct.set_uint8 buf i byte) l;
   buf
+
+let sprintf = Printf.sprintf
