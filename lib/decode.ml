@@ -81,15 +81,15 @@ let get_message_id buf =
       | Some msgid -> msgid, (Cstruct.shift buf 1)) ()
 
 let get_string buf =
-  (* XXX bad to_int conversion *)
   trap_error (fun () ->
       let len = Cstruct.BE.get_uint32 buf 0 |> Int32.to_int in
+      Ssh.guard_sshlen_exn len;
       (Cstruct.copy buf 4 len), Cstruct.shift buf (len + 4)) ()
 
 let get_cstring buf =
-  (* XXX bad to_int conversion *)
   trap_error (fun () ->
       let len = Cstruct.BE.get_uint32 buf 0 |> Int32.to_int in
+      Ssh.guard_sshlen_exn len;
       (Cstruct.set_len (Cstruct.shift buf 4) len,
        Cstruct.shift buf (len + 4))) ()
 
@@ -98,6 +98,7 @@ let get_mpint buf =
       match ((Cstruct.BE.get_uint32 buf 0) |> Int32.to_int) with
       | 0 -> Nocrypto.Numeric.Z.zero, Cstruct.shift buf 4
       | len ->
+        Ssh.guard_sshlen_exn len;
         let mpbuf = Cstruct.sub buf 4 len in
         let msb = Cstruct.get_uint8 mpbuf 0 in
         if (msb land 0x80) <> 0 then
