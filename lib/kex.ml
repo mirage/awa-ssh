@@ -204,7 +204,8 @@ let rsa_sha1_oid = cs_of_bytes
       0x04; 0x14; ]                  (* Octet string, length 0x14 (20) *)
 
 let sign key hash =
-  Nocrypto.Rsa.PKCS1.sig_encode key (Cstruct.append rsa_sha1_oid hash)
+  Nocrypto.Rsa.PKCS1.sig_encode key
+    (Cstruct.append rsa_sha1_oid (Hash.SHA1.digest hash))
 
 module Dh = struct
 
