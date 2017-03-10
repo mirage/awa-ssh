@@ -22,8 +22,8 @@ let version_banner = "SSH-2.0-awa_ssh_0.1"
 type t = {
   client_version : string option;         (* Without crlf *)
   server_version : string;                (* Without crlf *)
-  client_kexinit : Ssh.kex_pkt option;    (* Last KEXINIT received *)
-  server_kexinit : Ssh.kex_pkt;           (* Last KEXINIT sent by us *)
+  client_kexinit : Ssh.kexinit option;    (* Last KEXINIT received *)
+  server_kexinit : Ssh.kexinit;           (* Last KEXINIT sent by us *)
   neg_kex        : Kex.negotiation option;(* Negotiated KEX *)
   host_key       : Nocrypto.Rsa.priv;     (* Server host key *)
   session_id     : Cstruct.t option;      (* First calculated H *)
@@ -59,7 +59,7 @@ let guard_msg t msg = t.expect_f msg
 let make host_key =
   let open Ssh in
   let banner_msg = Ssh_msg_version version_banner in
-  let server_kexinit = Kex.make_pkt () in
+  let server_kexinit = Kex.make_kexinit () in
   let kex_msg = Ssh.Ssh_msg_kexinit server_kexinit in
   let t = { client_version = None;
             server_version = version_banner;

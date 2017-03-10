@@ -38,7 +38,7 @@ let group_of_alg = function
 
 let preferred = [ Diffie_hellman_group14_sha1; Diffie_hellman_group1_sha1 ]
 
-let make_pkt () =
+let make_kexinit () =
   { cookie = Rng.generate 16;
     kex_algs = List.map alg_to_string preferred;
     server_host_key_algs = [ "ssh-rsa" ];

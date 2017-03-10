@@ -85,7 +85,7 @@ let compression_alg_of_string = function
 let compression_alg_to_string = function
   | Nothing -> "none"
 
-type kex_pkt = {
+type kexinit = {
   cookie                   : Cstruct.t;
   kex_algs                 : string list;
   server_host_key_algs     : string list;
@@ -112,7 +112,7 @@ type message =
   | Ssh_msg_debug of (bool * string * string)
   | Ssh_msg_service_request of string
   | Ssh_msg_service_accept of string
-  | Ssh_msg_kexinit of kex_pkt
+  | Ssh_msg_kexinit of kexinit
   | Ssh_msg_kexdh_init of mpint
   | Ssh_msg_kexdh_reply of (Nocrypto.Rsa.pub * mpint * Cstruct.t)
   | Ssh_msg_newkeys
