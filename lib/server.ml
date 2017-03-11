@@ -156,6 +156,17 @@ let handle_msg t msg =
                  new_keys_ctos = None;
                  expect },
         [])
+  | Ssh_msg_service_request service ->
+    if service = "ssh-userauth" then
+      ok ({ t with expect = Some SSH_MSG_USERAUTH_REQUEST },
+          [ Ssh_msg_service_accept service ])
+    else
+      let msg =
+        Ssh_msg_disconnect
+          (SSH_DISCONNECT_SERVICE_NOT_AVAILABLE,
+           (sprintf "service %s not available" service), "")
+      in
+      ok (t, [ msg ])
   | Ssh_msg_version v ->
     ok ({ t with client_version = Some v;
                  expect = Some SSH_MSG_KEXDH_INIT }, [])
