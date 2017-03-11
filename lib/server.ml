@@ -36,21 +36,27 @@ type t = {
     Ssh.message -> (unit, string) Result.result;
 }
 
+let expect_err msg = error ("Unexpected msg: " ^ (Ssh.message_to_string msg))
+
 let expect_version = function
   | Ssh.Ssh_msg_version _ -> ok ()
-  | msg -> error ("Unexpected msg: " ^ (Ssh.message_to_string msg))
+  | msg -> expect_err msg
 
 let expect_kexinit = function
   | Ssh.Ssh_msg_kexinit _ -> ok ()
-  | msg -> error ("Unexpected msg: " ^ (Ssh.message_to_string msg))
+  | msg -> expect_err msg
 
 let expect_kexdh_init = function
   | Ssh.Ssh_msg_kexdh_init _ -> ok ()
-  | msg -> error ("Unexpected msg: " ^ (Ssh.message_to_string msg))
+  | msg -> expect_err msg
 
 let expect_newkeys = function
   | Ssh.Ssh_msg_newkeys -> ok ()
-  | msg -> error ("Unexpected msg: " ^ (Ssh.message_to_string msg))
+  | msg -> expect_err msg
+
+let expect_service_request = function
+  | Ssh.Ssh_msg_service_request _ -> ok ()
+  | msg -> expect_err msg
 
 let expect_any msg = ok ()
 
@@ -153,11 +159,18 @@ let handle_msg t msg =
         [ Ssh_msg_kexdh_reply (pub_host_key, f, signature);
           Ssh_msg_newkeys ])
   | Ssh_msg_newkeys ->
+    (* If this is the first time we keyed, we must take a service request *)
+    let expect_f = if t.keys_ctos = Kex.plaintext_keys then
+        expect_service_request
+      else
+        expect_any
+    in
     patch_new_keys t.keys_ctos t.new_keys_ctos >>= fun new_keys_ctos ->
-    (* TODO Make sure it's not plaintext, paranoia *)
+    (* paranoia *)
+    assert (new_keys_ctos <> Kex.plaintext_keys);
     ok ({ t with keys_ctos = new_keys_ctos;
                  new_keys_ctos = None;
-                 expect_f = expect_any },
+                 expect_f },
         [])
   | Ssh_msg_version v ->
     ok ({ t with client_version = Some v;
