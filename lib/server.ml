@@ -32,41 +32,19 @@ type t = {
   new_keys_ctos  : Kex.keys option;       (* Install when we receive NEWKEYS *)
   new_keys_stoc  : Kex.keys option;       (* Install after we send NEWKEYS *)
   input_buffer   : Cstruct.t;             (* Unprocessed input *)
-  expect_f       :                        (* Which messages are expected *)
-    Ssh.message -> (unit, string) Result.result;
+  expect         : Ssh.message_id option  (* Which messages are expected, None if any *)
 }
 
-let expect_err msg = error ("Unexpected msg: " ^ (Ssh.message_to_string msg))
-
-let expect_common = function
-  | Ssh.Ssh_msg_disconnect _ -> ok ()
-  | Ssh.Ssh_msg_ignore _ -> ok ()
-  | Ssh.Ssh_msg_debug _ -> ok ()
-  | msg -> expect_err msg
-
-let expect_version = function
-  | Ssh.Ssh_msg_version _ -> ok ()
-  | msg -> expect_err msg
-
-let expect_kexinit = function
-  | Ssh.Ssh_msg_kexinit _ -> ok ()
-  | msg -> expect_common msg
-
-let expect_kexdh_init = function
-  | Ssh.Ssh_msg_kexdh_init _ -> ok ()
-  | msg -> expect_common msg
-
-let expect_newkeys = function
-  | Ssh.Ssh_msg_newkeys -> ok ()
-  | msg -> expect_common msg
-
-let expect_service_request = function
-  | Ssh.Ssh_msg_service_request _ -> ok ()
-  | msg -> expect_common msg
-
-let expect_any msg = ok ()
-
-let guard_msg t msg = t.expect_f msg
+let guard_msg t msg =
+  let open Ssh in
+  match t.expect with
+  | None -> ok ()
+  | Some SSH_MSG_DISCONNECT -> ok ()
+  | Some SSH_MSG_IGNORE -> ok ()
+  | Some SSH_MSG_DEBUG -> ok ()
+  | Some id ->
+    let msgid = message_to_id msg in
+    guard (id = msgid) ("Unexpected message " ^ (message_id_to_string msgid))
 
 let make host_key =
   let open Ssh in
@@ -85,7 +63,7 @@ let make host_key =
             new_keys_ctos = None;
             new_keys_stoc = None;
             input_buffer = Cstruct.create 0;
-            expect_f = expect_version; }
+            expect = Some SSH_MSG_VERSION; }
   in
   t, [ banner_msg; kex_msg ]
 
@@ -136,7 +114,7 @@ let handle_msg t msg =
     >>= fun neg ->
     ok ({ t with client_kexinit = Some kex;
                  neg_kex = Some neg;
-                 expect_f = expect_kexdh_init },
+                 expect = Some SSH_MSG_KEXINIT },
         [])
   | Ssh_msg_kexdh_init e ->
     guard_some t.neg_kex "No negotiated kex" >>= fun neg ->
@@ -161,26 +139,26 @@ let handle_msg t msg =
     ok ({t with session_id = Some session_id;
                 new_keys_ctos = Some new_keys_ctos;
                 new_keys_stoc = Some new_keys_stoc;
-                expect_f = expect_newkeys },
+                expect = Some SSH_MSG_NEWKEYS },
         [ Ssh_msg_kexdh_reply (pub_host_key, f, signature);
           Ssh_msg_newkeys ])
   | Ssh_msg_newkeys ->
     (* If this is the first time we keyed, we must take a service request *)
-    let expect_f = if t.keys_ctos = Kex.plaintext_keys then
-        expect_service_request
+    let expect = if t.keys_ctos = Kex.plaintext_keys then
+        Some SSH_MSG_SERVICE_REQUEST
       else
-        expect_any
+        None
     in
     patch_new_keys t.keys_ctos t.new_keys_ctos >>= fun new_keys_ctos ->
     (* paranoia *)
     assert (new_keys_ctos <> Kex.plaintext_keys);
     ok ({ t with keys_ctos = new_keys_ctos;
                  new_keys_ctos = None;
-                 expect_f },
+                 expect },
         [])
   | Ssh_msg_version v ->
     ok ({ t with client_version = Some v;
-                 expect_f = expect_kexinit }, [])
+                 expect = Some SSH_MSG_KEXDH_INIT }, [])
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))
 
 let output_msg t msg =
