@@ -167,7 +167,7 @@ let t_parsing () =
   (* XXX slow *)
   let pub_rsa = Nocrypto.Rsa.(generate 2048 |> pub_of_priv) in
   let l =
-    [ Ssh_msg_disconnect (long, "foo", "bar");
+    [ Ssh_msg_disconnect (SSH_DISCONNECT_PROTOCOL_ERROR, "foo", "bar");
       Ssh_msg_ignore "Fora Temer";
       Ssh_msg_unimplemented long;
       Ssh_msg_debug (false, "Fora", "Temer");

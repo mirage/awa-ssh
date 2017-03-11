@@ -139,7 +139,7 @@ let put_message msg buf =
   match msg with
     | Ssh_msg_disconnect (code, desc, lang) ->
       put_id SSH_MSG_DISCONNECT buf |>
-      put_uint32 code |>
+      put_uint32 (disconnect_code_to_int code) |>
       put_string desc |>
       put_string lang
     | Ssh_msg_ignore s ->

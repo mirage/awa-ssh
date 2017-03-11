@@ -140,7 +140,7 @@ let get_message buf =
     get_uint32 buf >>= fun (code, buf) ->
     get_string buf >>= fun (desc, buf) ->
     get_string buf >>= fun (lang, buf) ->
-    ok (Ssh_msg_disconnect (code, desc, lang))
+    ok (Ssh_msg_disconnect (int_to_disconnect_code code, desc, lang))
   | SSH_MSG_IGNORE ->
     get_string buf >>= fun (x, buf) ->
     ok (Ssh_msg_ignore x)

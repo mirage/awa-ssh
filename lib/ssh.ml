@@ -101,12 +101,36 @@ type kexinit = {
   input_buf                : Cstruct.t option;   (* Incoming raw kexinit *)
 } [@@deriving sexp]
 
+[%%cenum
+type disconnect_code =
+  | SSH_DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT      [@id  1]
+  | SSH_DISCONNECT_PROTOCOL_ERROR                   [@id  2]
+  | SSH_DISCONNECT_KEY_EXCHANGE_FAILED              [@id  3]
+  | SSH_DISCONNECT_RESERVED                         [@id  4]
+  | SSH_DISCONNECT_MAC_ERROR                        [@id  5]
+  | SSH_DISCONNECT_COMPRESSION_ERROR                [@id  6]
+  | SSH_DISCONNECT_SERVICE_NOT_AVAILABLE            [@id  7]
+  | SSH_DISCONNECT_PROTOCOL_VERSION_NOT_SUPPORTED   [@id  8]
+  | SSH_DISCONNECT_HOST_KEY_NOT_VERIFIABLE          [@id  9]
+  | SSH_DISCONNECT_CONNECTION_LOST                  [@id 10]
+  | SSH_DISCONNECT_BY_APPLICATION                   [@id 11]
+  | SSH_DISCONNECT_TOO_MANY_CONNECTIONS             [@id 12]
+  | SSH_DISCONNECT_AUTH_CANCELLED_BY_USER           [@id 13]
+  | SSH_DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE   [@id 14]
+  | SSH_DISCONNECT_ILLEGAL_USER_NAME                [@id 15]
+[@@uint32_t][@@sexp]]
+
+let int_to_disconnect_code code =
+  match int_to_disconnect_code code with
+  | Some disc -> disc
+  | None -> SSH_DISCONNECT_PROTOCOL_ERROR (* Mock up *)
+
 type mpint = Nocrypto.Numeric.Z.t
 
 let sexp_of_mpint mpint = sexp_of_string (Z.to_string mpint)
 
 type message =
-  | Ssh_msg_disconnect of (int32 * string * string)
+  | Ssh_msg_disconnect of (disconnect_code * string * string)
   | Ssh_msg_ignore of string
   | Ssh_msg_unimplemented of int32
   | Ssh_msg_debug of (bool * string * string)
