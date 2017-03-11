@@ -38,25 +38,31 @@ type t = {
 
 let expect_err msg = error ("Unexpected msg: " ^ (Ssh.message_to_string msg))
 
+let expect_common = function
+  | Ssh.Ssh_msg_disconnect _ -> ok ()
+  | Ssh.Ssh_msg_ignore _ -> ok ()
+  | Ssh.Ssh_msg_debug _ -> ok ()
+  | msg -> expect_err msg
+
 let expect_version = function
   | Ssh.Ssh_msg_version _ -> ok ()
   | msg -> expect_err msg
 
 let expect_kexinit = function
   | Ssh.Ssh_msg_kexinit _ -> ok ()
-  | msg -> expect_err msg
+  | msg -> expect_common msg
 
 let expect_kexdh_init = function
   | Ssh.Ssh_msg_kexdh_init _ -> ok ()
-  | msg -> expect_err msg
+  | msg -> expect_common msg
 
 let expect_newkeys = function
   | Ssh.Ssh_msg_newkeys -> ok ()
-  | msg -> expect_err msg
+  | msg -> expect_common msg
 
 let expect_service_request = function
   | Ssh.Ssh_msg_service_request _ -> ok ()
-  | msg -> expect_err msg
+  | msg -> expect_common msg
 
 let expect_any msg = ok ()
 
