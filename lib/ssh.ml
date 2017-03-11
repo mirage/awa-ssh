@@ -138,9 +138,9 @@ type message =
   | Ssh_msg_service_request of string
   | Ssh_msg_service_accept of string
   | Ssh_msg_kexinit of kexinit
-  | Ssh_msg_kexdh_init of mpint
-  | Ssh_msg_kexdh_reply of (Nocrypto.Rsa.pub * mpint * Cstruct.t)
   | Ssh_msg_newkeys
+  | Ssh_msg_kexdh_reply of (Nocrypto.Rsa.pub * mpint * Cstruct.t)
+  | Ssh_msg_kexdh_init of mpint
   | Ssh_msg_userauth_request of (string * string * string * bool * string * Cstruct.t)
   | Ssh_msg_userauth_failure of (string list * bool)
   | Ssh_msg_userauth_success
@@ -173,9 +173,9 @@ let message_to_id = function
   | Ssh_msg_service_request _          -> SSH_MSG_SERVICE_REQUEST
   | Ssh_msg_service_accept _           -> SSH_MSG_SERVICE_ACCEPT
   | Ssh_msg_kexinit _                  -> SSH_MSG_KEXINIT
-  | Ssh_msg_kexdh_init _               -> SSH_MSG_NEWKEYS
-  | Ssh_msg_kexdh_reply _              -> SSH_MSG_KEXDH_INIT
-  | Ssh_msg_newkeys                    -> SSH_MSG_KEXDH_REPLY
+  | Ssh_msg_newkeys                    -> SSH_MSG_NEWKEYS
+  | Ssh_msg_kexdh_init _               -> SSH_MSG_KEXDH_INIT
+  | Ssh_msg_kexdh_reply _              -> SSH_MSG_KEXDH_REPLY
   | Ssh_msg_userauth_request _         -> SSH_MSG_USERAUTH_REQUEST
   | Ssh_msg_userauth_failure _         -> SSH_MSG_USERAUTH_FAILURE
   | Ssh_msg_userauth_success           -> SSH_MSG_USERAUTH_SUCCESS

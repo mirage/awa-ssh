@@ -114,7 +114,7 @@ let handle_msg t msg =
     >>= fun neg ->
     ok ({ t with client_kexinit = Some kex;
                  neg_kex = Some neg;
-                 expect = Some SSH_MSG_KEXINIT },
+                 expect = Some SSH_MSG_KEXDH_INIT },
         [])
   | Ssh_msg_kexdh_init e ->
     guard_some t.neg_kex "No negotiated kex" >>= fun neg ->
@@ -170,7 +170,7 @@ let handle_msg t msg =
       ok (t, [ msg ])
   | Ssh_msg_version v ->
     ok ({ t with client_version = Some v;
-                 expect = Some SSH_MSG_KEXDH_INIT }, [])
+                 expect = Some SSH_MSG_KEXINIT }, [])
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))
 
 let output_msg t msg =
