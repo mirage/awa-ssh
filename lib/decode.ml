@@ -239,6 +239,8 @@ let get_message buf =
   | SSH_MSG_CHANNEL_FAILURE ->
     get_uint32 buf >>= fun (channel, buf) ->
     ok (Ssh_msg_channel_failure channel)
+  | SSH_MSG_VERSION ->
+    error "got SSH_MSG_VERSION"
 
 let get_payload buf =
   let open Ssh in

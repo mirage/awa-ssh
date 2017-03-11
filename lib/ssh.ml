@@ -63,6 +63,7 @@ type message_id =
   | SSH_MSG_CHANNEL_REQUEST           [@id 98]
   | SSH_MSG_CHANNEL_SUCCESS           [@id 99]
   | SSH_MSG_CHANNEL_FAILURE           [@id 100]
+  | SSH_MSG_VERSION                   [@id -1]
 [@@uint8_t][@@sexp]]
 
 type server_host_key_alg =
@@ -163,3 +164,36 @@ type message =
 
 let message_to_string msg =
   Sexplib.Sexp.to_string_hum (sexp_of_message msg)
+
+let message_to_id = function
+  | Ssh_msg_disconnect _               -> SSH_MSG_DISCONNECT
+  | Ssh_msg_ignore _                   -> SSH_MSG_IGNORE
+  | Ssh_msg_unimplemented _            -> SSH_MSG_UNIMPLEMENTED
+  | Ssh_msg_debug _                    -> SSH_MSG_DEBUG
+  | Ssh_msg_service_request _          -> SSH_MSG_SERVICE_REQUEST
+  | Ssh_msg_service_accept _           -> SSH_MSG_SERVICE_ACCEPT
+  | Ssh_msg_kexinit _                  -> SSH_MSG_KEXINIT
+  | Ssh_msg_kexdh_init _               -> SSH_MSG_NEWKEYS
+  | Ssh_msg_kexdh_reply _              -> SSH_MSG_KEXDH_INIT
+  | Ssh_msg_newkeys                    -> SSH_MSG_KEXDH_REPLY
+  | Ssh_msg_userauth_request _         -> SSH_MSG_USERAUTH_REQUEST
+  | Ssh_msg_userauth_failure _         -> SSH_MSG_USERAUTH_FAILURE
+  | Ssh_msg_userauth_success           -> SSH_MSG_USERAUTH_SUCCESS
+  | Ssh_msg_userauth_banner _          -> SSH_MSG_USERAUTH_BANNER
+  | Ssh_msg_global_request             -> SSH_MSG_GLOBAL_REQUEST
+  | Ssh_msg_request_success            -> SSH_MSG_REQUEST_SUCCESS
+  | Ssh_msg_request_failure            -> SSH_MSG_REQUEST_FAILURE
+  | Ssh_msg_channel_open               -> SSH_MSG_CHANNEL_OPEN
+  | Ssh_msg_channel_open_confirmation  -> SSH_MSG_CHANNEL_OPEN_CONFIRMATION
+  | Ssh_msg_channel_open_failure       -> SSH_MSG_CHANNEL_OPEN_FAILURE
+  | Ssh_msg_channel_window_adjust _    -> SSH_MSG_CHANNEL_WINDOW_ADJUST
+  | Ssh_msg_channel_data               -> SSH_MSG_CHANNEL_DATA
+  | Ssh_msg_channel_extended_data      -> SSH_MSG_CHANNEL_EXTENDED_DATA
+  | Ssh_msg_channel_eof _              -> SSH_MSG_CHANNEL_EOF
+  | Ssh_msg_channel_close _            -> SSH_MSG_CHANNEL_CLOSE
+  | Ssh_msg_channel_request            -> SSH_MSG_CHANNEL_REQUEST
+  | Ssh_msg_channel_success _          -> SSH_MSG_CHANNEL_SUCCESS
+  | Ssh_msg_channel_failure _          -> SSH_MSG_CHANNEL_FAILURE
+  | Ssh_msg_version _                  -> SSH_MSG_VERSION
+
+let message_to_int msg = message_id_to_int (message_to_id msg)
