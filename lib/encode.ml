@@ -14,6 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+open Util
+
 type t = {
   tlen : int;
   coff : int;
@@ -178,11 +180,15 @@ let put_message msg buf =
                 put_string service
       in
       (match auth_method with
-       | Publickey (b, key_alg, key_blob) ->
-         put_string "publickey" buf |>
-         put_bool b |>
-         put_string key_alg |>
-         put_cstring key_blob
+       | Publickey (key_alg, key_blob, signature) ->
+         let buf = put_string "publickey" buf |>
+                   put_bool (is_some signature) |>
+                   put_string key_alg |>
+                   put_cstring key_blob
+         in
+         (match signature with
+          | None -> buf
+          | Some signature -> put_cstring signature buf)
        | Password (b, password) ->
          put_string "password" buf |>
          put_bool b |>

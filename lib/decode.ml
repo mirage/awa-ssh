@@ -203,10 +203,14 @@ let get_message buf =
     get_string buf >>= fun (auth_method, buf) ->
     (match auth_method with
      | "publickey" ->
-       get_bool buf >>= fun (b, buf) ->
+       get_bool buf >>= fun (has_sig, buf) ->
        get_string buf >>= fun (key_alg, buf) ->
        get_cstring buf >>= fun (key_blob, buf) ->
-       ok (Publickey (b, key_alg, key_blob), buf)
+       if has_sig then
+         get_cstring buf >>= fun (signature, buf) ->
+         ok (Publickey (key_alg, key_blob, Some signature), buf)
+       else
+         ok (Publickey (key_alg, key_blob, None), buf)
      | "password" ->
        get_bool buf >>= fun (b, buf) ->
        get_string buf >>= fun (password, buf) ->

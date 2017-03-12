@@ -27,6 +27,10 @@ let guard_some x e = match x with Some x -> ok x | None -> error e
 
 let guard_none x e = match x with None -> ok () | Some _ -> error e
 
+let is_none x = match x with None -> true | _ -> false
+
+let is_some x = not (is_none x)
+
 let u32_compare a b = (* ignore the sign *)
   let (&&&) x y = Int32.logand x y in
   let (>|>) x y = Int32.shift_right_logical x y in
