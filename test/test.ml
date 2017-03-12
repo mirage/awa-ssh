@@ -151,10 +151,10 @@ let t_parsing () =
     assert ((Cstruct.len buf) = 0);
     match msg, msg2 with
     (* Can't compare Cstruct.t, must unpack and Cstruct.equal () *)
-    | Ssh_msg_userauth_request (s1a, s2a, s3a, ba, s4a, ca),
-      Ssh_msg_userauth_request (s1b, s2b, s3b, bb, s4b, cb) ->
-      assert ((s1a, s2a, s3a, ba, s4a) = (s1b, s2b, s3b, bb, s4b));
-      assert (Cstruct.equal ca cb)
+    | Ssh_msg_userauth_request (user_a, service_a, authmethod_a),
+      Ssh_msg_userauth_request (user_b, service_b, authmethod_b) ->
+      assert ((user_a, service_a) = (user_b, service_b));
+      assert (auth_method_equal authmethod_a authmethod_b);
     | Ssh_msg_kexdh_reply (pub_rsa1, mpint1, cstring1),
       Ssh_msg_kexdh_reply (pub_rsa2, mpint2, cstring2) ->
       assert (pub_rsa1 = pub_rsa2 && mpint1 = mpint2);
@@ -177,7 +177,18 @@ let t_parsing () =
       Ssh_msg_kexdh_init mpint;
       Ssh_msg_kexdh_reply (pub_rsa, mpint, cstring);
       Ssh_msg_newkeys;
-      Ssh_msg_userauth_request ("a", "b", "c", true, "d", cstring);
+      Ssh_msg_userauth_request
+        ("haesbaert", "ssh-userauth",
+         Publickey (true, "a", (Cstruct.of_string "b")));
+      Ssh_msg_userauth_request
+        ("haesbaert", "ssh-userauth",
+         Password (true, "a"));
+      Ssh_msg_userauth_request
+        ("haesbaert", "ssh-userauth",
+         Hostbased ("a", (Cstruct.of_string "b"), "c", "d",
+                    (Cstruct.of_string "e")));
+      Ssh_msg_userauth_request
+        ("haesbaert", "ssh-userauth", Authnone);
       Ssh_msg_userauth_failure (["Fora"; "Temer"], true);
       Ssh_msg_userauth_success;
       Ssh_msg_userauth_banner ("Fora", "Temer");

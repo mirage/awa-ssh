@@ -198,13 +198,30 @@ let get_message buf =
     get_cstring sigblob >>= fun (hsig, sigblob) ->
     ok (Ssh_msg_kexdh_reply (k_s, f, hsig))
   | SSH_MSG_USERAUTH_REQUEST ->
-    get_string buf >>= fun (s1, buf) ->
-    get_string buf >>= fun (s2, buf) ->
-    get_string buf >>= fun (s3, buf) ->
-    get_bool buf >>= fun (b, buf) ->
-    get_string buf >>= fun (s4, buf) ->
-    get_cstring buf >>= fun (c, buf) ->
-    ok (Ssh_msg_userauth_request (s1, s2, s3, b, s4, c))
+    get_string buf >>= fun (user, buf) ->
+    get_string buf >>= fun (service, buf) ->
+    get_string buf >>= fun (auth_method, buf) ->
+    (match auth_method with
+     | "publickey" ->
+       get_bool buf >>= fun (b, buf) ->
+       get_string buf >>= fun (key_alg, buf) ->
+       get_cstring buf >>= fun (key_blob, buf) ->
+       ok (Publickey (b, key_alg, key_blob), buf)
+     | "password" ->
+       get_bool buf >>= fun (b, buf) ->
+       get_string buf >>= fun (password, buf) ->
+       ok (Password (b, password), buf)
+     | "hostbased" ->
+       get_string buf >>= fun (key_alg, buf) ->
+       get_cstring buf >>= fun (key_blob, buf) ->
+       get_string buf >>= fun (hostname, buf) ->
+       get_string buf >>= fun (hostuser, buf) ->
+       get_cstring buf >>= fun (hostsig, buf) ->
+       ok (Hostbased (key_alg, key_blob, hostname, hostuser, hostsig), buf)
+     | "none" -> ok (Authnone, buf)
+     | auth_metod -> error ("Unknown method " ^ auth_method))
+    >>= fun (auth_method, buf) ->
+    ok (Ssh_msg_userauth_request (user, service, auth_method))
   | SSH_MSG_USERAUTH_FAILURE ->
     get_nl buf >>= fun (nl, buf) ->
     get_bool buf >>= fun (psucc, buf) ->

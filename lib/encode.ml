@@ -172,14 +172,29 @@ let put_message msg buf =
       put_cstring (blob_of_key k_s) |>
       put_mpint f |>
       put_cstring (blob_of_key_signature hsig)
-    | Ssh_msg_userauth_request (s1, s2, s3, b, s4, c) ->
-      put_id SSH_MSG_USERAUTH_REQUEST buf |>
-      put_string s1 |>
-      put_string s2 |>
-      put_string s3 |>
-      put_bool b |>
-      put_string s4 |>
-      put_cstring c
+    | Ssh_msg_userauth_request (user, service, auth_method) ->
+      let buf = put_id SSH_MSG_USERAUTH_REQUEST buf |>
+                put_string user |>
+                put_string service
+      in
+      (match auth_method with
+       | Publickey (b, key_alg, key_blob) ->
+         put_string "publickey" buf |>
+         put_bool b |>
+         put_string key_alg |>
+         put_cstring key_blob
+       | Password (b, password) ->
+         put_string "password" buf |>
+         put_bool b |>
+         put_string password
+       | Hostbased (key_alg, key_blob, hostname, hostuser, hostsig) ->
+         put_string "hostbased" buf |>
+         put_string key_alg |>
+         put_cstring key_blob |>
+         put_string hostname |>
+         put_string hostuser |>
+         put_cstring hostsig
+       | Authnone -> put_string "none" buf)
     | Ssh_msg_userauth_failure (nl, psucc) ->
       put_id SSH_MSG_USERAUTH_FAILURE buf |>
       put_nl nl |>

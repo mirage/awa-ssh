@@ -130,6 +130,38 @@ type mpint = Nocrypto.Numeric.Z.t
 
 let sexp_of_mpint mpint = sexp_of_string (Z.to_string mpint)
 
+type auth_method =
+  | Publickey of (bool * string * Cstruct.t) (* TODO use a key type *)
+  | Password of (bool * string)
+  | Hostbased of (string * Cstruct.t * string * string * Cstruct.t) (* TODO *)
+  | Authnone
+
+let sexp_of_auth_method = function
+  | Publickey (b, key_alg, key_blob) ->
+    sexp_of_string (sprintf "Publickey b=%b key_alg=%s key_blob=TODO" b key_alg)
+  | Password (b, password) -> sexp_of_string (sprintf "Password b=%b password=XXX" b)
+  | Hostbased (key_alg, key_blob, hostname, hostuser, hostsig) ->
+    let s = sprintf
+        "Hostbased key_alg=%s key_blob=TODO hostname=%s hostuser=%s hostsig=TODO"
+        key_alg hostname hostuser
+    in
+    sexp_of_string s
+  | Authnone -> sexp_of_string "None"
+
+let auth_method_equal a b =
+  match a, b with
+  | Publickey (b_a, key_alg_a, key_blob_a),
+    Publickey (b_b, key_alg_b, key_blob_b) ->
+    b_a = b_b && key_alg_a = key_alg_b && (Cstruct.equal key_blob_a key_blob_b)
+  | Password _, Password _ -> a = b
+  | Hostbased (key_alg_a, key_blob_a, hostname_a, hostuser_a, hostsig_a),
+    Hostbased (key_alg_b, key_blob_b, hostname_b, hostuser_b, hostsig_b) ->
+    key_alg_a = key_alg_b && (Cstruct.equal key_blob_a key_blob_b) &&
+    hostname_a = hostname_b && hostuser_a = hostuser_b &&
+    (Cstruct.equal hostsig_a hostsig_b)
+  | Authnone, Authnone -> true
+  | _ -> false
+
 type message =
   | Ssh_msg_disconnect of (disconnect_code * string * string)
   | Ssh_msg_ignore of string
@@ -141,7 +173,7 @@ type message =
   | Ssh_msg_newkeys
   | Ssh_msg_kexdh_reply of (Nocrypto.Rsa.pub * mpint * Cstruct.t)
   | Ssh_msg_kexdh_init of mpint
-  | Ssh_msg_userauth_request of (string * string * string * bool * string * Cstruct.t)
+  | Ssh_msg_userauth_request of (string * string * auth_method)
   | Ssh_msg_userauth_failure of (string list * bool)
   | Ssh_msg_userauth_success
   | Ssh_msg_userauth_banner of (string * string)
