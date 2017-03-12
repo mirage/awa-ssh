@@ -189,10 +189,16 @@ let put_message msg buf =
          (match signature with
           | None -> buf
           | Some signature -> put_cstring signature buf)
-       | Password (b, password) ->
-         put_string "password" buf |>
-         put_bool b |>
-         put_string password
+       | Password (password, oldpassword) ->
+         let buf = put_string "password" buf in
+         (match oldpassword with
+          | None ->
+            put_bool false buf |>
+            put_string password
+          | Some oldpassword ->
+            put_bool true buf |>
+            put_string oldpassword |>
+            put_string password)
        | Hostbased (key_alg, key_blob, hostname, hostuser, hostsig) ->
          put_string "hostbased" buf |>
          put_string key_alg |>

@@ -132,7 +132,7 @@ let sexp_of_mpint mpint = sexp_of_string (Z.to_string mpint)
 
 type auth_method =
   | Publickey of (string * Cstruct.t * Cstruct.t option) (* TODO use a key type *)
-  | Password of (bool * string)
+  | Password of (string * string option)
   | Hostbased of (string * Cstruct.t * string * string * Cstruct.t) (* TODO *)
   | Authnone
 
@@ -141,7 +141,9 @@ let sexp_of_auth_method = function
     sexp_of_string
       (sprintf "Publickey key_alg=%s key_blob=TODO signature=%b"
          key_alg (is_some signature))
-  | Password (b, password) -> sexp_of_string (sprintf "Password b=%b password=XXX" b)
+  | Password (password, oldpassword) ->
+    sexp_of_string
+      (sprintf "Password password=XXX oldpassword=%b" (is_some oldpassword))
   | Hostbased (key_alg, key_blob, hostname, hostuser, hostsig) ->
     let s = sprintf
         "Hostbased key_alg=%s key_blob=TODO hostname=%s hostuser=%s hostsig=TODO"

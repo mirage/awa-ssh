@@ -212,9 +212,14 @@ let get_message buf =
        else
          ok (Publickey (key_alg, key_blob, None), buf)
      | "password" ->
-       get_bool buf >>= fun (b, buf) ->
-       get_string buf >>= fun (password, buf) ->
-       ok (Password (b, password), buf)
+       get_bool buf >>= fun (has_old, buf) ->
+       if has_old then
+         get_string buf >>= fun (oldpassword, buf) ->
+         get_string buf >>= fun (password, buf) ->
+         ok (Password (password, Some oldpassword), buf)
+       else
+         get_string buf >>= fun (password, buf) ->
+         ok (Password (password, None), buf)
      | "hostbased" ->
        get_string buf >>= fun (key_alg, buf) ->
        get_cstring buf >>= fun (key_blob, buf) ->
