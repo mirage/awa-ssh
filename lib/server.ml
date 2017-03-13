@@ -168,6 +168,16 @@ let handle_msg t msg =
            (sprintf "service %s not available" service), "")
       in
       ok (t, [ msg ])
+  | Ssh_msg_userauth_request (user, service, auth_method) ->
+    guard (service = "ssh-connection") ("Bad service: " ^ service) >>= fun () ->
+    let fail t = ok (t, [ Ssh_msg_userauth_failure ([ "password" ], false) ]) in
+    (* XXX must check if user or service ever changes and disconnect *)
+    (match auth_method with
+     | Publickey _ -> fail t                      (* TODO *)
+     | Password (password, None) -> ok (t, [])    (* TODO *)
+     | Password (password, Some oldpassword) -> fail t (* Change of password *)
+     | Hostbased _ -> fail t                      (* TODO *)
+     | Authnone -> fail t)                        (* Always fail *)
   | Ssh_msg_version v ->
     ok ({ t with client_version = Some v;
                  expect = Some SSH_MSG_KEXINIT }, [])
