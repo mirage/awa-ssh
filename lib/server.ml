@@ -32,7 +32,8 @@ type t = {
   new_keys_ctos  : Kex.keys option;       (* Install when we receive NEWKEYS *)
   new_keys_stoc  : Kex.keys option;       (* Install after we send NEWKEYS *)
   input_buffer   : Cstruct.t;             (* Unprocessed input *)
-  expect         : Ssh.message_id option  (* Which messages are expected, None if any *)
+  expect         : Ssh.message_id option; (* Which messages are expected, None if any *)
+  auth_state     : (string * string) option; (* username * service in progress *)
 }
 
 let guard_msg t msg =
@@ -63,7 +64,8 @@ let make host_key =
             new_keys_ctos = None;
             new_keys_stoc = None;
             input_buffer = Cstruct.create 0;
-            expect = Some SSH_MSG_VERSION; }
+            expect = Some SSH_MSG_VERSION;
+            auth_state = None; }
   in
   t, [ banner_msg; kex_msg ]
 
@@ -171,13 +173,29 @@ let handle_msg t msg =
   | Ssh_msg_userauth_request (user, service, auth_method) ->
     guard (service = "ssh-connection") ("Bad service: " ^ service) >>= fun () ->
     let fail t = ok (t, [ Ssh_msg_userauth_failure ([ "password" ], false) ]) in
-    (* XXX must check if user or service ever changes and disconnect *)
-    (match auth_method with
-     | Publickey _ -> fail t                      (* TODO *)
-     | Password (password, None) -> ok (t, [])    (* TODO *)
-     | Password (password, Some oldpassword) -> fail t (* Change of password *)
-     | Hostbased _ -> fail t                      (* TODO *)
-     | Authnone -> fail t)                        (* Always fail *)
+    let success t = ok (t, [ Ssh_msg_userauth_success ]) in
+    let disconnect t =
+      ok (t, [ Ssh_msg_disconnect
+                 (SSH_DISCONNECT_PROTOCOL_ERROR,
+                  "username or service changed during authentication",
+                  "") ])
+    in
+    let auth_ok = match t.auth_state with
+      | None -> true
+      | Some (prev_user, prev_service) ->
+        prev_user = user && prev_service = service
+    in
+    if not auth_ok then
+      disconnect t
+    else
+      let t = { t with auth_state = Some (user, service) } in
+      (match auth_method with
+       | Publickey _ -> fail t                      (* TODO *)
+       | Password (password, None) ->
+         if user = "foo" && password = "bar" then success t else fail t
+       | Password (password, Some oldpassword) -> fail t (* Change of password *)
+       | Hostbased _ -> fail t                      (* TODO *)
+       | Authnone -> fail t)                        (* Always fail *)
   | Ssh_msg_version v ->
     ok ({ t with client_version = Some v;
                  expect = Some SSH_MSG_KEXINIT }, [])
