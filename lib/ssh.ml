@@ -132,7 +132,7 @@ type mpint = Nocrypto.Numeric.Z.t
 let sexp_of_mpint mpint = sexp_of_string (Z.to_string mpint)
 
 type auth_method =
-  | Publickey of (string * Cstruct.t * Cstruct.t option) (* TODO use a key type *)
+  | Publickey of (string * Hostkey.pub * Cstruct.t option) (* TODO remove key_alg *)
   | Password of (string * string option)
   | Hostbased of (string * Cstruct.t * string * string * Cstruct.t) (* TODO *)
   | Authnone

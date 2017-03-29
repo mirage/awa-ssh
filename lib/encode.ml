@@ -136,6 +136,9 @@ let blob_of_key_signature signature =
   put_cstring signature |>
   to_cstruct
 
+let put_pubkey pubkey t =
+  put_cstring (blob_of_pubkey pubkey) t
+
 let put_message msg buf =
   let open Ssh in
   let unimplemented () = failwith "implement me" in
@@ -172,7 +175,7 @@ let put_message msg buf =
       put_mpint e
     | Ssh_msg_kexdh_reply (k_s, f, hsig) ->
       put_id SSH_MSG_KEXDH_REPLY buf |>
-      put_cstring (blob_of_pubkey k_s) |>
+      put_pubkey k_s |>
       put_mpint f |>
       put_cstring (blob_of_key_signature hsig)
     | Ssh_msg_userauth_request (user, service, auth_method) ->
@@ -181,11 +184,11 @@ let put_message msg buf =
                 put_string service
       in
       (match auth_method with
-       | Publickey (key_alg, key_blob, signature) ->
+       | Publickey (key_alg, pubkey, signature) ->
          let buf = put_string "publickey" buf |>
                    put_bool (is_some signature) |>
                    put_string key_alg |>
-                   put_cstring key_blob
+                   put_pubkey pubkey
          in
          (match signature with
           | None -> buf
@@ -221,7 +224,7 @@ let put_message msg buf =
     | Ssh_msg_userauth_pk_ok pubkey ->
       put_id SSH_MSG_USERAUTH_PK_OK buf |>
       put_string "ssh-rsa" |>
-      put_cstring (blob_of_pubkey pubkey)
+      put_pubkey pubkey
     | Ssh_msg_global_request -> unimplemented ()
     | Ssh_msg_request_success -> unimplemented ()
     | Ssh_msg_request_failure ->

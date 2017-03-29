@@ -179,10 +179,10 @@ let t_parsing () =
       Ssh_msg_newkeys;
       Ssh_msg_userauth_request
         ("haesbaert", "ssh-userauth",
-         Publickey ("a", (Cstruct.of_string "b"), None));
+         Publickey ("a", pub_rsa, None));
       Ssh_msg_userauth_request
         ("haesbaert", "ssh-userauth",
-         Publickey ("a", (Cstruct.of_string "b"), Some (Cstruct.of_string "c")));
+         Publickey ("a", pub_rsa, Some (Cstruct.of_string "c")));
       Ssh_msg_userauth_request
         ("haesbaert", "ssh-userauth",
          Password ("a", Some "b"));

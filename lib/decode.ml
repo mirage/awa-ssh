@@ -206,12 +206,13 @@ let get_message buf =
      | "publickey" ->
        get_bool buf >>= fun (has_sig, buf) ->
        get_string buf >>= fun (key_alg, buf) ->
-       get_cstring buf >>= fun (key_blob, buf) ->
+       get_cstring buf >>= fun (blob, buf) ->
+       get_pubkey blob >>= fun (pubkey, blob) ->
        if has_sig then
          get_cstring buf >>= fun (signature, buf) ->
-         ok (Publickey (key_alg, key_blob, Some signature), buf)
+         ok (Publickey (key_alg, pubkey, Some signature), buf)
        else
-         ok (Publickey (key_alg, key_blob, None), buf)
+         ok (Publickey (key_alg, pubkey, None), buf)
      | "password" ->
        get_bool buf >>= fun (has_old, buf) ->
        if has_old then
@@ -240,8 +241,8 @@ let get_message buf =
   | SSH_MSG_USERAUTH_PK_OK ->
     get_string buf >>= fun (key_alg, buf) ->
     guard (key_alg = "ssh-rsa") "Unknown key type" >>= fun () ->
-    get_cstring buf >>= fun (blob, buf) ->
-    get_pubkey blob >>= fun (hostkey, buf) ->
+    get_cstring buf >>= fun (key_blob, buf) ->
+    get_pubkey key_blob >>= fun (hostkey, buf) ->
     ok (Ssh_msg_userauth_pk_ok hostkey)
   | SSH_MSG_USERAUTH_BANNER ->
     get_string buf >>= fun (s1, buf) ->
