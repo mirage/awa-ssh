@@ -187,7 +187,7 @@ type message =
   | Ssh_msg_userauth_failure of (string list * bool)
   | Ssh_msg_userauth_success
   | Ssh_msg_userauth_banner of (string * string)
-  | Ssh_msg_userauth_pk_ok of (string * Cstruct.t)
+  | Ssh_msg_userauth_pk_ok of Hostkey.pub
   | Ssh_msg_global_request
   | Ssh_msg_request_success
   | Ssh_msg_request_failure

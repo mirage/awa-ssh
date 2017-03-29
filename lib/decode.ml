@@ -110,7 +110,7 @@ let get_mpint buf =
 
 let get_pubkey buf =
   get_string buf >>= fun (key, buf) ->
-  guard (key = "ssh-rsa") "Bad key type" >>= fun () ->
+  guard (key = "ssh-rsa") "Unknown key type" >>= fun () ->
   get_mpint buf >>= fun (e, buf) ->
   get_mpint buf >>= fun (n, buf) ->
   let pub = Nocrypto.Rsa.{e; n} in
@@ -239,8 +239,10 @@ let get_message buf =
   | SSH_MSG_USERAUTH_SUCCESS -> ok Ssh_msg_userauth_success
   | SSH_MSG_USERAUTH_PK_OK ->
     get_string buf >>= fun (key_alg, buf) ->
-    get_cstring buf >>= fun (key_blob, buf) ->
-    ok (Ssh_msg_userauth_pk_ok (key_alg, key_blob))
+    guard (key_alg = "ssh-rsa") "Unknown key type" >>= fun () ->
+    get_cstring buf >>= fun (blob, buf) ->
+    get_pubkey blob >>= fun (hostkey, buf) ->
+    ok (Ssh_msg_userauth_pk_ok hostkey)
   | SSH_MSG_USERAUTH_BANNER ->
     get_string buf >>= fun (s1, buf) ->
     get_string buf >>= fun (s2, buf) ->

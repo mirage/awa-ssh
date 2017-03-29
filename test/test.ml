@@ -159,10 +159,6 @@ let t_parsing () =
       Ssh_msg_kexdh_reply (pub_rsa2, mpint2, cstring2) ->
       assert (pub_rsa1 = pub_rsa2 && mpint1 = mpint2);
       assert (Cstruct.equal cstring1 cstring2)
-    | Ssh_msg_userauth_pk_ok (key_alg1, key_blob1),
-      Ssh_msg_userauth_pk_ok (key_alg2, key_blob2) ->
-      assert (key_alg1 = key_alg2);
-      assert (Cstruct.equal key_blob1 key_blob2)
     | msg, msg2 -> assert (msg = msg2)
   in
   let long = Int32.of_int 180586 in
@@ -202,7 +198,7 @@ let t_parsing () =
       Ssh_msg_userauth_failure (["Fora"; "Temer"], true);
       Ssh_msg_userauth_success;
       Ssh_msg_userauth_banner ("Fora", "Temer");
-      Ssh_msg_userauth_pk_ok ("ssh-rsa", (Cstruct.of_string "a"));
+      Ssh_msg_userauth_pk_ok pub_rsa;
       (* Ssh_msg_global_request; *)
       (* Ssh_msg_request_success; *)
       (* Ssh_msg_request_failure; *)
