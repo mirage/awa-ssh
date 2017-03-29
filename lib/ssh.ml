@@ -49,6 +49,7 @@ type message_id =
   | SSH_MSG_USERAUTH_FAILURE          [@id 51]
   | SSH_MSG_USERAUTH_SUCCESS          [@id 52]
   | SSH_MSG_USERAUTH_BANNER           [@id 53]
+  | SSH_MSG_USERAUTH_PK_OK            [@id 60]
   | SSH_MSG_GLOBAL_REQUEST            [@id 80]
   | SSH_MSG_REQUEST_SUCCESS           [@id 81]
   | SSH_MSG_REQUEST_FAILURE           [@id 82]
@@ -186,6 +187,7 @@ type message =
   | Ssh_msg_userauth_failure of (string list * bool)
   | Ssh_msg_userauth_success
   | Ssh_msg_userauth_banner of (string * string)
+  | Ssh_msg_userauth_pk_ok of (string * Cstruct.t)
   | Ssh_msg_global_request
   | Ssh_msg_request_success
   | Ssh_msg_request_failure
@@ -221,6 +223,7 @@ let message_to_id = function
   | Ssh_msg_userauth_failure _         -> SSH_MSG_USERAUTH_FAILURE
   | Ssh_msg_userauth_success           -> SSH_MSG_USERAUTH_SUCCESS
   | Ssh_msg_userauth_banner _          -> SSH_MSG_USERAUTH_BANNER
+  | Ssh_msg_userauth_pk_ok _           -> SSH_MSG_USERAUTH_PK_OK
   | Ssh_msg_global_request             -> SSH_MSG_GLOBAL_REQUEST
   | Ssh_msg_request_success            -> SSH_MSG_REQUEST_SUCCESS
   | Ssh_msg_request_failure            -> SSH_MSG_REQUEST_FAILURE

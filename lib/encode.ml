@@ -217,6 +217,10 @@ let put_message msg buf =
       put_id SSH_MSG_USERAUTH_BANNER buf |>
       put_string message |>
       put_string lang
+    | Ssh_msg_userauth_pk_ok (key_alg, key_blob) ->
+      put_id SSH_MSG_USERAUTH_PK_OK buf |>
+      put_string key_alg |>
+      put_cstring key_blob
     | Ssh_msg_global_request -> unimplemented ()
     | Ssh_msg_request_success -> unimplemented ()
     | Ssh_msg_request_failure ->

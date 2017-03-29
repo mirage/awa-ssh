@@ -236,6 +236,10 @@ let get_message buf =
     get_bool buf >>= fun (psucc, buf) ->
     ok (Ssh_msg_userauth_failure (nl, psucc))
   | SSH_MSG_USERAUTH_SUCCESS -> ok Ssh_msg_userauth_success
+  | SSH_MSG_USERAUTH_PK_OK ->
+    get_string buf >>= fun (key_alg, buf) ->
+    get_cstring buf >>= fun (key_blob, buf) ->
+    ok (Ssh_msg_userauth_pk_ok (key_alg, key_blob))
   | SSH_MSG_USERAUTH_BANNER ->
     get_string buf >>= fun (s1, buf) ->
     get_string buf >>= fun (s2, buf) ->
