@@ -190,22 +190,7 @@ let derive_keys digestv k h session_id neg =
   in
   (ctos, stoc)
 
-(*
- * id-sha1 OBJECT IDENTIFIER ::= { iso(1) identified-organization(3)
- *     oiw(14) secsig(3) algorithms(2) 26 }
- * from OpenSSH ssh-rsa.c
- *)
-let rsa_sha1_oid = cs_of_bytes
-    [ 0x30; 0x21;                    (* type Sequence, length 0x21 (33) *)
-      0x30; 0x09;                    (* type Sequence, length 0x09 *)
-      0x06; 0x05;                    (* type OID, length 0x05 *)
-      0x2b; 0x0e; 0x03; 0x02; 0x1a;  (* id-sha1 OID *)
-      0x05; 0x00;                    (* NULL *)
-      0x04; 0x14; ]                  (* Octet string, length 0x14 (20) *)
-
-let sign key hash =
-  Rsa.PKCS1.sig_encode key
-    (Cstruct.append rsa_sha1_oid (Hash.SHA1.digest hash))
+let sign privkey hash = Hostkey.sign privkey (Hash.SHA1.digest hash)
 
 module Dh = struct
 

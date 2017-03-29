@@ -25,7 +25,7 @@ type t = {
   client_kexinit : Ssh.kexinit option;    (* Last KEXINIT received *)
   server_kexinit : Ssh.kexinit;           (* Last KEXINIT sent by us *)
   neg_kex        : Kex.negotiation option;(* Negotiated KEX *)
-  host_key       : Nocrypto.Rsa.priv;     (* Server host key *)
+  host_key       : Hostkey.priv;          (* Server host key *)
   session_id     : Cstruct.t option;      (* First calculated H *)
   keys_ctos      : Kex.keys;              (* Client to server (input) keys *)
   keys_stoc      : Kex.keys;              (* Server to cleint (output) keys *)
@@ -126,13 +126,13 @@ let handle_msg t msg =
     guard_some t.client_kexinit "No client kex" >>= fun c ->
     guard_some c.input_buf "No kex input_buf" >>= fun client_kexinit ->
     Kex.(Dh.generate neg.kex_alg e) >>= fun (y, f, k) ->
-    let pub_host_key = Rsa.pub_of_priv t.host_key in
+    let pub_host_key = Hostkey.pub_of_priv t.host_key in
     let h = Kex.Dh.compute_hash
         ~v_c:(Cstruct.of_string client_version)
         ~v_s:(Cstruct.of_string t.server_version)
         ~i_c:client_kexinit
         ~i_s:(Encode.blob_of_kexinit t.server_kexinit)
-        ~k_s:(Encode.blob_of_key pub_host_key)
+        ~k_s:(Encode.blob_of_pubkey pub_host_key)
         ~e ~f ~k
     in
     let signature = Kex.sign t.host_key h in

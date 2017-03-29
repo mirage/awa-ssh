@@ -70,7 +70,7 @@ let () =
   Unix.(bind listen_fd (ADDR_INET (inet_addr_any, server_port)));
   Unix.listen listen_fd 1;
   let client_fd, _ = Unix.(accept listen_fd) in
-  let rsa = Nocrypto.Rsa.generate 2048 in
+  let rsa = Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048) in
   let t, greetings = Server.make rsa in
   let t, obuf = Server.output_msgs t greetings |> get_ok_s in
   write_cstruct client_fd obuf;

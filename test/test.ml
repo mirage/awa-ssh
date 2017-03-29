@@ -169,7 +169,7 @@ let t_parsing () =
   let mpint = Nocrypto.Numeric.Z.of_int 180586 in
   let cstring = Cstruct.of_string "The Conquest of Bread" in
   (* XXX slow *)
-  let pub_rsa = Nocrypto.Rsa.(generate 2048 |> pub_of_priv) in
+  let pub_rsa = Hostkey.Rsa_pub (Nocrypto.Rsa.(generate 2048 |> pub_of_priv)) in
   let l =
     [ Ssh_msg_disconnect (SSH_DISCONNECT_PROTOCOL_ERROR, "foo", "bar");
       Ssh_msg_ignore "Fora Temer";
@@ -297,7 +297,7 @@ let t_version () =
   (*
    * Case 5: Make sure state transitions are ok.
    *)
-  let t, _ = Server.make (Nocrypto.Rsa.generate 2048) in
+  let t, _ = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) in
   let client_version = "SSH-2.0-OpenSSH_6.9\r\n" in
   match Server.pop_msg2 t (Cstruct.of_string client_version) with
   | Error e -> failwith e

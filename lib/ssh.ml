@@ -181,7 +181,7 @@ type message =
   | Ssh_msg_service_accept of string
   | Ssh_msg_kexinit of kexinit
   | Ssh_msg_newkeys
-  | Ssh_msg_kexdh_reply of (Nocrypto.Rsa.pub * mpint * Cstruct.t)
+  | Ssh_msg_kexdh_reply of (Hostkey.pub * mpint * Cstruct.t)
   | Ssh_msg_kexdh_init of mpint
   | Ssh_msg_userauth_request of (string * string * auth_method)
   | Ssh_msg_userauth_failure of (string list * bool)

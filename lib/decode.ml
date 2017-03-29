@@ -108,12 +108,13 @@ let get_mpint buf =
           Nocrypto.Numeric.Z.of_cstruct_be mpbuf,
           Cstruct.shift buf (len + 4)) ()
 
-let get_key buf =
+let get_pubkey buf =
   get_string buf >>= fun (key, buf) ->
   guard (key = "ssh-rsa") "Bad key type" >>= fun () ->
   get_mpint buf >>= fun (e, buf) ->
   get_mpint buf >>= fun (n, buf) ->
-  ok (Nocrypto.Rsa.{e; n}, buf)
+  let pub = Nocrypto.Rsa.{e; n} in
+  ok (Hostkey.Rsa_pub pub, buf)
 
 let get_uint32 buf =
   trap_error (fun () ->
@@ -190,7 +191,7 @@ let get_message buf =
     ok (Ssh_msg_kexdh_init e)
   | SSH_MSG_KEXDH_REPLY ->
     get_cstring buf >>= fun (blob, buf) ->
-    get_key blob >>= fun (k_s, blob) ->
+    get_pubkey blob >>= fun (k_s, blob) ->
     get_mpint buf >>= fun (f, buf) ->
     get_cstring buf >>= fun (sigblob, buf) ->
     get_string sigblob >>= fun (ktype, sigblob) ->

@@ -123,12 +123,13 @@ let blob_of_kexinit kex =
   put_id Ssh.SSH_MSG_KEXINIT (create ()) |>
   put_kexinit kex |> to_cstruct
 
-let blob_of_key (rsa : Nocrypto.Rsa.pub) =
-  let open Nocrypto.Rsa in
-  put_string "ssh-rsa" (create ()) |>
-  put_mpint rsa.e |>
-  put_mpint rsa.n |>
-  to_cstruct
+let blob_of_pubkey = function
+  | Hostkey.Rsa_pub rsa ->
+    let open Nocrypto.Rsa in
+    put_string "ssh-rsa" (create ()) |>
+    put_mpint rsa.e |>
+    put_mpint rsa.n |>
+    to_cstruct
 
 let blob_of_key_signature signature =
   put_string "ssh-rsa" (create ()) |>
@@ -171,7 +172,7 @@ let put_message msg buf =
       put_mpint e
     | Ssh_msg_kexdh_reply (k_s, f, hsig) ->
       put_id SSH_MSG_KEXDH_REPLY buf |>
-      put_cstring (blob_of_key k_s) |>
+      put_cstring (blob_of_pubkey k_s) |>
       put_mpint f |>
       put_cstring (blob_of_key_signature hsig)
     | Ssh_msg_userauth_request (user, service, auth_method) ->
