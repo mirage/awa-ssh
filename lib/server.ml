@@ -180,6 +180,7 @@ let handle_msg t msg =
                   "username or service changed during authentication",
                   "") ])
     in
+    let pk_ok t pubkey = ok (t, [ Ssh_msg_userauth_pk_ok pubkey ]) in
     let auth_ok = match t.auth_state with
       | None -> true
       | Some (prev_user, prev_service) ->
@@ -190,7 +191,9 @@ let handle_msg t msg =
     else
       let t = { t with auth_state = Some (user, service) } in
       (match auth_method with
-       | Publickey _ -> fail t                      (* TODO *)
+       | Publickey (key_alg, pubkey, None) ->
+         if key_alg = "ssh-rsa" then pk_ok t pubkey else fail t
+       | Publickey (key_alg, pubkey, signature) -> fail t (* TODO *)
        | Password (password, None) ->
          if user = "foo" && password = "bar" then success t else fail t
        | Password (password, Some oldpassword) -> fail t (* Change of password *)
