@@ -44,10 +44,6 @@ let rsa_sha1_oid = Util.cs_of_bytes
       0x05; 0x00;                    (* NULL *)
       0x04; 0x14; ]                  (* Octet string, length 0x14 (20) *)
 
-let known = function
-  | "ssh-rsa" -> true
-  | _ -> false
-
 let sshname = function
   | Rsa_pub _ -> "ssh-rsa"
   | Unknown -> "unknown"
