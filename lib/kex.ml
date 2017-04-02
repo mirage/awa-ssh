@@ -190,7 +190,8 @@ let derive_keys digestv k h session_id neg =
   in
   (ctos, stoc)
 
-let sign privkey hash = Hostkey.sign privkey (Hash.SHA1.digest hash)
+let sign privkey hash =
+  Hostkey.sign privkey (Hash.SHA1.digest hash)
 
 module Dh = struct
 

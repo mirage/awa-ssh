@@ -155,17 +155,20 @@ let t_parsing () =
       Ssh_msg_userauth_request (user_b, service_b, authmethod_b) ->
       assert ((user_a, service_a) = (user_b, service_b));
       assert (auth_method_equal authmethod_a authmethod_b);
-    | Ssh_msg_kexdh_reply (pub_rsa1, mpint1, cstring1),
-      Ssh_msg_kexdh_reply (pub_rsa2, mpint2, cstring2) ->
+    | Ssh_msg_kexdh_reply (pub_rsa1, mpint1, siga),
+      Ssh_msg_kexdh_reply (pub_rsa2, mpint2, sigb) ->
       assert (pub_rsa1 = pub_rsa2 && mpint1 = mpint2);
-      assert (Cstruct.equal cstring1 cstring2)
+      assert (Hostkey.signature_equal siga sigb)
     | msg, msg2 -> assert (msg = msg2)
   in
   let long = Int32.of_int 180586 in
   let mpint = Nocrypto.Numeric.Z.of_int 180586 in
   let cstring = Cstruct.of_string "The Conquest of Bread" in
   (* XXX slow *)
-  let pub_rsa = Hostkey.Rsa_pub (Nocrypto.Rsa.(generate 2048 |> pub_of_priv)) in
+  let rsa = Nocrypto.Rsa.(generate 2048) in
+  let priv_rsa = Hostkey.Rsa_priv rsa in
+  let pub_rsa = Hostkey.Rsa_pub (Nocrypto.Rsa.pub_of_priv rsa) in
+  let signature = Hostkey.sign priv_rsa cstring in
   let l =
     [ Ssh_msg_disconnect (SSH_DISCONNECT_PROTOCOL_ERROR, "foo", "bar");
       Ssh_msg_ignore "Fora Temer";
@@ -175,7 +178,7 @@ let t_parsing () =
       Ssh_msg_service_accept "Ricardo Flores Magon";
       (* Ssh_msg_kexinit foo; *)
       Ssh_msg_kexdh_init mpint;
-      Ssh_msg_kexdh_reply (pub_rsa, mpint, cstring);
+      Ssh_msg_kexdh_reply (pub_rsa, mpint, signature);
       Ssh_msg_newkeys;
       Ssh_msg_userauth_request
         ("haesbaert", "ssh-userauth",

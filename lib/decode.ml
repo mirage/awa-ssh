@@ -109,12 +109,14 @@ let get_mpint buf =
           Cstruct.shift buf (len + 4)) ()
 
 let get_pubkey buf =
-  get_string buf >>= fun (key, buf) ->
-  guard (key = "ssh-rsa") "Unknown key type" >>= fun () ->
-  get_mpint buf >>= fun (e, buf) ->
-  get_mpint buf >>= fun (n, buf) ->
-  let pub = Nocrypto.Rsa.{e; n} in
-  ok (Hostkey.Rsa_pub pub, buf)
+  get_string buf >>= fun (key_alg, buf) ->
+  match key_alg with
+  | "ssh-rsa" ->
+    get_mpint buf >>= fun (e, buf) ->
+    get_mpint buf >>= fun (n, buf) ->
+    let pub = Nocrypto.Rsa.{e; n} in
+    ok (Hostkey.Rsa_pub pub, buf)
+  | key_alg -> ok (Hostkey.Unknown, buf)
 
 let get_uint32 buf =
   trap_error (fun () ->
@@ -127,6 +129,11 @@ let get_bool buf =
 let get_nl buf =
   get_string buf >>= fun (s, buf) ->
   ok ((Str.split (Str.regexp ",") s), buf)
+
+let signature_of_blob blob =
+  get_string blob >>= fun (key_alg, blob) ->
+  get_cstring blob >>= fun (key_sig, _) ->
+  ok Hostkey.{ key_alg; key_sig }
 
 let get_message buf =
   let open Ssh in
@@ -194,10 +201,8 @@ let get_message buf =
     get_pubkey blob >>= fun (k_s, blob) ->
     get_mpint buf >>= fun (f, buf) ->
     get_cstring buf >>= fun (sigblob, buf) ->
-    get_string sigblob >>= fun (ktype, sigblob) ->
-    guard (ktype = "ssh-rsa") "Unknown signature key type" >>= fun () ->
-    get_cstring sigblob >>= fun (hsig, sigblob) ->
-    ok (Ssh_msg_kexdh_reply (k_s, f, hsig))
+    signature_of_blob sigblob >>= fun signature ->
+    ok (Ssh_msg_kexdh_reply (k_s, f, signature))
   | SSH_MSG_USERAUTH_REQUEST ->
     get_string buf >>= fun (user, buf) ->
     get_string buf >>= fun (service, buf) ->

@@ -130,11 +130,16 @@ let blob_of_pubkey = function
     put_mpint rsa.e |>
     put_mpint rsa.n |>
     to_cstruct
+  | Hostkey.Unknown -> invalid_arg "Can't make blob of unknown key."
 
-let blob_of_key_signature signature =
-  put_string "ssh-rsa" (create ()) |>
-  put_cstring signature |>
-  to_cstruct
+let blob_of_signature signature =
+  let open Hostkey in
+  match signature.key_alg with
+  | "ssh-rsa" ->
+    put_string "ssh-rsa" (create ()) |>
+    put_cstring signature.key_sig |>
+    to_cstruct
+  | _ -> invalid_arg ("Unknown signature algorithm " ^ signature.key_alg)
 
 let put_pubkey pubkey t =
   put_cstring (blob_of_pubkey pubkey) t
@@ -142,6 +147,7 @@ let put_pubkey pubkey t =
 let put_message msg buf =
   let open Ssh in
   let unimplemented () = failwith "implement me" in
+  let guard p e = if not p then invalid_arg e in
   match msg with
     | Ssh_msg_disconnect (code, desc, lang) ->
       put_id SSH_MSG_DISCONNECT buf |>
@@ -177,7 +183,7 @@ let put_message msg buf =
       put_id SSH_MSG_KEXDH_REPLY buf |>
       put_pubkey k_s |>
       put_mpint f |>
-      put_cstring (blob_of_key_signature hsig)
+      put_cstring (blob_of_signature hsig)
     | Ssh_msg_userauth_request (user, service, auth_method) ->
       let buf = put_id SSH_MSG_USERAUTH_REQUEST buf |>
                 put_string user |>
@@ -222,8 +228,9 @@ let put_message msg buf =
       put_string message |>
       put_string lang
     | Ssh_msg_userauth_pk_ok pubkey ->
+      guard (pubkey <> Hostkey.Unknown) "Unknown key";
       put_id SSH_MSG_USERAUTH_PK_OK buf |>
-      put_string "ssh-rsa" |>
+      put_string (Hostkey.sshname pubkey) |>
       put_pubkey pubkey
     | Ssh_msg_global_request -> unimplemented ()
     | Ssh_msg_request_success -> unimplemented ()

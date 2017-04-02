@@ -15,18 +15,21 @@
  *)
 
 open Nocrypto
+open Sexplib.Conv
 
 type priv =
   | Rsa_priv of Rsa.priv
 
 type pub =
   | Rsa_pub of Rsa.pub
+  | Unknown
 
 let pub_of_priv = function
   | Rsa_priv priv -> Rsa_pub (Rsa.pub_of_priv priv)
 
 let sexp_of_pub = function
   | Rsa_pub pub -> Nocrypto.Rsa.sexp_of_pub pub
+  | Unknown -> sexp_of_string "Unknown"
 
 (*
  * id-sha1 OBJECT IDENTIFIER ::= { iso(1) identified-organization(3)
@@ -41,7 +44,26 @@ let rsa_sha1_oid = Util.cs_of_bytes
       0x05; 0x00;                    (* NULL *)
       0x04; 0x14; ]                  (* Octet string, length 0x14 (20) *)
 
+let known = function
+  | "ssh-rsa" -> true
+  | _ -> false
+
+let sshname = function
+  | Rsa_pub _ -> "ssh-rsa"
+  | Unknown -> "unknown"
+
+type signature = {
+  key_alg : string;
+  key_sig : Cstruct.t;
+}
+
+let sexp_of_signature s = sexp_of_string "TODO"
+
+let signature_equal a b =
+  a.key_alg = b.key_alg && Cstruct.equal a.key_sig b.key_sig
+
 let sign priv blob =
   match priv with
   | Rsa_priv priv ->
-    Rsa.PKCS1.sig_encode priv (Cstruct.append rsa_sha1_oid blob)
+    { key_alg = "ssh-rsa";
+      key_sig = Rsa.PKCS1.sig_encode priv (Cstruct.append rsa_sha1_oid blob) }
