@@ -179,11 +179,11 @@ let put_message msg buf =
     | Ssh_msg_kexdh_init e ->
       put_id SSH_MSG_KEXDH_INIT buf |>
       put_mpint e
-    | Ssh_msg_kexdh_reply (k_s, f, hsig) ->
+    | Ssh_msg_kexdh_reply (k_s, f, signature) ->
       put_id SSH_MSG_KEXDH_REPLY buf |>
       put_pubkey k_s |>
       put_mpint f |>
-      put_cstring (blob_of_signature hsig)
+      put_cstring (blob_of_signature signature)
     | Ssh_msg_userauth_request (user, service, auth_method) ->
       let buf = put_id SSH_MSG_USERAUTH_REQUEST buf |>
                 put_string user |>
