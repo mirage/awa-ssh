@@ -191,16 +191,20 @@ let handle_msg t msg =
     else
       let t = { t with auth_state = Some (user, service) } in
       (match auth_method with
+       (* Public key authentication *)
        | Publickey (key_alg, pubkey, None) ->
          (match pubkey with
           | Hostkey.Rsa_pub rsa_pub ->
             if key_alg = "ssh-rsa" then pk_ok t pubkey else fail t
           | _ -> fail t)
        | Publickey (key_alg, pubkey, signature) -> fail t (* TODO *)
+       (* Password authentication *)
        | Password (password, None) ->
          if user = "foo" && password = "bar" then success t else fail t
        | Password (password, Some oldpassword) -> fail t (* Change of password *)
+       (* Host based authentication *)
        | Hostbased _ -> fail t                      (* TODO *)
+       (* None authentication *)
        | Authnone -> fail t)                        (* Always fail *)
   | Ssh_msg_version v ->
     ok ({ t with client_version = Some v;
