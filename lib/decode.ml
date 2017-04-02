@@ -245,7 +245,6 @@ let get_message buf =
   | SSH_MSG_USERAUTH_SUCCESS -> ok Ssh_msg_userauth_success
   | SSH_MSG_USERAUTH_PK_OK ->
     get_string buf >>= fun (key_alg, buf) ->
-    guard (key_alg = "ssh-rsa") "Unknown key type" >>= fun () ->
     get_cstring buf >>= fun (blob, buf) ->
     pubkey_of_blob blob >>= fun pubkey ->
     ok (Ssh_msg_userauth_pk_ok pubkey)
