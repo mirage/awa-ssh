@@ -108,16 +108,6 @@ let get_mpint buf =
           Nocrypto.Numeric.Z.of_cstruct_be mpbuf,
           Cstruct.shift buf (len + 4)) ()
 
-let get_pubkey buf =
-  get_string buf >>= fun (key_alg, buf) ->
-  match key_alg with
-  | "ssh-rsa" ->
-    get_mpint buf >>= fun (e, buf) ->
-    get_mpint buf >>= fun (n, buf) ->
-    let pub = Nocrypto.Rsa.{e; n} in
-    ok (Hostkey.Rsa_pub pub, buf)
-  | key_alg -> ok (Hostkey.Unknown, buf)
-
 let get_uint32 buf =
   trap_error (fun () ->
       Cstruct.BE.get_uint32 buf 0, Cstruct.shift buf 4) ()
@@ -129,6 +119,16 @@ let get_bool buf =
 let get_nl buf =
   get_string buf >>= fun (s, buf) ->
   ok ((Str.split (Str.regexp ",") s), buf)
+
+let pubkey_of_blob blob =
+  get_string blob >>= fun (key_alg, blob) ->
+  match key_alg with
+  | "ssh-rsa" ->
+    get_mpint blob >>= fun (e, blob) ->
+    get_mpint blob >>= fun (n, _) ->
+    let pub = Nocrypto.Rsa.{e; n} in
+    ok (Hostkey.Rsa_pub pub)
+  | key_alg -> ok Hostkey.Unknown
 
 let signature_of_blob blob =
   get_string blob >>= fun (key_alg, blob) ->
@@ -198,7 +198,7 @@ let get_message buf =
     ok (Ssh_msg_kexdh_init e)
   | SSH_MSG_KEXDH_REPLY ->
     get_cstring buf >>= fun (blob, buf) ->
-    get_pubkey blob >>= fun (k_s, blob) ->
+    pubkey_of_blob blob >>= fun (k_s) ->
     get_mpint buf >>= fun (f, buf) ->
     get_cstring buf >>= fun (sigblob, buf) ->
     signature_of_blob sigblob >>= fun signature ->
@@ -212,7 +212,7 @@ let get_message buf =
        get_bool buf >>= fun (has_sig, buf) ->
        get_string buf >>= fun (key_alg, buf) ->
        get_cstring buf >>= fun (blob, buf) ->
-       get_pubkey blob >>= fun (pubkey, blob) ->
+       pubkey_of_blob blob >>= fun pubkey ->
        if has_sig then
          get_cstring buf >>= fun (signature, buf) ->
          ok (Publickey (key_alg, pubkey, Some signature), buf)
@@ -246,9 +246,9 @@ let get_message buf =
   | SSH_MSG_USERAUTH_PK_OK ->
     get_string buf >>= fun (key_alg, buf) ->
     guard (key_alg = "ssh-rsa") "Unknown key type" >>= fun () ->
-    get_cstring buf >>= fun (key_blob, buf) ->
-    get_pubkey key_blob >>= fun (hostkey, buf) ->
-    ok (Ssh_msg_userauth_pk_ok hostkey)
+    get_cstring buf >>= fun (blob, buf) ->
+    pubkey_of_blob blob >>= fun pubkey ->
+    ok (Ssh_msg_userauth_pk_ok pubkey)
   | SSH_MSG_USERAUTH_BANNER ->
     get_string buf >>= fun (s1, buf) ->
     get_string buf >>= fun (s2, buf) ->
