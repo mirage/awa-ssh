@@ -342,6 +342,16 @@ let t_crypto () =
         Hmac.preferred)
     Cipher.preferred
 
+let t_base64 () =
+  let pub = Hostkey.(pub_of_priv (Rsa_priv (Nocrypto.Rsa.generate 2048))) in
+  let enc = Encode.base64_of_pubkey pub in
+  let dec = Decode.pubkey_of_base64 enc |> get_ok_s in
+  let pub2 = Decode.pubkey_of_base64 enc |> get_ok_s in
+  let auth = Encode.authfmt_of_pubkey pub in
+  assert (pub = dec);
+  assert (pub = pub2);
+  assert (auth = ("ssh-rsa " ^ enc))
+
 let run_test test =
   let f = fst test in
   let name = snd test in
@@ -360,6 +370,7 @@ let all_tests = [
   (t_mpint, "mpint conversions");
   (t_version, "version exchange");
   (t_crypto, "encrypt/decrypt");
+  (t_base64, "base64");
 ]
 
 let _ =

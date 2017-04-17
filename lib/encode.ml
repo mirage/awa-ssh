@@ -141,6 +141,12 @@ let blob_of_signature signature =
     to_cstruct
   | _ -> invalid_arg ("Unknown signature algorithm " ^ signature.key_alg)
 
+let base64_of_pubkey pub =
+  B64.encode (blob_of_pubkey pub |> Cstruct.to_string)
+
+let authfmt_of_pubkey pub =
+  Printf.sprintf "%s %s" (Hostkey.sshname pub) (base64_of_pubkey pub)
+
 let put_pubkey pubkey t =
   put_cstring (blob_of_pubkey pubkey) t
 

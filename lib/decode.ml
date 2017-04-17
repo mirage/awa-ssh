@@ -135,6 +135,9 @@ let signature_of_blob blob =
   get_cstring blob >>= fun (key_sig, _) ->
   ok Hostkey.{ key_alg; key_sig }
 
+let pubkey_of_base64 s =
+  B64.decode s |> Cstruct.of_string |> pubkey_of_blob
+
 let get_message buf =
   let open Ssh in
   let msgbuf = buf in

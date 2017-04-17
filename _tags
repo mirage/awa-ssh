@@ -1,6 +1,6 @@
 true: debug, bin_annot, strict_sequence, safe_string
 true: package(str nocrypto rresult cstruct cstruct.ppx sexplib ppx_sexp_conv)
-true: package(ipaddr zarith)
+true: package(ipaddr zarith base64)
 <lib> : include
 <test/*.native>: package(cstruct.unix io-page.unix)
 <lib/*.cm{x,o}> and not <lib/awa.*>: for-pack(Awa)
