@@ -172,7 +172,7 @@ let handle_msg t msg =
       ok (t, [ msg ])
   | Ssh_msg_userauth_request (user, service, auth_method) ->
     guard (service = "ssh-connection") ("Bad service: " ^ service) >>= fun () ->
-    let fail t = ok (t, [ Ssh_msg_userauth_failure ([ "password" ], false) ]) in
+    let fail t = ok (t, [ Ssh_msg_userauth_failure ([ "publickey"; "password" ], false) ]) in
     let success t = ok (t, [ Ssh_msg_userauth_success ]) in
     let disconnect t =
       ok (t, [ Ssh_msg_disconnect
