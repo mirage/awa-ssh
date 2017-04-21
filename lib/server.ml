@@ -135,7 +135,7 @@ let handle_msg t msg =
         ~k_s:(Encode.blob_of_pubkey pub_host_key)
         ~e ~f ~k
     in
-    let signature = Kex.sign t.host_key h in
+    let signature = Hostkey.sign t.host_key h in
     let session_id = match t.session_id with None -> h | Some x -> x in
     let new_keys_ctos, new_keys_stoc = Kex.Dh.derive_keys k h session_id neg in
     ok ({t with session_id = Some session_id;

@@ -52,33 +52,13 @@ let decrypt_plain buf =
   | Ok None -> ok None
   | Error e -> error e
 
-let assert_failure x =
-  let ok = try
-      ignore @@ x ();
-      false
-    with
-      Failure _ -> true
-  in
-  if not ok then
-    failwith "Expected failure exception"
+let assert_error = function Error _ -> () | Ok _ -> failwith "got Ok, expected error"
 
-let assert_invalid x =
-  let ok = try
-      ignore @@ x ();
-      false
-    with
-      Invalid_argument _ -> true
-  in
-  if not ok then
-    invalid_arg "Expected failure exception"
+let assert_none = function None -> () | _ -> failwith "Expected None"
 
-let get_some = function None -> invalid_arg "Expected Some" | Some x -> x
+let get_some = function None -> failwith "Expected Some" | Some x -> x
 
-let assert_none = function None -> () | _ -> invalid_arg "Expected None"
-
-let get_ok_s = function
-  | Ok x -> x
-  | Error s -> invalid_arg s
+let get_ok_s = function Ok x -> x | Error s -> failwith s
 
 let t_banner () =
   let good_strings = [
@@ -93,9 +73,9 @@ let t_banner () =
   in
   List.iter (fun s ->
       match Decode.get_version (Cstruct.of_string s) with
-      | Result.Ok (Some s, _) -> ()
-      | Result.Ok (None, _) -> failwith "expected some"
-      | Result.Error e -> failwith e)
+      | Ok (Some s, _) -> ()
+      | Ok (None, _) -> failwith "expected some"
+      | Error e -> failwith e)
     good_strings;
 
   let bad_strings = [
@@ -109,9 +89,9 @@ let t_banner () =
   in
   List.iter (fun s ->
       match Decode.get_version (Cstruct.of_string s) with
-      | Result.Ok (Some _, _) -> failwith "expected none or error"
-      | Result.Ok (None, _) -> ()
-      | Result.Error e -> ())
+      | Ok (Some _, _) -> failwith "expected none or error"
+      | Ok (None, _) -> ()
+      | Error e -> ())
     bad_strings
 
 let t_parsing () =
@@ -355,14 +335,16 @@ let t_base64 () =
 let t_signature () =
   let priv = Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048) in
   let pub = Hostkey.pub_of_priv priv in
-  let orig = Nocrypto.Rng.generate 128 in
-  let signed = Hostkey.sign priv orig in
-  match Hostkey.unsign pub signed with
-  | Error e -> failwith e
-  | Ok unsigned ->
-    assert (Cstruct.equal unsigned orig);
-    assert (not (Cstruct.equal signed orig));
-    assert (not (Cstruct.equal signed unsigned))
+  let unsigned = Nocrypto.Rng.generate 128 in
+  let signed = Hostkey.sign priv unsigned in
+  Hostkey.verify pub ~signed ~unsigned |> get_ok_s;
+  (* Corrupt every one byte in the signature, all should fail *)
+  for off = 0 to pred (Cstruct.len signed) do
+    let evilbyte = Cstruct.get_uint8 signed off in
+    Cstruct.set_uint8 signed off (succ evilbyte);
+    assert_error (Hostkey.verify pub ~signed ~unsigned);
+    Cstruct.set_uint8 signed off evilbyte;
+  done
 
 let run_test test =
   let f = fst test in
