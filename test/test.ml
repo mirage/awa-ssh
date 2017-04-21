@@ -355,7 +355,7 @@ let t_base64 () =
 let t_signature () =
   let priv = Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048) in
   let pub = Hostkey.pub_of_priv priv in
-  let orig = Nocrypto.Rng.generate 128 in (* If this is bigger our key is insufficient *)
+  let orig = Nocrypto.Rng.generate 128 in
   let signed = Hostkey.sign priv orig in
   match Hostkey.unsign pub signed with
   | Error e -> failwith e
