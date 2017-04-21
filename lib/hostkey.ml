@@ -16,6 +16,7 @@
 
 open Nocrypto
 open Sexplib.Conv
+open Rresult.R
 
 type priv =
   | Rsa_priv of Rsa.priv
@@ -48,18 +49,9 @@ let sshname = function
   | Rsa_pub _ -> "ssh-rsa"
   | Unknown -> "unknown"
 
-type signature = {
-  key_alg : string;
-  key_sig : Cstruct.t;
-}
-
-let sexp_of_signature s = sexp_of_string "TODO"
-
-let signature_equal a b =
-  a.key_alg = b.key_alg && Cstruct.equal a.key_sig b.key_sig
+let signature_equal = Cstruct.equal
 
 let sign priv blob =
   match priv with
   | Rsa_priv priv ->
-    { key_alg = "ssh-rsa";
-      key_sig = Rsa.PKCS1.sig_encode priv (Cstruct.append rsa_sha1_oid blob) }
+      Rsa.PKCS1.sig_encode priv (Cstruct.append rsa_sha1_oid blob)

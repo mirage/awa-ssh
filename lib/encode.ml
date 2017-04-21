@@ -97,14 +97,10 @@ let blob_of_pubkey = function
     Dbuf.to_cstruct
   | Hostkey.Unknown -> invalid_arg "Can't make blob of unknown key."
 
-let blob_of_signature signature =
-  let open Hostkey in
-  match signature.key_alg with
-  | "ssh-rsa" ->
-    put_string "ssh-rsa" (Dbuf.create ()) |>
-    put_cstring signature.key_sig |>
-    Dbuf.to_cstruct
-  | _ -> invalid_arg ("Unknown signature algorithm " ^ signature.key_alg)
+let blob_of_signature name signature =
+  put_string name (Dbuf.create ()) |>
+  put_cstring signature |>
+  Dbuf.to_cstruct
 
 let base64_of_pubkey pub =
   B64.encode (blob_of_pubkey pub |> Cstruct.to_string)
@@ -154,7 +150,7 @@ let put_message msg buf =
       put_id SSH_MSG_KEXDH_REPLY buf |>
       put_pubkey k_s |>
       put_mpint f |>
-      put_cstring (blob_of_signature signature)
+      put_cstring (blob_of_signature (Hostkey.sshname k_s) signature)
     | Ssh_msg_userauth_request (user, service, auth_method) ->
       let buf = put_id SSH_MSG_USERAUTH_REQUEST buf |>
                 put_string user |>

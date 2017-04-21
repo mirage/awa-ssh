@@ -133,7 +133,7 @@ let pubkey_of_blob blob =
 let signature_of_blob blob =
   get_string blob >>= fun (key_alg, blob) ->
   get_cstring blob >>= fun (key_sig, _) ->
-  ok Hostkey.{ key_alg; key_sig }
+  ok (key_alg, key_sig)
 
 let pubkey_of_base64 s =
   B64.decode s |> Cstruct.of_string |> pubkey_of_blob
@@ -204,8 +204,11 @@ let get_message buf =
     pubkey_of_blob blob >>= fun (k_s) ->
     get_mpint buf >>= fun (f, buf) ->
     get_cstring buf >>= fun (sigblob, buf) ->
-    signature_of_blob sigblob >>= fun signature ->
-    ok (Ssh_msg_kexdh_reply (k_s, f, signature))
+    signature_of_blob sigblob >>= fun (key_alg, key_sig) ->
+    guard (key_alg = (Hostkey.sshname k_s))
+      "Signature type doesn't match key type"
+    >>= fun () ->
+    ok (Ssh_msg_kexdh_reply (k_s, f, key_sig))
   | SSH_MSG_USERAUTH_REQUEST ->
     get_string buf >>= fun (user, buf) ->
     get_string buf >>= fun (service, buf) ->
