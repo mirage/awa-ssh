@@ -352,6 +352,18 @@ let t_base64 () =
   assert (pub = pub2);
   assert (auth = ("ssh-rsa " ^ enc))
 
+let t_signature () =
+  let priv = Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048) in
+  let pub = Hostkey.pub_of_priv priv in
+  let orig = Nocrypto.Rng.generate 128 in (* If this is bigger our key is insufficient *)
+  let signed = Hostkey.sign priv orig in
+  match Hostkey.unsign pub signed with
+  | Error e -> failwith e
+  | Ok unsigned ->
+    assert (Cstruct.equal unsigned orig);
+    assert (not (Cstruct.equal signed orig));
+    assert (not (Cstruct.equal signed unsigned))
+
 let run_test test =
   let f = fst test in
   let name = snd test in
@@ -371,6 +383,7 @@ let all_tests = [
   (t_version, "version exchange");
   (t_crypto, "encrypt/decrypt");
   (t_base64, "base64");
+  (t_signature, "signatures");
 ]
 
 let _ =

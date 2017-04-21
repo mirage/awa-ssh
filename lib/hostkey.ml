@@ -17,6 +17,7 @@
 open Nocrypto
 open Sexplib.Conv
 open Rresult.R
+open Util
 
 type priv =
   | Rsa_priv of Rsa.priv
@@ -55,3 +56,19 @@ let sign priv blob =
   match priv with
   | Rsa_priv priv ->
       Rsa.PKCS1.sig_encode priv (Cstruct.append rsa_sha1_oid blob)
+
+let unsign pub blob =
+  match pub with
+  | Unknown -> error "Can't get signature of key type Unknown"
+  | Rsa_pub pub -> match Rsa.PKCS1.sig_decode pub blob with
+    | Some buf ->
+      let oid_len = Cstruct.len rsa_sha1_oid in
+      guard (Cstruct.len buf >= oid_len)
+        "Unsigned blob is smaller than rsa_sha1_oid"
+      >>= fun () ->
+      let oid = Cstruct.set_len buf oid_len in
+      guard (Cstruct.equal oid rsa_sha1_oid)
+        "oid doesn't match"
+      >>= fun () ->
+      ok (Cstruct.shift buf oid_len)
+    | None -> error "Can't decode RSA signature"
