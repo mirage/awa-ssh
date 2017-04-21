@@ -16,71 +16,36 @@
 
 open Util
 
-type t = {
-  tlen : int;
-  coff : int;
-  cbuf : Cstruct.t;
-}
-
-let chunk_size = 1024
-
-let create () =
-  { tlen = chunk_size; coff = 0; cbuf = Cstruct.create chunk_size }
-
-let to_cstruct t = Cstruct.set_len t.cbuf t.coff
-
-let left t = t.tlen - t.coff
-
-let used t = t.coff
-
-let grow len t =
-  let tlen = t.tlen + len in
-  let cbuf = Cstruct.append t.cbuf (Cstruct.create len) in
-  { t with tlen; cbuf }
-
-let guard_space len t =
-  if (left t) >= len then t else grow (max len chunk_size) t
-
-let shift n t = { t with coff = t.coff + n }
-
-let reserve n t = shift n t
-
-let put_uint8 b t =
-  let t = guard_space 1 t in
-  Cstruct.set_uint8 t.cbuf t.coff b;
-  shift 1 t
+let put_uint8 = Dbuf.put_uint8
 
 let put_bool b t =
   let x = if b then 1 else 0 in
-  put_uint8 x t
+  Dbuf.put_uint8 x t
 
-let put_uint32 w t =
-  let t = guard_space 4 t in
-  Cstruct.BE.set_uint32 t.cbuf t.coff w;
-  shift 4 t
+let put_uint32 = Dbuf.put_uint32_be
 
 let put_string s t =
   let len = String.length s in
   let t = put_uint32 (Int32.of_int len) t in
-  let t = guard_space len t in
-  Cstruct.blit_from_string s 0 t.cbuf t.coff len;
-  shift len t
+  let t = Dbuf.guard_space len t in
+  Cstruct.blit_from_string s 0 t.Dbuf.cbuf t.Dbuf.coff len;
+  Dbuf.shift len t
 
 let put_cstring s t =
   let len = Cstruct.len s in
   let t = put_uint32 (Int32.of_int len) t in
-  let t = guard_space len t in
-  Cstruct.blit s 0 t.cbuf t.coff len;
-  shift len t
+  let t = Dbuf.guard_space len t in
+  Cstruct.blit s 0 t.Dbuf.cbuf t.Dbuf.coff len;
+  Dbuf.shift len t
 
 let put_id id buf =
   put_uint8 (Ssh.message_id_to_int id) buf
 
 let put_raw buf t =
   let len = Cstruct.len buf in
-  let t = guard_space len t in
-  Cstruct.blit buf 0 t.cbuf t.coff len;
-  shift len t
+  let t = Dbuf.guard_space len t in
+  Cstruct.blit buf 0 t.Dbuf.cbuf t.Dbuf.coff len;
+  Dbuf.shift len t
 
 let put_random len t =
   put_raw (Nocrypto.Rng.generate len) t
@@ -120,25 +85,25 @@ let put_kexinit kex t =
   put_uint32 Int32.zero
 
 let blob_of_kexinit kex =
-  put_id Ssh.SSH_MSG_KEXINIT (create ()) |>
-  put_kexinit kex |> to_cstruct
+  put_id Ssh.SSH_MSG_KEXINIT (Dbuf.create ()) |>
+  put_kexinit kex |> Dbuf.to_cstruct
 
 let blob_of_pubkey = function
   | Hostkey.Rsa_pub rsa ->
     let open Nocrypto.Rsa in
-    put_string "ssh-rsa" (create ()) |>
+    put_string "ssh-rsa" (Dbuf.create ()) |>
     put_mpint rsa.e |>
     put_mpint rsa.n |>
-    to_cstruct
+    Dbuf.to_cstruct
   | Hostkey.Unknown -> invalid_arg "Can't make blob of unknown key."
 
 let blob_of_signature signature =
   let open Hostkey in
   match signature.key_alg with
   | "ssh-rsa" ->
-    put_string "ssh-rsa" (create ()) |>
+    put_string "ssh-rsa" (Dbuf.create ()) |>
     put_cstring signature.key_sig |>
-    to_cstruct
+    Dbuf.to_cstruct
   | _ -> invalid_arg ("Unknown signature algorithm " ^ signature.key_alg)
 
 let base64_of_pubkey pub =

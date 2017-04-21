@@ -126,15 +126,15 @@ let encrypt keys msg =
   let cipher = fst keys.cipher in
   let block_len = max 8 (Cipher.block_len cipher) in
   (* packet_length + padding_length + payload - sequence_length *)
-  let buf = reserve Ssh.sizeof_pkt_hdr (create ()) |> put_message msg in
-  let len = used buf in
+  let buf = Dbuf.reserve Ssh.sizeof_pkt_hdr (Dbuf.create ()) |> put_message msg in
+  let len = Dbuf.used buf in
   (* calculate padding *)
   let padlen =
     let x = block_len - (len mod block_len) in
     if x < 4 then x + block_len else x
   in
   assert (padlen >= 4 && padlen <= 255);
-  let pkt = put_random padlen buf |> to_cstruct in
+  let pkt = put_random padlen buf |> Dbuf.to_cstruct in
   Ssh.set_pkt_hdr_pkt_len pkt (Int32.of_int ((Cstruct.len pkt) - 4));
   Ssh.set_pkt_hdr_pad_len pkt padlen;
   let digest, keys = hmac keys pkt in

@@ -148,7 +148,7 @@ let derive_keys digestv k h session_id neg =
   let cipher_stoc = neg.encryption_alg_stoc in
   let mac_ctos = neg.mac_alg_ctos in
   let mac_stoc = neg.mac_alg_stoc in
-  let k = Encode.(to_cstruct @@ put_mpint k (create ())) in
+  let k = Encode.(Dbuf.to_cstruct @@ put_mpint k (Dbuf.create ())) in
   let hash ch need =
     let rec expand kn =
       if (Cstruct.len kn) >= need then
@@ -199,7 +199,7 @@ module Dh = struct
 
   let compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
     let open Encode in
-    put_cstring v_c (create ()) |>
+    put_cstring v_c (Dbuf.create ()) |>
     put_cstring v_s |>
     put_cstring i_c |>
     put_cstring i_s |>
@@ -207,7 +207,7 @@ module Dh = struct
     put_mpint e |>
     put_mpint f |>
     put_mpint k |>
-    to_cstruct |>
+    Dbuf.to_cstruct |>
     Hash.SHA1.digest
 
   let generate alg peer_pub =

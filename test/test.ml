@@ -236,7 +236,7 @@ let t_key_exchange () =
 
 let t_namelist () =
   let s = ["The";"Conquest";"Of";"Bread"] in
-  let buf = Encode.(to_cstruct @@ put_nl s (create ())) in
+  let buf = Dbuf.to_cstruct @@ Encode.put_nl s (Dbuf.create ()) in
   assert (Cstruct.len buf = (4 + String.length (String.concat "," s)));
   assert (s = fst (get_ok (Decode.get_nl buf)))
 
@@ -267,14 +267,14 @@ let t_mpint () =
   assert (mpint =
           (fst @@ get_ok_s
              (Decode.get_mpint
-                (Encode.(to_cstruct @@
-                      put_mpint mpint (create ()))))));
+                (Dbuf.to_cstruct @@
+                      Encode.put_mpint mpint (Dbuf.create ())))));
 
   (*
    * Case 3: Test the other way from 1, one zero must be prepended
    * since the first byte is negative (0xff).
    *)
-  let buf = Encode.(to_cstruct @@ put_mpint mpint (create ())) in
+  let buf = Dbuf.to_cstruct @@ Encode.put_mpint mpint (Dbuf.create ()) in
   (* 4 for header + 1 zero prepended + 2 data*)
   assert ((Cstruct.len buf) = (4 + 1 + 2));
   assert_byte buf 0 0x00;
