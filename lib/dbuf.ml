@@ -53,3 +53,8 @@ let put_uint32_be w t =
   Cstruct.BE.set_uint32 t.cbuf t.coff w;
   shift 4 t
 
+let put_uint32_le w t =
+  let t = guard_space 4 t in
+  Cstruct.LE.set_uint32 t.cbuf t.coff w;
+  shift 4 t
+
