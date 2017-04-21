@@ -52,7 +52,6 @@ let cipher_enc_dec enc keys buf =
   let iv = keys.Kex.iv in
   match (snd key) with
   | Cipher.Plaintext_key -> buf, keys
-
   | Cipher.Aes_ctr_key key ->
     let f = if enc then AES.CTR.encrypt else AES.CTR.decrypt in
     let buf = f ~key ~ctr:iv buf in
@@ -63,7 +62,6 @@ let cipher_enc_dec enc keys buf =
     (* Update ctr with number of blocks *)
     Counter.add16 next_iv 0 blocks;
     buf, Kex.{ keys with iv = next_iv }
-
   | Cipher.Aes_cbc_key key ->
     let f = if enc then AES.CBC.encrypt else AES.CBC.decrypt in
     let buf = f ~key ~iv buf in
