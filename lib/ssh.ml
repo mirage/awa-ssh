@@ -132,13 +132,13 @@ type mpint = Nocrypto.Numeric.Z.t
 let sexp_of_mpint mpint = sexp_of_string (Z.to_string mpint)
 
 type auth_method =
-  | Publickey of (string * Hostkey.pub * Cstruct.t option) (* TODO remove key_alg *)
+  | Pubkey of (string * Hostkey.pub * Cstruct.t option) (* TODO remove key_alg *)
   | Password of (string * string option)
   | Hostbased of (string * Cstruct.t * string * string * Cstruct.t) (* TODO *)
   | Authnone
 
 let sexp_of_auth_method = function
-  | Publickey (key_alg, key_blob, signature) ->
+  | Pubkey (key_alg, key_blob, signature) ->
     sexp_of_string
       (sprintf "Publickey key_alg=%s key_blob=TODO signature=%b"
          key_alg (is_some signature))
@@ -155,8 +155,8 @@ let sexp_of_auth_method = function
 
 let auth_method_equal a b =
   match a, b with
-  | Publickey (key_alg_a, key_blob_a, signature_a),
-    Publickey (key_alg_b, key_blob_b, signature_b) ->
+  | Pubkey (key_alg_a, key_blob_a, signature_a),
+    Pubkey (key_alg_b, key_blob_b, signature_b) ->
     let signature_match = match signature_a, signature_b with
       | Some sa, Some sb -> Cstruct.equal sa sb
       | None, None -> true

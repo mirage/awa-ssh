@@ -157,7 +157,7 @@ let put_message msg buf =
                 put_string service
       in
       (match auth_method with
-       | Publickey (key_alg, pubkey, signature) ->
+       | Pubkey (key_alg, pubkey, signature) ->
          let buf = put_string "publickey" buf |>
                    put_bool (is_some signature) |>
                    put_string key_alg |>

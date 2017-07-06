@@ -192,12 +192,12 @@ let handle_msg t msg =
       let t = { t with auth_state = Some (user, service) } in
       (match auth_method with
        (* Public key authentication *)
-       | Publickey (key_alg, pubkey, None) ->
+       | Pubkey (key_alg, pubkey, None) ->
          (match pubkey with
           | Hostkey.Rsa_pub rsa_pub ->
             if key_alg = "ssh-rsa" then pk_ok t pubkey else fail t
           | _ -> fail t)
-       | Publickey (key_alg, pubkey, signature) -> fail t (* TODO *)
+       | Pubkey (key_alg, pubkey, signature) -> fail t (* TODO *)
        (* Password authentication *)
        | Password (password, None) ->
          if user = "foo" && password = "bar" then success t else fail t

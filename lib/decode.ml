@@ -221,9 +221,9 @@ let get_message buf =
        pubkey_of_blob blob >>= fun pubkey ->
        if has_sig then
          get_cstring buf >>= fun (signature, buf) ->
-         ok (Publickey (key_alg, pubkey, Some signature), buf)
+         ok (Pubkey (key_alg, pubkey, Some signature), buf)
        else
-         ok (Publickey (key_alg, pubkey, None), buf)
+         ok (Pubkey (key_alg, pubkey, None), buf)
      | "password" ->
        get_bool buf >>= fun (has_old, buf) ->
        if has_old then
