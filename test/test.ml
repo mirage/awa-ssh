@@ -52,13 +52,11 @@ let decrypt_plain buf =
   | Ok None -> ok None
   | Error e -> error e
 
-let assert_error = function Error _ -> () | Ok _ -> failwith "got Ok, expected error"
+let assert_error x = assert (is_error x)
 
 let assert_none = function None -> () | _ -> failwith "Expected None"
 
 let get_some = function None -> failwith "Expected Some" | Some x -> x
-
-let get_ok_s = function Ok x -> x | Error s -> failwith s
 
 let t_banner () =
   let good_strings = [
@@ -101,8 +99,8 @@ let t_parsing () =
    *)
   let msg = Ssh_msg_ignore "a" in
   let buf = encrypt_plain msg in
-  let pkt, rbuf = get_some @@ get_ok_s @@ decrypt_plain buf in
-  let msg2 = get_ok_s @@ Packet.to_msg pkt in
+  let pkt, rbuf = get_some @@ get_ok @@ decrypt_plain buf in
+  let msg2 = get_ok @@ Packet.to_msg pkt in
   assert (msg = msg2);
   assert ((Cstruct.len rbuf) = 0);
 
@@ -112,8 +110,8 @@ let t_parsing () =
   let msg = Ssh_msg_ignore "a" in
   let buf, _ = Packet.encrypt Kex.plaintext_keys msg in
   let buf = Cstruct.append buf (Cstruct.of_string "b") in
-  let pkt, rbuf = get_some @@ get_ok_s @@ decrypt_plain buf in
-  let msg2 = get_ok_s @@ Packet.to_msg pkt in
+  let pkt, rbuf = get_some @@ get_ok @@ decrypt_plain buf in
+  let msg2 = get_ok @@ Packet.to_msg pkt in
   assert (msg = msg2);
   assert ((Cstruct.len rbuf) = 1);
 
@@ -126,8 +124,8 @@ let t_parsing () =
 
   let id msg =
     let buf = encrypt_plain msg in
-    let pkt, buf = get_some @@ get_ok_s @@ decrypt_plain buf in
-    let msg2 = get_ok_s @@ Packet.to_msg pkt in
+    let pkt, buf = get_some @@ get_ok @@ decrypt_plain buf in
+    let msg2 = get_ok @@ Packet.to_msg pkt in
     assert ((Cstruct.len buf) = 0);
     match msg, msg2 with
     (* Can't compare Cstruct.t, must unpack and Cstruct.equal () *)
@@ -204,8 +202,8 @@ let t_key_exchange () =
   let file = "test/kex.packet" in
   let fd = Unix.(openfile file [O_RDONLY] 0) in
   let buf = Unix_cstruct.of_fd fd in
-  let pkt, rbuf = get_some @@ get_ok_s @@ decrypt_plain buf in
-  let msg = get_ok_s @@ Packet.to_msg pkt in
+  let pkt, rbuf = get_some @@ get_ok @@ decrypt_plain buf in
+  let msg = get_ok @@ Packet.to_msg pkt in
   let () = match msg with
     | Ssh.Ssh_msg_kexinit kex ->
       (* printf "%s\n%!" (Sexplib.Sexp.to_string_hum (Ssh.sexp_of_kex_pkt kex)); *)
@@ -235,7 +233,7 @@ let t_mpint () =
   Cstruct.set_uint8 data 2 0xff;
   Cstruct.set_uint8 data 3 0x02;
   Cstruct.BE.set_uint32 head 0 (Int32.of_int (Cstruct.len data));
-  let mpint = fst @@ get_ok_s @@ Decode.get_mpint (Cstruct.append head data) in
+  let mpint = fst @@ get_ok @@ Decode.get_mpint (Cstruct.append head data) in
   let buf = Nocrypto.Numeric.Z.to_cstruct_be mpint in
   assert ((Cstruct.len buf) = 2); (* Cuts the first two zeros *)
   assert_byte buf 0 0xff;
@@ -245,7 +243,7 @@ let t_mpint () =
    * Case 2: Test identity
    *)
   assert (mpint =
-          (fst @@ get_ok_s
+          (fst @@ get_ok
              (Decode.get_mpint
                 (Dbuf.to_cstruct @@
                       Encode.put_mpint mpint (Dbuf.create ())))));
@@ -284,7 +282,7 @@ let t_version () =
     match get_some msg with
     | Ssh.Ssh_msg_version v ->
       assert (v = "SSH-2.0-OpenSSH_6.9");
-      let t, _ =  get_ok_s @@ Server.handle_msg t (Ssh.Ssh_msg_version v) in
+      let t, _ =  get_ok @@ Server.handle_msg t (Ssh.Ssh_msg_version v) in
       assert (t.Server.client_version = (Some "SSH-2.0-OpenSSH_6.9"))
     | _ -> failwith "Expected Ssh_version"
 
@@ -295,9 +293,9 @@ let t_crypto () =
     let msg = Ssh.Ssh_msg_ignore txt in
     let buf_enc, keys_next = Packet.encrypt keys msg in
     let pkt, buf, keys_next2 =
-      get_some @@ get_ok_s @@ Packet.decrypt keys buf_enc
+      get_some @@ get_ok @@ Packet.decrypt keys buf_enc
     in
-    let msg = get_ok_s @@ Packet.to_msg pkt in
+    let msg = get_ok @@ Packet.to_msg pkt in
     let () = match msg with
       | Ssh.Ssh_msg_ignore s ->
         assert (s = txt)
@@ -325,8 +323,8 @@ let t_crypto () =
 let t_base64 () =
   let pub = Hostkey.(pub_of_priv (Rsa_priv (Nocrypto.Rsa.generate 2048))) in
   let enc = Encode.base64_of_pubkey pub in
-  let dec = Decode.pubkey_of_base64 enc |> get_ok_s in
-  let pub2 = Decode.pubkey_of_base64 enc |> get_ok_s in
+  let dec = Decode.pubkey_of_base64 enc |> get_ok in
+  let pub2 = Decode.pubkey_of_base64 enc |> get_ok in
   let auth = Encode.authfmt_of_pubkey pub in
   assert (pub = dec);
   assert (pub = pub2);
@@ -337,7 +335,7 @@ let t_signature () =
   let pub = Hostkey.pub_of_priv priv in
   let unsigned = Nocrypto.Rng.generate 128 in
   let signed = Hostkey.sign priv unsigned in
-  Hostkey.verify pub ~signed ~unsigned |> get_ok_s;
+  Hostkey.verify pub ~signed ~unsigned |> get_ok;
   (* Corrupt every one byte in the signature, all should fail *)
   for off = 0 to pred (Cstruct.len signed) do
     let evilbyte = Cstruct.get_uint8 signed off in
