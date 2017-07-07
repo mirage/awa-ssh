@@ -6,6 +6,7 @@ PKG ppx_deriving
 PKG ppx_sexp_conv
 PKG cstruct
 PKG cstruct.ppx
+PKG cstruct-unix
 PKG ipaddr
 PKG tcpip
 PKG rresult
