@@ -134,7 +134,13 @@ let pubkey_of_blob blob =
     let pub = Nocrypto.Rsa.{e; n} in
     ok (Hostkey.Rsa_pub pub)
   | key_alg -> ok Hostkey.Unknown
-(* XXX we could have a get_pubkey *)
+
+(* Extracts the blob and converts to a pubkey *)
+let get_pubkey buf =
+  get_cstring buf >>= fun (blob, buf) ->
+  pubkey_of_blob blob >>= fun pubkey ->
+  ok (pubkey, buf)
+
 let put_pubkey pubkey t =
   put_cstring (blob_of_pubkey pubkey) t
 
@@ -241,8 +247,7 @@ let get_message buf =
   | SSH_MSG_KEXDH_INIT -> get_mpint buf >>= fun (e, buf) ->
     ok (Ssh_msg_kexdh_init e)
   | SSH_MSG_KEXDH_REPLY ->
-    get_cstring buf >>= fun (blob, buf) ->
-    pubkey_of_blob blob >>= fun (k_s) ->
+    get_pubkey buf >>= fun (k_s, buf) ->
     get_mpint buf >>= fun (f, buf) ->
     get_cstring buf >>= fun (sigblob, buf) ->
     signature_of_blob sigblob >>= fun (key_alg, key_sig) ->
@@ -258,8 +263,7 @@ let get_message buf =
      | "publickey" ->
        get_bool buf >>= fun (has_sig, buf) ->
        get_string buf >>= fun (key_alg, buf) ->
-       get_cstring buf >>= fun (blob, buf) ->
-       pubkey_of_blob blob >>= fun pubkey ->
+       get_pubkey buf >>= fun (pubkey, buf) ->
        if has_sig then
          get_cstring buf >>= fun (signature, buf) ->
          ok (Pubkey (key_alg, pubkey, Some signature), buf)
