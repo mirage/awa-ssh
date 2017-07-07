@@ -106,7 +106,7 @@ let get_message_id buf =
       | None -> invalid_arg (sprintf "Unknown message id %d" id)
       | Some msgid -> msgid, (Cstruct.shift buf 1)) ()
 
-let put_id id buf =
+let put_message_id id buf =
   put_uint8 (Ssh.message_id_to_int id) buf
 
 let get_nl buf =
@@ -166,7 +166,7 @@ let put_kexinit kex t =
   put_uint32 Int32.zero
 
 let blob_of_kexinit kex =
-  put_id Ssh.SSH_MSG_KEXINIT (Dbuf.create ()) |>
+  put_message_id Ssh.SSH_MSG_KEXINIT (Dbuf.create ()) |>
   put_kexinit kex |> Dbuf.to_cstruct
 
 let signature_of_blob blob =
@@ -331,6 +331,7 @@ let put_message msg buf =
   let open Ssh in
   let unimplemented () = failwith "implement me" in
   let guard p e = if not p then invalid_arg e in
+  let put_id = put_message_id in (* save some columns *)
   match msg with
     | Ssh_msg_disconnect (code, desc, lang) ->
       put_id SSH_MSG_DISCONNECT buf |>
