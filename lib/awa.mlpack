@@ -1,7 +1,6 @@
 Ssh
 Packet
-Encode
-Decode
+Wire
 Cipher
 Hmac
 Kex

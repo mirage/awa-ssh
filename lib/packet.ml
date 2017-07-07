@@ -89,7 +89,7 @@ let partial buf =
     error "Buffer is too big"
 
 let to_msg pkt =
-  Decode.get_payload pkt >>= Decode.get_message
+  Wire.get_payload pkt >>= Wire.get_message
 
 let decrypt keys buf =
   let open Ssh in
@@ -123,7 +123,7 @@ let encrypt keys msg =
   let cipher = fst keys.cipher in
   let block_len = max 8 (Cipher.block_len cipher) in
   (* packet_length + padding_length + payload - sequence_length *)
-  let buf = Dbuf.reserve Ssh.sizeof_pkt_hdr (Dbuf.create ()) |> Encode.put_message msg in
+  let buf = Dbuf.reserve Ssh.sizeof_pkt_hdr (Dbuf.create ()) |> Wire.put_message msg in
   let len = Dbuf.used buf in
   (* calculate padding *)
   let padlen =
@@ -131,7 +131,7 @@ let encrypt keys msg =
     if x < 4 then x + block_len else x
   in
   assert (padlen >= 4 && padlen <= 255);
-  let pkt = Encode.put_random padlen buf |> Dbuf.to_cstruct in
+  let pkt = Wire.put_random padlen buf |> Dbuf.to_cstruct in
   Ssh.set_pkt_hdr_pkt_len pkt (Int32.of_int ((Cstruct.len pkt) - 4));
   Ssh.set_pkt_hdr_pad_len pkt padlen;
   let digest, keys = hmac keys pkt in

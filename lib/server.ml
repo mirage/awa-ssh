@@ -84,7 +84,7 @@ let input_buf t buf =
 
 let pop_msg2 t buf =
   let version t buf =
-    Decode.get_version buf >>= fun (client_version, buf) ->
+    Wire.get_version buf >>= fun (client_version, buf) ->
     match client_version with
     | None -> ok (t, None)
     | Some v ->
@@ -131,8 +131,8 @@ let handle_msg t msg =
         ~v_c:(Cstruct.of_string client_version)
         ~v_s:(Cstruct.of_string t.server_version)
         ~i_c:client_kexinit
-        ~i_s:(Encode.blob_of_kexinit t.server_kexinit)
-        ~k_s:(Encode.blob_of_pubkey pub_host_key)
+        ~i_s:(Wire.blob_of_kexinit t.server_kexinit)
+        ~k_s:(Wire.blob_of_pubkey pub_host_key)
         ~e ~f ~k
     in
     let signature = Hostkey.sign t.host_key h in

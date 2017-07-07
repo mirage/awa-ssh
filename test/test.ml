@@ -70,7 +70,7 @@ let t_banner () =
   ]
   in
   List.iter (fun s ->
-      match Decode.get_version (Cstruct.of_string s) with
+      match Wire.get_version (Cstruct.of_string s) with
       | Ok (Some s, _) -> ()
       | Ok (None, _) -> failwith "expected some"
       | Error e -> failwith e)
@@ -86,7 +86,7 @@ let t_banner () =
   ]
   in
   List.iter (fun s ->
-      match Decode.get_version (Cstruct.of_string s) with
+      match Wire.get_version (Cstruct.of_string s) with
       | Ok (Some _, _) -> failwith "expected none or error"
       | Ok (None, _) -> ()
       | Error e -> ())
@@ -214,9 +214,9 @@ let t_key_exchange () =
 
 let t_namelist () =
   let s = ["The";"Conquest";"Of";"Bread"] in
-  let buf = Dbuf.to_cstruct @@ Encode.put_nl s (Dbuf.create ()) in
+  let buf = Dbuf.to_cstruct @@ Wire.put_nl s (Dbuf.create ()) in
   assert (Cstruct.len buf = (4 + String.length (String.concat "," s)));
-  assert (s = fst (get_ok (Decode.get_nl buf)))
+  assert (s = fst (get_ok (Wire.get_nl buf)))
 
 let t_mpint () =
   let assert_byte buf off v =
@@ -233,7 +233,7 @@ let t_mpint () =
   Cstruct.set_uint8 data 2 0xff;
   Cstruct.set_uint8 data 3 0x02;
   Cstruct.BE.set_uint32 head 0 (Int32.of_int (Cstruct.len data));
-  let mpint = fst @@ get_ok @@ Decode.get_mpint (Cstruct.append head data) in
+  let mpint = fst @@ get_ok @@ Wire.get_mpint (Cstruct.append head data) in
   let buf = Nocrypto.Numeric.Z.to_cstruct_be mpint in
   assert ((Cstruct.len buf) = 2); (* Cuts the first two zeros *)
   assert_byte buf 0 0xff;
@@ -244,15 +244,15 @@ let t_mpint () =
    *)
   assert (mpint =
           (fst @@ get_ok
-             (Decode.get_mpint
+             (Wire.get_mpint
                 (Dbuf.to_cstruct @@
-                      Encode.put_mpint mpint (Dbuf.create ())))));
+                      Wire.put_mpint mpint (Dbuf.create ())))));
 
   (*
    * Case 3: Test the other way from 1, one zero must be prepended
    * since the first byte is negative (0xff).
    *)
-  let buf = Dbuf.to_cstruct @@ Encode.put_mpint mpint (Dbuf.create ()) in
+  let buf = Dbuf.to_cstruct @@ Wire.put_mpint mpint (Dbuf.create ()) in
   (* 4 for header + 1 zero prepended + 2 data*)
   assert ((Cstruct.len buf) = (4 + 1 + 2));
   assert_byte buf 0 0x00;
@@ -267,7 +267,7 @@ let t_mpint () =
    * Case 4: Make sure negative are errors.
    *)
   Cstruct.set_uint8 buf 4 0x80;
-  let e = get_error (Decode.get_mpint buf) in
+  let e = get_error (Wire.get_mpint buf) in
   assert (e = "Negative mpint")
 
 let t_version () =
@@ -322,10 +322,10 @@ let t_crypto () =
 
 let t_base64 () =
   let pub = Hostkey.(pub_of_priv (Rsa_priv (Nocrypto.Rsa.generate 2048))) in
-  let enc = Encode.base64_of_pubkey pub in
-  let dec = Decode.pubkey_of_base64 enc |> get_ok in
-  let pub2 = Decode.pubkey_of_base64 enc |> get_ok in
-  let auth = Encode.authfmt_of_pubkey pub in
+  let enc = Wire.base64_of_pubkey pub in
+  let dec = Wire.pubkey_of_base64 enc |> get_ok in
+  let pub2 = Wire.pubkey_of_base64 enc |> get_ok in
+  let auth = Wire.authfmt_of_pubkey pub in
   assert (pub = dec);
   assert (pub = pub2);
   assert (auth = ("ssh-rsa " ^ enc))
