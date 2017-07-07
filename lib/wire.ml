@@ -23,13 +23,15 @@ let get_uint32 buf =
 
 let put_uint32 = Dbuf.put_uint32_be
 
-let get_uint8 buf = Cstruct.get_uint8 buf 0 (* XXX convert stuff to use this ! *)
+let get_uint8 buf =
+  trap_error (fun () ->
+      Cstruct.get_uint8 buf 0, Cstruct.shift buf 1) ()
 
 let put_uint8 = Dbuf.put_uint8
 
 let get_bool buf =
-  trap_error (fun () ->
-      (Cstruct.get_uint8 buf 0) <> 0, Cstruct.shift buf 1) ()
+  get_uint8 buf >>= fun (b, buf) ->
+  ok (b <> 0, buf)
 
 let put_bool b t =
   let x = if b then 1 else 0 in
