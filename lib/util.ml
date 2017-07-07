@@ -16,8 +16,8 @@
 
 open Rresult.R
 
-let trap_error f x =
-  try return (f x) with
+let trap_error f =
+  try return (f ()) with
   | Invalid_argument e -> error e
   | Failure e -> error e
 
@@ -38,7 +38,7 @@ let u32_compare a b = (* ignore the sign *)
   if c = 0 then Int32.compare (a &&& 1l) (b &&& 1l) else c
 
 let cs_safe_shift buf off =
-  trap_error (fun () -> Cstruct.shift buf off) ()
+  trap_error (fun () -> Cstruct.shift buf off)
 
 (* Smarter than Cstruct.append *)
 let cs_join b1 b2 =

@@ -19,13 +19,13 @@ open Util
 
 let get_uint32 buf =
   trap_error (fun () ->
-      Cstruct.BE.get_uint32 buf 0, Cstruct.shift buf 4) ()
+      Cstruct.BE.get_uint32 buf 0, Cstruct.shift buf 4)
 
 let put_uint32 = Dbuf.put_uint32_be
 
 let get_uint8 buf =
   trap_error (fun () ->
-      Cstruct.get_uint8 buf 0, Cstruct.shift buf 1) ()
+      Cstruct.get_uint8 buf 0, Cstruct.shift buf 1)
 
 let put_uint8 = Dbuf.put_uint8
 
@@ -41,7 +41,7 @@ let get_string buf =
   trap_error (fun () ->
       let len = Cstruct.BE.get_uint32 buf 0 |> Int32.to_int in
       Ssh.guard_sshlen_exn len;
-      (Cstruct.copy buf 4 len), Cstruct.shift buf (len + 4)) ()
+      (Cstruct.copy buf 4 len), Cstruct.shift buf (len + 4))
 
 let put_string s t =
   let len = String.length s in
@@ -55,7 +55,7 @@ let get_cstring buf =
       let len = Cstruct.BE.get_uint32 buf 0 |> Int32.to_int in
       Ssh.guard_sshlen_exn len;
       (Cstruct.set_len (Cstruct.shift buf 4) len,
-       Cstruct.shift buf (len + 4))) ()
+       Cstruct.shift buf (len + 4)))
 
 let put_cstring s t =
   let len = Cstruct.len s in
@@ -86,7 +86,7 @@ let get_mpint buf =
         else
           (* of_cstruct_be strips leading zeros for us *)
           Nocrypto.Numeric.Z.of_cstruct_be mpbuf,
-          Cstruct.shift buf (len + 4)) ()
+          Cstruct.shift buf (len + 4))
 
 let put_mpint mpint t =
   let mpbuf = Nocrypto.Numeric.Z.to_cstruct_be mpint in
@@ -106,7 +106,7 @@ let get_message_id buf =
       let id = (Cstruct.get_uint8 buf 0) in
       match Ssh.int_to_message_id id with
       | None -> invalid_arg (sprintf "Unknown message id %d" id)
-      | Some msgid -> msgid, (Cstruct.shift buf 1)) ()
+      | Some msgid -> msgid, (Cstruct.shift buf 1))
 
 let put_message_id id buf =
   put_uint8 (Ssh.message_id_to_int id) buf
