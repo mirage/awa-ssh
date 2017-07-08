@@ -253,7 +253,7 @@ let get_message buf =
     get_mpint buf >>= fun (f, buf) ->
     get_cstring buf >>= fun (sigblob, buf) ->
     signature_of_blob sigblob >>= fun (key_alg, key_sig) ->
-    guard (key_alg = (Hostkey.sshname k_s))
+    guard (key_alg = Hostkey.sshname k_s)
       "Signature type doesn't match key type"
     >>= fun () ->
     ok (Ssh_msg_kexdh_reply (k_s, f, key_sig))
