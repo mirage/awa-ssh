@@ -33,6 +33,5 @@ depends: [
   "ipaddr"        {>= "2.5.0"}
   "tcpip"         {>= "3.0.0"}
   "rresult"
-  "base64"
   "io-page"       {test}
 ]

@@ -147,11 +147,13 @@ let put_pubkey pubkey t =
   put_cstring (blob_of_pubkey pubkey) t
 
 let pubkey_of_base64 s =
-  B64.decode s |> Cstruct.of_string |> pubkey_of_blob
+  match Nocrypto.Base64.decode (Cstruct.of_string s) with
+  | Some blob -> pubkey_of_blob blob
+  | None -> error "Invalid string"
 
 let base64_of_pubkey pub =
-  B64.encode (blob_of_pubkey pub |> Cstruct.to_string)
-
+  Nocrypto.Base64.encode (blob_of_pubkey pub) |> Cstruct.to_string
+(* XXX don't think we need this, just merge with above ? *)
 let authfmt_of_pubkey pub =
   Printf.sprintf "%s %s" (Hostkey.sshname pub) (base64_of_pubkey pub)
 
