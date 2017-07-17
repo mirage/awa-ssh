@@ -23,10 +23,12 @@ depends: [
   "ocamlfind"     {build}
   "ocamlbuild"    {build}
   "topkg"         {build}
+  "topkg-care"    {build}
   "ppx_sexp_conv" {build}
   "ppx_tools"     {build}
   "nocrypto"
   "cstruct"       {>= "1.9.0"}
+  "cstruct-unix"
   "sexplib"
   "ipaddr"        {>= "2.5.0"}
   "tcpip"         {>= "3.0.0"}
