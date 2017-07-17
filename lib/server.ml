@@ -195,7 +195,10 @@ let handle_msg t msg =
        | Pubkey (key_alg, pubkey, None) ->
          (match pubkey with
           | Hostkey.Rsa_pub rsa_pub ->
-            if key_alg = "ssh-rsa" then pk_ok t pubkey else fail t
+            if key_alg = Hostkey.sshname pubkey then
+              pk_ok t pubkey
+            else
+              fail t
           | _ -> fail t)
        | Pubkey (key_alg, pubkey, signature) -> fail t (* TODO *)
        (* Password authentication *)
