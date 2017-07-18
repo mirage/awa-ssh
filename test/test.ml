@@ -52,6 +52,8 @@ let decrypt_plain buf =
   | Ok None -> ok None
   | Error e -> error e
 
+(* let assert_ok x = assert (is_ok x) *)
+
 let assert_error x = assert (is_error x)
 
 let assert_none = function None -> () | _ -> failwith "Expected None"
@@ -320,15 +322,13 @@ let t_crypto () =
         Hmac.preferred)
     Cipher.preferred
 
-let t_base64 () =
-  let pub = Hostkey.(pub_of_priv (Rsa_priv (Nocrypto.Rsa.generate 2048))) in
-  let enc = Wire.base64_of_pubkey pub in
-  let dec = Wire.pubkey_of_base64 enc |> get_ok in
-  let pub2 = Wire.pubkey_of_base64 enc |> get_ok in
-  let auth = Wire.authfmt_of_pubkey pub in
-  assert (pub = dec);
-  assert (pub = pub2);
-  assert (auth = ("ssh-rsa " ^ enc))
+let t_openssh_pub () =
+  let fd = Unix.(openfile "test/awa_test_rsa.pub" [O_RDONLY] 0) in
+  let file_buf = Unix_cstruct.of_fd fd in
+  let key = get_ok (Wire.pubkey_of_openssh file_buf) in
+  let buf = Wire.openssh_of_pubkey key in
+  assert (Cstruct.equal file_buf buf);
+  Unix.close fd
 
 let t_signature () =
   let priv = Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048) in
@@ -362,7 +362,7 @@ let all_tests = [
   (t_mpint, "mpint conversions");
   (t_version, "version exchange");
   (t_crypto, "encrypt/decrypt");
-  (t_base64, "base64");
+  (t_openssh_pub, "OpenSSH public key format");
   (t_signature, "signatures");
 ]
 

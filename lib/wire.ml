@@ -127,6 +127,7 @@ let blob_of_pubkey = function
     Dbuf.to_cstruct
   | Hostkey.Unknown -> invalid_arg "Can't make blob of unknown key."
 
+(* XXX need to express unknown better *)
 let pubkey_of_blob blob =
   get_string blob >>= fun (key_alg, blob) ->
   match key_alg with
@@ -146,17 +147,31 @@ let get_pubkey buf =
 let put_pubkey pubkey t =
   put_cstring (blob_of_pubkey pubkey) t
 
-let pubkey_of_base64 b =
-  match Nocrypto.Base64.decode b with
-  | Some blob -> pubkey_of_blob blob
-  | None -> error "Invalid string"
+let pubkey_of_openssh buf =
+  let s = Cstruct.to_string buf in
+  let tokens = Str.split (Str.regexp " ") s in
+  guard (List.length tokens = 3) "Invalid format" >>= fun () ->
+  let key_type = List.nth tokens 0 in
+  let key_buf = Cstruct.of_string (List.nth tokens 1) in
+  (* let key_comment = List.nth tokens 2 in *)
+  guard_some (Nocrypto.Base64.decode key_buf) "Can't decode key blob"
+  >>= fun blob ->
+  pubkey_of_blob blob >>= fun key ->
+  guard (key <> Hostkey.Unknown) "Unknown hostkey" >>= fun () ->
+  guard (Hostkey.sshname key = key_type) "Key type mismatch" >>= fun () ->
+  ok key
 
-let base64_of_pubkey pub =
-  Nocrypto.Base64.encode (blob_of_pubkey pub)
-(* XXX don't think we need this, just merge with above ? *)
-let authfmt_of_pubkey pub =
-  Printf.sprintf "%s %s"
-    (Hostkey.sshname pub) (base64_of_pubkey pub |> Cstruct.to_string)
+let openssh_of_pubkey key =
+  let key_buf = Nocrypto.Base64.encode (blob_of_pubkey key) in
+  Cstruct.concat
+    [ Cstruct.of_string (Hostkey.sshname key ^ " ");
+      key_buf;
+      Cstruct.of_string " awa-ssh\n" ]
+
+let privkey_of_pem buf =
+  trap_error (fun () ->
+      match X509.Encoding.Pem.Private_key.of_pem_cstruct1 buf with
+        X509.Encoding.Pem.(`RSA key) -> Hostkey.Rsa_priv key)
 
 let put_kexinit kex t =
   let open Ssh in
