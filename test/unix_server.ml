@@ -72,7 +72,7 @@ let user_db =
   Unix.close fd;
   let awa = Server.{ name = "awa"; password = None; keys = [ key ] } in
   [ foo; awa ]
-  
+
 let () =
   Nocrypto.Rng.reseed (Cstruct.of_string "180586");
   let server_port = 18022 in

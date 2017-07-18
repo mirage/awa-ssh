@@ -116,13 +116,10 @@ let pop_msg2 t buf =
     Packet.decrypt t.keys_ctos buf >>= function
     | None -> ok (t, None)
     | Some (pkt, buf, keys_ctos) ->
-      if t.ignore_next_packet then
-        let t = {t with ignore_next_packet = false } in
-          ok (t, None)
-      else
-        Packet.to_msg pkt >>= fun msg ->
-        let t = { t with keys_ctos } in
-        ok (of_buf t buf, Some msg)
+      let ignore_packet = t.ignore_next_packet in
+      Packet.to_msg pkt >>= fun msg ->
+      let t = { t with keys_ctos; ignore_next_packet = false } in
+      ok (of_buf t buf, if ignore_packet then None else Some msg)
   in
   match t.client_version with
   | None -> version t buf
@@ -139,9 +136,14 @@ let handle_msg t msg =
     guard_some kex.input_buf "No kex input_buf kex" >>= fun _ ->
     Kex.negotiate ~s:t.server_kexinit ~c:kex
     >>= fun neg ->
+    let ignore_next_packet =
+      kex.first_kex_packet_follows &&
+      not (Kex.guessed_right ~s:t.server_kexinit ~c:kex)
+    in
     ok ({ t with client_kexinit = Some kex;
                  neg_kex = Some neg;
-                 expect = Some SSH_MSG_KEXDH_INIT },
+                 expect = Some SSH_MSG_KEXDH_INIT;
+                 ignore_next_packet },
         [])
   | Ssh_msg_kexdh_init e ->
     guard_some t.neg_kex "No negotiated kex" >>= fun neg ->

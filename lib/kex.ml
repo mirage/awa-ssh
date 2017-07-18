@@ -84,6 +84,23 @@ type negotiation = {
   compression_alg_stoc : compression_alg;
 }
 
+let guessed_right ~s ~c =
+  let compare_hd a b =
+    match (a, b) with
+    | [], [] -> true
+    | [], _  -> false
+    | _, []  -> false
+    | x :: _, y :: _ -> x = y
+  in
+  compare_hd s.kex_algs c.kex_algs &&
+  compare_hd s.server_host_key_algs c.server_host_key_algs &&
+  compare_hd s.encryption_algs_ctos c.encryption_algs_ctos &&
+  compare_hd s.encryption_algs_stoc c.encryption_algs_stoc &&
+  compare_hd s.mac_algs_ctos c.mac_algs_ctos &&
+  compare_hd s.mac_algs_stoc c.mac_algs_stoc &&
+  compare_hd s.compression_algs_ctos c.compression_algs_ctos &&
+  compare_hd s.compression_algs_stoc c.compression_algs_stoc
+
 let negotiate ~s ~c =
   let pick_common f ~s ~c e =
     try
