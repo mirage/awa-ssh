@@ -156,6 +156,7 @@ let pubkey_of_openssh buf =
   (* let key_comment = List.nth tokens 2 in *)
   guard_some (Nocrypto.Base64.decode key_buf) "Can't decode key blob"
   >>= fun blob ->
+  (* NOTE: can't use get_pubkey here, there is no string blob *)
   pubkey_of_blob blob >>= fun key ->
   guard (key <> Hostkey.Unknown) "Unknown hostkey" >>= fun () ->
   guard (Hostkey.sshname key = key_type) "Key type mismatch" >>= fun () ->
@@ -195,10 +196,15 @@ let blob_of_kexinit kex =
   put_message_id Ssh.SSH_MSG_KEXINIT (Dbuf.create ()) |>
   put_kexinit kex |> Dbuf.to_cstruct
 
-let get_signature buf =
+let get_signature_nocheck buf =
   get_cstring buf >>= fun (blob, buf) ->
   get_string blob >>= fun (key_alg, blob) ->
   get_cstring blob >>= fun (key_sig, _) ->
+  ok (key_alg, key_sig)
+
+let get_signature pub buf =
+  get_signature_nocheck buf >>= fun (key_alg, key_sig) ->
+  guard ((Hostkey.sshname pub) = key_alg) "Key type mismatch" >>= fun () ->
   ok (key_alg, key_sig)
 
 let put_signature pubkey signature t =
@@ -273,10 +279,7 @@ let get_message buf =
   | SSH_MSG_KEXDH_REPLY ->
     get_pubkey buf >>= fun (k_s, buf) ->
     get_mpint buf >>= fun (f, buf) ->
-    get_signature buf >>= fun (key_alg, key_sig) ->
-    guard (key_alg = Hostkey.sshname k_s)
-      "Signature type doesn't match key type"
-    >>= fun () ->
+    get_signature k_s buf >>= fun (key_alg, key_sig) ->
     ok (Ssh_msg_kexdh_reply (k_s, f, key_sig))
   | SSH_MSG_USERAUTH_REQUEST ->
     get_string buf >>= fun (user, buf) ->
@@ -287,8 +290,10 @@ let get_message buf =
        get_bool buf >>= fun (has_sig, buf) ->
        get_string buf >>= fun (key_alg, buf) ->
        get_pubkey buf >>= fun (pubkey, buf) ->
+       guard ((Hostkey.sshname pubkey) = key_alg) "Key type mismatch"
+       >>= fun () ->
        if has_sig then
-         get_signature buf >>= fun (key_alg, key_sig) ->
+         get_signature pubkey buf >>= fun (key_alg, key_sig) ->
          ok (Pubkey (key_alg, pubkey, Some key_sig), buf)
        else
          ok (Pubkey (key_alg, pubkey, None), buf)
