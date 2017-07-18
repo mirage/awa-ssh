@@ -83,6 +83,11 @@ let find_user t username =
 let find_key user key  =
   Util.find_some (fun key2 -> key = key2 ) user.keys
 
+let find_user_key t user key =
+  match find_user t user with
+  | None -> None
+  | Some user -> find_key user key
+
 let of_buf t buf =
   { t with input_buffer = buf }
 
@@ -221,27 +226,24 @@ let handle_msg t msg =
        | Pubkey (key_alg, pubkey, Some signed) ->
          (guard (key_alg = Hostkey.sshname pubkey) "Key type mismatch"
           >>= fun () ->
-          match find_user t username with
+          match find_user_key t username pubkey with
           | None -> fail t
-          | Some user ->
-            match find_key user pubkey with
-            | None -> fail t
-            | Some pubkey ->
-              let unsigned =
-                let open Wire in
-                put_cstring session_id (Dbuf.create ()) |>
-                put_message_id SSH_MSG_USERAUTH_REQUEST |>
-                put_string username |>
-                put_string service |>
-                put_string "publickey" |>
-                put_bool true |>
-                put_string (Hostkey.sshname pubkey) |>
-                put_pubkey pubkey |>
-                Dbuf.to_cstruct
-              in
-              match Hostkey.verify pubkey ~unsigned ~signed with
-              | Ok () -> success t
-              | Error e -> fail t)
+          | Some pubkey ->
+            let unsigned =
+              let open Wire in
+              put_cstring session_id (Dbuf.create ()) |>
+              put_message_id SSH_MSG_USERAUTH_REQUEST |>
+              put_string username |>
+              put_string service |>
+              put_string "publickey" |>
+              put_bool true |>
+              put_string (Hostkey.sshname pubkey) |>
+              put_pubkey pubkey |>
+              Dbuf.to_cstruct
+            in
+            match Hostkey.verify pubkey ~unsigned ~signed with
+            | Ok () -> success t
+            | Error e -> fail t)
        (* Password authentication *)
        | Password (password, None) ->
          (match find_user t username with
