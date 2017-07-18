@@ -319,8 +319,7 @@ let get_message buf =
   | SSH_MSG_USERAUTH_SUCCESS -> ok Ssh_msg_userauth_success
   | SSH_MSG_USERAUTH_PK_OK ->
     get_string buf >>= fun (key_alg, buf) ->
-    get_cstring buf >>= fun (blob, buf) ->
-    pubkey_of_blob blob >>= fun pubkey ->
+    get_pubkey buf >>= fun (pubkey, buf) ->
     ok (Ssh_msg_userauth_pk_ok pubkey)
   | SSH_MSG_USERAUTH_BANNER ->
     get_string buf >>= fun (s1, buf) ->
