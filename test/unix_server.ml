@@ -71,7 +71,7 @@ let () =
   Unix.listen listen_fd 1;
   let client_fd, _ = Unix.(accept listen_fd) in
   let rsa = Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048) in
-  let t, greetings = Server.make rsa in
+  let t, greetings = Server.make rsa [] in
   let t, obuf = Server.output_msgs t greetings |> get_ok_s in
   write_cstruct client_fd obuf;
   let r = main_loop t client_fd in
