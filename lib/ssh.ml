@@ -67,26 +67,6 @@ type message_id =
   | SSH_MSG_VERSION                   [@id -1]
 [@@uint8_t][@@sexp]]
 
-type server_host_key_alg =
-  | Ssh_rsa
-
-let server_host_key_alg_of_string = function
-  | "ssh-rsa" -> ok Ssh_rsa
-  | s -> error ("Unknown server host key algorithm " ^ s)
-
-let server_host_key_alg_to_string = function
-  | Ssh_rsa -> "ssh-rsa"
-
-type compression_alg =
-  | Nothing                        (* Can't use None :-D *)
-
-let compression_alg_of_string = function
-  | "none" -> ok Nothing
-  | s -> error ("Unknown compression algorithm " ^ s)
-
-let compression_alg_to_string = function
-  | Nothing -> "none"
-
 type kexinit = {
   cookie                   : Cstruct.t;
   kex_algs                 : string list;
