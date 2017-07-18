@@ -61,6 +61,17 @@ let rec main_loop t fd =
 let get_ok_s = function
   | Ok x -> x
   | Error s -> failwith s
+
+let user_db =
+  (* User foo auths by passoword *)
+  let foo = Server.{ name = "foo"; password = Some "bar"; keys = [] } in
+  (* User awa auths by pubkey *)
+  let fd = Unix.(openfile "test/awa_test_rsa.pub" [O_RDONLY] 0) in
+  let file_buf = Unix_cstruct.of_fd fd in
+  let key = get_ok (Wire.pubkey_of_openssh file_buf) in
+  Unix.close fd;
+  let awa = Server.{ name = "awa"; password = None; keys = [ key ] } in
+  [ foo; awa ]
   
 let () =
   Nocrypto.Rng.reseed (Cstruct.of_string "180586");
@@ -71,7 +82,7 @@ let () =
   Unix.listen listen_fd 1;
   let client_fd, _ = Unix.(accept listen_fd) in
   let rsa = Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048) in
-  let t, greetings = Server.make rsa [] in
+  let t, greetings = Server.make rsa user_db in
   let t, obuf = Server.output_msgs t greetings |> get_ok_s in
   write_cstruct client_fd obuf;
   let r = main_loop t client_fd in
