@@ -276,7 +276,7 @@ let t_version () =
   (*
    * Case 5: Make sure state transitions are ok.
    *)
-  let t, _ = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) in
+  let t, _ = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) [] in
   let client_version = "SSH-2.0-OpenSSH_6.9\r\n" in
   match Server.pop_msg2 t (Cstruct.of_string client_version) with
   | Error e -> failwith e

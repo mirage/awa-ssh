@@ -54,4 +54,6 @@ let cs_of_bytes l =
   List.iteri (fun i byte -> Cstruct.set_uint8 buf i byte) l;
   buf
 
+let find_some f l = try Some (List.find f l) with Not_found -> None
+
 let sprintf = Printf.sprintf

@@ -19,6 +19,12 @@ open Util
 
 let version_banner = "SSH-2.0-awa_ssh_0.1"
 
+type user = {
+  name     : string;
+  password : string option;
+  keys     : Hostkey.pub list;
+}
+
 type t = {
   client_version : string option;         (* Without crlf *)
   server_version : string;                (* Without crlf *)
@@ -34,6 +40,7 @@ type t = {
   input_buffer   : Cstruct.t;             (* Unprocessed input *)
   expect         : Ssh.message_id option; (* Which messages are expected, None if any *)
   auth_state     : (string * string) option; (* username * service in progress *)
+  user_db        : user list;             (* username database *)
 }
 
 let guard_msg t msg =
@@ -47,7 +54,7 @@ let guard_msg t msg =
     let msgid = message_to_id msg in
     guard (id = msgid) ("Unexpected message " ^ (message_id_to_string msgid))
 
-let make host_key =
+let make host_key user_db =
   let open Ssh in
   let banner_msg = Ssh_msg_version version_banner in
   let server_kexinit = Kex.make_kexinit () in
@@ -65,9 +72,16 @@ let make host_key =
             new_keys_stoc = None;
             input_buffer = Cstruct.create 0;
             expect = Some SSH_MSG_VERSION;
-            auth_state = None; }
+            auth_state = None;
+            user_db }
   in
   t, [ banner_msg; kex_msg ]
+
+let find_user t username =
+  Util.find_some (fun user -> user.name = username) t.user_db
+
+let find_key user key  =
+  Util.find_some (fun key2 -> key = key2 ) user.keys
 
 let of_buf t buf =
   { t with input_buffer = buf }
@@ -170,7 +184,10 @@ let handle_msg t msg =
            (sprintf "service %s not available" service), "")
       in
       ok (t, [ msg ])
-  | Ssh_msg_userauth_request (user, service, auth_method) ->
+  (* XXX user auth is too big, refactor this *)
+  | Ssh_msg_userauth_request (username, service, auth_method) ->
+    (* XXX verify all fail cases, what should we do and so on *)
+    guard_some t.session_id "No session_id" >>= fun session_id ->
     guard (service = "ssh-connection") ("Bad service: " ^ service) >>= fun () ->
     let fail t = ok (t, [ Ssh_msg_userauth_failure ([ "publickey"; "password" ], false) ]) in
     let success t = ok (t, [ Ssh_msg_userauth_success ]) in
@@ -183,15 +200,15 @@ let handle_msg t msg =
     let pk_ok t pubkey = ok (t, [ Ssh_msg_userauth_pk_ok pubkey ]) in
     let auth_ok = match t.auth_state with
       | None -> true
-      | Some (prev_user, prev_service) ->
-        prev_user = user && prev_service = service
+      | Some (prev_username, prev_service) ->
+        prev_username = username && prev_service = service
     in
     if not auth_ok then
       disconnect t
     else
-      let t = { t with auth_state = Some (user, service) } in
+      let t = { t with auth_state = Some (username, service) } in
       (match auth_method with
-       (* Public key authentication *)
+       (* Public key authentication probing *)
        | Pubkey (key_alg, pubkey, None) ->
          (match pubkey with
           | Hostkey.Rsa_pub rsa_pub ->
@@ -199,11 +216,38 @@ let handle_msg t msg =
               pk_ok t pubkey
             else
               fail t
-          | _ -> fail t)
-       | Pubkey (key_alg, pubkey, signature) -> fail t (* TODO *)
+          | Hostkey.Unknown -> fail t)
+       (* Public key authentication *)
+       | Pubkey (key_alg, pubkey, Some signed) ->
+         (guard (key_alg = Hostkey.sshname pubkey) "Key type mismatch"
+          >>= fun () ->
+          match find_user t username with
+          | None -> fail t
+          | Some user ->
+            match find_key user pubkey with
+            | None -> fail t
+            | Some pubkey ->
+              let unsigned =
+                let open Wire in
+                put_cstring session_id (Dbuf.create ()) |>
+                put_message_id SSH_MSG_USERAUTH_REQUEST |>
+                put_string username |>
+                put_string service |>
+                put_string "publickey" |>
+                put_bool true |>
+                put_string (Hostkey.sshname pubkey) |>
+                put_pubkey pubkey |>
+                Dbuf.to_cstruct
+              in
+              match Hostkey.verify pubkey ~unsigned ~signed with
+              | Ok () -> success t
+              | Error e -> fail t)
        (* Password authentication *)
        | Password (password, None) ->
-         if user = "foo" && password = "bar" then success t else fail t
+         (match find_user t username with
+          | None -> fail t
+          | Some user ->
+            if user.password = Some password then success t else fail t)
        | Password (password, Some oldpassword) -> fail t (* Change of password *)
        (* Host based authentication *)
        | Hostbased _ -> fail t                      (* TODO *)
