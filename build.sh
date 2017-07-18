@@ -15,4 +15,4 @@
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #
 
-topkg build && topkg test
+ocaml pkg/pkg.ml build && ocaml pkg/pkg.ml test
