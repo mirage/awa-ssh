@@ -470,6 +470,10 @@ let put_message msg buf =
     | Ssh_msg_version version ->  (* Mocked up version message *)
       put_raw (Cstruct.of_string (version ^ "\r\n")) buf
 
+(* Useful for testing *)
+let buf_of_message m =
+  put_message m (Dbuf.create ()) |> Dbuf.to_cstruct
+
 (* XXX Maybe move this to Packet *)
 let get_payload buf =
   let open Ssh in
