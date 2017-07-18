@@ -285,8 +285,9 @@ let get_message buf =
        get_string buf >>= fun (key_alg, buf) ->
        get_pubkey buf >>= fun (pubkey, buf) ->
        if has_sig then
-         get_cstring buf >>= fun (signature, buf) ->
-         ok (Pubkey (key_alg, pubkey, Some signature), buf)
+         get_cstring buf >>= fun (sigblob, buf) ->
+         signature_of_blob sigblob >>= fun (key_alg, key_sig) ->
+         ok (Pubkey (key_alg, pubkey, Some key_sig), buf)
        else
          ok (Pubkey (key_alg, pubkey, None), buf)
      | "password" ->
@@ -406,7 +407,10 @@ let put_message msg buf =
          in
          (match signature with
           | None -> buf
-          | Some signature -> put_cstring signature buf)
+          | Some signature ->
+            put_cstring
+              (blob_of_signature (Hostkey.sshname pubkey) signature)
+              buf)
        | Password (password, oldpassword) ->
          let buf = put_string "password" buf in
          (match oldpassword with
