@@ -195,15 +195,19 @@ let blob_of_kexinit kex =
   put_message_id Ssh.SSH_MSG_KEXINIT (Dbuf.create ()) |>
   put_kexinit kex |> Dbuf.to_cstruct
 
-let signature_of_blob blob =
+let get_signature buf =
+  get_cstring buf >>= fun (blob, buf) ->
   get_string blob >>= fun (key_alg, blob) ->
   get_cstring blob >>= fun (key_sig, _) ->
   ok (key_alg, key_sig)
 
-let blob_of_signature name signature =
-  put_string name (Dbuf.create ()) |>
-  put_cstring signature |>
-  Dbuf.to_cstruct
+let put_signature pubkey signature t =
+  let blob =
+    put_string (Hostkey.sshname pubkey) (Dbuf.create ()) |>
+    put_cstring signature |>
+    Dbuf.to_cstruct
+  in
+  put_cstring blob t
 
 let get_message buf =
   let open Ssh in
@@ -269,8 +273,7 @@ let get_message buf =
   | SSH_MSG_KEXDH_REPLY ->
     get_pubkey buf >>= fun (k_s, buf) ->
     get_mpint buf >>= fun (f, buf) ->
-    get_cstring buf >>= fun (sigblob, buf) ->
-    signature_of_blob sigblob >>= fun (key_alg, key_sig) ->
+    get_signature buf >>= fun (key_alg, key_sig) ->
     guard (key_alg = Hostkey.sshname k_s)
       "Signature type doesn't match key type"
     >>= fun () ->
@@ -285,8 +288,7 @@ let get_message buf =
        get_string buf >>= fun (key_alg, buf) ->
        get_pubkey buf >>= fun (pubkey, buf) ->
        if has_sig then
-         get_cstring buf >>= fun (sigblob, buf) ->
-         signature_of_blob sigblob >>= fun (key_alg, key_sig) ->
+         get_signature buf >>= fun (key_alg, key_sig) ->
          ok (Pubkey (key_alg, pubkey, Some key_sig), buf)
        else
          ok (Pubkey (key_alg, pubkey, None), buf)
@@ -392,7 +394,7 @@ let put_message msg buf =
       put_id SSH_MSG_KEXDH_REPLY buf |>
       put_pubkey k_s |>
       put_mpint f |>
-      put_cstring (blob_of_signature (Hostkey.sshname k_s) signature)
+      put_signature k_s signature
     | Ssh_msg_userauth_request (user, service, auth_method) ->
       let buf = put_id SSH_MSG_USERAUTH_REQUEST buf |>
                 put_string user |>
@@ -407,10 +409,7 @@ let put_message msg buf =
          in
          (match signature with
           | None -> buf
-          | Some signature ->
-            put_cstring
-              (blob_of_signature (Hostkey.sshname pubkey) signature)
-              buf)
+          | Some signature -> put_signature pubkey signature buf)
        | Password (password, oldpassword) ->
          let buf = put_string "password" buf in
          (match oldpassword with
