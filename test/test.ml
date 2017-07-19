@@ -68,7 +68,7 @@ let t_banner () =
     "SSH-2.0-OpenSSH_6.9\r\n";
     "Some crap before\r\nSSH-2.0-OpenSSH_6.9\r\n";
     "SSH-2.0-OpenSSH_6.9\r\nSomeCrap After\r\n";
-    "SSH-2.0-OpenSSH_7.4p1 Debian-6\r\n";
+    "SSH-2.0-OpenSSH_7.4p1 Debian-6-lala-lolo\r\n";
   ]
   in
   List.iter (fun s ->
