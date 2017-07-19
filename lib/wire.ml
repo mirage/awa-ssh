@@ -113,7 +113,7 @@ let put_message_id id buf =
 
 let get_nl buf =
   get_string buf >>= fun (s, buf) ->
-  ok ((Str.split (Str.regexp ",") s), buf)
+  ok ((String.split_on_char ',' s), buf)
 
 let put_nl nl t =
   put_string (String.concat "," nl) t
@@ -149,7 +149,7 @@ let put_pubkey pubkey t =
 
 let pubkey_of_openssh buf =
   let s = Cstruct.to_string buf in
-  let tokens = Str.split (Str.regexp " ") s in
+  let tokens = String.split_on_char ' ' s in
   guard (List.length tokens = 3) "Invalid format" >>= fun () ->
   let key_type = List.nth tokens 0 in
   let key_buf = Cstruct.of_string (List.nth tokens 1) in
@@ -529,7 +529,7 @@ let get_version buf =
           String.sub line 0 (String.index line ' ')
         with Not_found -> line
       in
-      let tokens = Str.split_delim (Str.regexp "-") version_line in
+      let tokens = String.split_on_char '-' version_line in
       if List.length tokens <> 3 then
         error "Can't parse version line"
       else
