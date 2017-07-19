@@ -537,7 +537,7 @@ let get_version buf =
         if version <> "2.0" then
           error ("Bad version " ^ version)
         else
-          ok (Some version_line)
+          ok (Some line)
   in
   (* Scan all lines until an error or SSH version is found *)
   let rec scan buf =
