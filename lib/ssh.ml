@@ -111,6 +111,18 @@ type mpint = Nocrypto.Numeric.Z.t
 
 let sexp_of_mpint mpint = sexp_of_string (Z.to_string mpint)
 
+type global_request =
+  | Tcpip_forward of (string * int32)
+  | Cancel_tcpip_forward of (string * int32)
+
+let sexp_of_global_request = function
+  | Tcpip_forward (address, port) ->
+    sexp_of_string
+      (sprintf "tcpip-forward bind-to=%s port=%ld" address port)
+  | Cancel_tcpip_forward (address, port) ->
+    sexp_of_string
+      (sprintf "cancel-tcpip-forward bind-to=%s port=%ld" address port)
+
 type auth_method =
   | Pubkey of (Hostkey.pub * Cstruct.t option)
   | Password of (string * string option)
@@ -162,18 +174,18 @@ type message =
   | Ssh_msg_newkeys
   | Ssh_msg_kexdh_reply of (Hostkey.pub * mpint * Cstruct.t)
   | Ssh_msg_kexdh_init of mpint
-  | Ssh_msg_userauth_request of (string * string * auth_method)
-  | Ssh_msg_userauth_failure of (string list * bool)
+  | Ssh_msg_userauth_request of string * string * auth_method
+  | Ssh_msg_userauth_failure of string list * bool
   | Ssh_msg_userauth_success
-  | Ssh_msg_userauth_banner of (string * string)
+  | Ssh_msg_userauth_banner of string * string
   | Ssh_msg_userauth_pk_ok of Hostkey.pub
-  | Ssh_msg_global_request
-  | Ssh_msg_request_success
+  | Ssh_msg_global_request of string * bool * global_request
+  | Ssh_msg_request_success of Cstruct.t option
   | Ssh_msg_request_failure
   | Ssh_msg_channel_open
   | Ssh_msg_channel_open_confirmation
   | Ssh_msg_channel_open_failure
-  | Ssh_msg_channel_window_adjust of (int32 * int32)
+  | Ssh_msg_channel_window_adjust of int32 * int32
   | Ssh_msg_channel_data
   | Ssh_msg_channel_extended_data
   | Ssh_msg_channel_eof of int32
@@ -203,8 +215,8 @@ let message_to_id = function
   | Ssh_msg_userauth_success           -> SSH_MSG_USERAUTH_SUCCESS
   | Ssh_msg_userauth_banner _          -> SSH_MSG_USERAUTH_BANNER
   | Ssh_msg_userauth_pk_ok _           -> SSH_MSG_USERAUTH_PK_OK
-  | Ssh_msg_global_request             -> SSH_MSG_GLOBAL_REQUEST
-  | Ssh_msg_request_success            -> SSH_MSG_REQUEST_SUCCESS
+  | Ssh_msg_global_request _           -> SSH_MSG_GLOBAL_REQUEST
+  | Ssh_msg_request_success _          -> SSH_MSG_REQUEST_SUCCESS
   | Ssh_msg_request_failure            -> SSH_MSG_REQUEST_FAILURE
   | Ssh_msg_channel_open               -> SSH_MSG_CHANNEL_OPEN
   | Ssh_msg_channel_open_confirmation  -> SSH_MSG_CHANNEL_OPEN_CONFIRMATION

@@ -179,9 +179,11 @@ let t_parsing () =
       Ssh_msg_userauth_success;
       Ssh_msg_userauth_banner ("Fora", "Temer");
       Ssh_msg_userauth_pk_ok pub_rsa;
-      (* Ssh_msg_global_request; *)
-      (* Ssh_msg_request_success; *)
-      (* Ssh_msg_request_failure; *)
+      Ssh_msg_global_request
+        ("tcpip-forward", true,
+        Tcpip_forward ("127.0.0.1", Int32.of_int 443));
+      Ssh_msg_request_success (None);
+      Ssh_msg_request_failure;
       (* Ssh_msg_channel_open; *)
       (* Ssh_msg_channel_open_confirmation; *)
       (* Ssh_msg_channel_open_failure; *)

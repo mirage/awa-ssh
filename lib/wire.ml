@@ -320,7 +320,7 @@ let get_message buf =
        get_cstring buf >>= fun (hostsig, buf) ->
        ok (Hostbased (key_alg, key_blob, hostname, hostuser, hostsig), buf)
      | "none" -> ok (Authnone, buf)
-     | auth_metod -> error ("Unknown method " ^ auth_method))
+     | _ -> error ("Unknown method " ^ auth_method))
     >>= fun (auth_method, buf) ->
     ok (Ssh_msg_userauth_request (user, service, auth_method))
   | SSH_MSG_USERAUTH_FAILURE ->
@@ -336,8 +336,24 @@ let get_message buf =
     get_string buf >>= fun (s1, buf) ->
     get_string buf >>= fun (s2, buf) ->
     ok (Ssh_msg_userauth_banner (s1, s2))
-  | SSH_MSG_GLOBAL_REQUEST -> unimplemented ()
-  | SSH_MSG_REQUEST_SUCCESS -> unimplemented ()
+  | SSH_MSG_GLOBAL_REQUEST ->
+    get_string buf >>= fun (request, buf) ->
+    get_bool buf >>= fun (want_reply, buf) ->
+    (match request with
+     | "tcpip-forward" ->
+       get_string buf >>= fun (address, buf) ->
+       get_uint32 buf >>= fun (port, buf) ->
+       ok (Tcpip_forward (address, port), buf)
+     | "cancel-tcpip-forward" ->
+       get_string buf >>= fun (address, buf) ->
+       get_uint32 buf >>= fun (port, buf) ->
+       ok (Cancel_tcpip_forward (address, port), buf)
+     | _ -> error ("Unknown request " ^ request))
+    >>= fun (global_request, buf) ->
+    ok (Ssh_msg_global_request (request, want_reply, global_request))
+  | SSH_MSG_REQUEST_SUCCESS ->
+    let req_data = if Cstruct.len buf > 0 then Some buf else None in
+    ok (Ssh_msg_request_success req_data)
   | SSH_MSG_REQUEST_FAILURE -> ok Ssh_msg_request_failure
   | SSH_MSG_CHANNEL_OPEN -> unimplemented ()
   | SSH_MSG_CHANNEL_OPEN_CONFIRMATION -> unimplemented ()
@@ -453,8 +469,23 @@ let put_message msg buf =
       put_id SSH_MSG_USERAUTH_PK_OK buf |>
       put_string (Hostkey.sshname pubkey) |>
       put_pubkey pubkey
-    | Ssh_msg_global_request -> unimplemented ()
-    | Ssh_msg_request_success -> unimplemented ()
+    | Ssh_msg_global_request (request, want_reply, global_request) ->
+      let buf = put_id SSH_MSG_GLOBAL_REQUEST buf |>
+                put_string request |>
+                put_bool want_reply
+      in
+      (match global_request with
+       | Tcpip_forward (address, port) ->
+         put_string address buf |>
+                   put_uint32 port
+       | Cancel_tcpip_forward (address, port) ->
+         put_string address buf |>
+         put_uint32 port)
+    | Ssh_msg_request_success (req_data) ->
+      let buf = put_id SSH_MSG_REQUEST_SUCCESS buf in
+      (match req_data with
+       | Some data -> put_cstring data buf
+       | None -> buf)
     | Ssh_msg_request_failure ->
       put_id SSH_MSG_REQUEST_FAILURE buf
     | Ssh_msg_channel_open -> unimplemented ()
