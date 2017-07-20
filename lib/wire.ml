@@ -223,6 +223,52 @@ let put_signature pubkey signature t =
   in
   put_cstring blob t
 
+let get_channel_data request recp_channel send_channel init_win_size
+    max_pkt_size buf =
+  let open Ssh in
+  (match request with
+   | "session" ->
+     ok (Ssh_msg_channel_open_confirmation
+           (recp_channel, send_channel, init_win_size, max_pkt_size, None))
+   | "x11" ->
+     get_string buf >>= fun (address, buf) ->
+     get_uint32 buf >>= fun (port, buf) ->
+     ok (Ssh_msg_channel_open_confirmation
+           (recp_channel, send_channel, init_win_size, max_pkt_size,
+            Some (X11 (address, port))))
+   | "forwarded-tcpip" ->
+     get_string buf >>= fun (con_address, buf) ->
+     get_uint32 buf >>= fun (con_port, buf) ->
+     get_string buf >>= fun (origin_address, buf) ->
+     get_uint32 buf >>= fun (origin_port, buf) ->
+     ok (Ssh_msg_channel_open_confirmation
+           (recp_channel, send_channel, init_win_size, max_pkt_size,
+            Some (
+              Forwarded_tcpip (con_address, con_port, origin_address,
+                               origin_port))))
+   | _ -> error ("Unknown request " ^ request))
+
+let put_channel_data channel_data buf =
+  let open Ssh in
+  match channel_data with
+   | Some data ->
+     (match data with
+      | X11 (address, port) ->
+        put_string address buf |>
+        put_uint32 port
+      | Forwarded_tcpip (con_addr, con_port, origin_addr, origin_port) ->
+        put_string con_addr buf |>
+        put_uint32 con_port |>
+        put_string origin_addr |>
+        put_uint32 origin_port
+      | Direct_tcpip (addr, port, origin_addr, origin_port) ->
+        put_string addr buf |>
+        put_uint32 port |>
+        put_string origin_addr |>
+        put_uint32 origin_port
+      | Raw_data _ -> buf)
+   | None -> buf
+
 let get_message buf =
   let open Ssh in
   let msgbuf = buf in
@@ -355,22 +401,130 @@ let get_message buf =
     let req_data = if Cstruct.len buf > 0 then Some buf else None in
     ok (Ssh_msg_request_success req_data)
   | SSH_MSG_REQUEST_FAILURE -> ok Ssh_msg_request_failure
-  | SSH_MSG_CHANNEL_OPEN -> unimplemented ()
-  | SSH_MSG_CHANNEL_OPEN_CONFIRMATION -> unimplemented ()
-  | SSH_MSG_CHANNEL_OPEN_FAILURE -> ok Ssh_msg_channel_open_failure
+  | SSH_MSG_CHANNEL_OPEN ->
+    get_string buf >>= fun (request, buf) ->
+    get_uint32 buf >>= fun (channel, buf) ->
+    get_uint32 buf >>= fun (init_win_size, buf) ->
+    get_uint32 buf >>= fun (max_pkt_size, buf) ->
+    (match request with
+     | "session" ->
+       ok (Ssh_msg_channel_open
+             (request, channel, init_win_size, max_pkt_size, None))
+     | "x11" ->
+       get_string buf >>= fun (address, buf) ->
+       get_uint32 buf >>= fun (port, buf) ->
+       ok (Ssh_msg_channel_open
+             (request, channel, init_win_size, max_pkt_size,
+              Some (X11 (address, port))))
+     | "forwarded-tcpip" ->
+       get_string buf >>= fun (con_address, buf) ->
+       get_uint32 buf >>= fun (con_port, buf) ->
+       get_string buf >>= fun (origin_address, buf) ->
+       get_uint32 buf >>= fun (origin_port, buf) ->
+       ok (Ssh_msg_channel_open
+             (request, channel, init_win_size, max_pkt_size,
+              Some (
+                Forwarded_tcpip (con_address, con_port, origin_address,
+                                 origin_port))))
+     | _ -> error ("Unknown request " ^ request))
+  | SSH_MSG_CHANNEL_OPEN_CONFIRMATION ->
+    get_uint32 buf >>= fun (recp_channel, buf) ->
+    get_uint32 buf >>= fun (send_channel, buf) ->
+    get_uint32 buf >>= fun (init_win_size, buf) ->
+    get_uint32 buf >>= fun (max_pkt_size, buf) ->
+    let req_data = if Cstruct.len buf > 0 then Some(Raw_data buf) else None in
+    ok (Ssh_msg_channel_open_confirmation (recp_channel, send_channel,
+                                           init_win_size, max_pkt_size,
+                                           req_data))
+  | SSH_MSG_CHANNEL_OPEN_FAILURE ->
+    get_uint32 buf >>= fun (recp_channel, buf) ->
+    get_uint32 buf >>= fun (reason, buf) ->
+    get_string buf >>= fun (desc, buf) ->
+    get_string buf >>= fun (lang, buf) ->
+    ok (Ssh_msg_channel_open_failure (recp_channel, reason, desc, lang))
   | SSH_MSG_CHANNEL_WINDOW_ADJUST ->
     get_uint32 buf >>= fun (channel, buf) ->
     get_uint32 buf >>= fun (n, buf) ->
     ok (Ssh_msg_channel_window_adjust (channel, n))
-  | SSH_MSG_CHANNEL_DATA -> unimplemented ()
-  | SSH_MSG_CHANNEL_EXTENDED_DATA -> unimplemented ()
+  | SSH_MSG_CHANNEL_DATA ->
+    get_uint32 buf >>= fun (channel, buf) ->
+    get_string buf >>= fun (data, buf) ->
+    ok (Ssh_msg_channel_data (channel, data))
+  | SSH_MSG_CHANNEL_EXTENDED_DATA ->
+    get_uint32 buf >>= fun (channel, buf) ->
+    get_uint32 buf >>= fun (data_type, buf) ->
+    get_string buf >>= fun (data, buf) ->
+    ok (Ssh_msg_channel_extended_data (channel, data_type, data))
   | SSH_MSG_CHANNEL_EOF ->
     get_uint32 buf >>= fun (channel, buf) ->
     ok (Ssh_msg_channel_eof channel)
   | SSH_MSG_CHANNEL_CLOSE ->
     get_uint32 buf >>= fun (channel, buf) ->
     ok (Ssh_msg_channel_close channel)
-  | SSH_MSG_CHANNEL_REQUEST -> unimplemented ()
+  | SSH_MSG_CHANNEL_REQUEST ->
+    get_uint32 buf >>= fun (channel, buf) ->
+    get_string buf >>= fun (request, buf) ->
+    get_bool buf >>= fun (want_reply, buf) ->
+    (match request with
+     | "pty-req" ->
+       get_string buf >>= fun (term_env, buf) ->
+       get_uint32 buf >>= fun (width_char, buf) ->
+       get_uint32 buf >>= fun (height_row, buf) ->
+       get_uint32 buf >>= fun (width_px, buf) ->
+       get_uint32 buf >>= fun (height_px, buf) ->
+       get_string buf >>= fun (term_modes, buf) ->
+       ok (Ssh_msg_channel_request (channel, request, want_reply,
+                                    Pty_req (term_env, width_char, height_row,
+                                             width_px, height_px, term_modes)))
+     | "x11-req" ->
+       get_bool buf >>= fun (single_con, buf) ->
+       get_string buf >>= fun (x11_auth_proto, buf) ->
+       get_string buf >>= fun (x11_auth_cookie, buf) ->
+       get_uint32 buf >>= fun (x11_screen_nr, buf) ->
+       ok (Ssh_msg_channel_request (channel, request, want_reply,
+                                    X11_req (single_con, x11_auth_proto,
+                                             x11_auth_cookie, x11_screen_nr)))
+     | "env" ->
+       get_string buf >>= fun (name, buf) ->
+       get_string buf >>= fun (value, buf) ->
+       ok (Ssh_msg_channel_request (channel, request, want_reply,
+                                    Env (name, value)))
+     | "exec" ->
+       get_string buf >>= fun (command, buf) ->
+       ok (Ssh_msg_channel_request (channel, request, want_reply,
+                                    Exec (command)))
+     | "subsystem" ->
+       get_string buf >>= fun (name, buf) ->
+       ok (Ssh_msg_channel_request (channel, request, want_reply,
+                                    Subsystem (name)))
+     | "window-change" ->
+       get_uint32 buf >>= fun (width_char, buf) ->
+       get_uint32 buf >>= fun (height_row, buf) ->
+       get_uint32 buf >>= fun (width_px, buf) ->
+       get_uint32 buf >>= fun (height_px, buf) ->
+       ok (Ssh_msg_channel_request (channel, request, want_reply,
+                                    Window_change (width_char, height_row,
+                                             width_px, height_px)))
+     | "xon-xoff" ->
+       get_bool buf >>= fun (client_can_do, buf) ->
+       ok (Ssh_msg_channel_request (channel, request, want_reply,
+                                    Xon_xoff (client_can_do)))
+     | "signal" ->
+       get_string buf >>= fun (name, buf) ->
+       ok (Ssh_msg_channel_request (channel, request, want_reply,
+                                    Signal (name)))
+     | "exit-status" ->
+       get_uint32 buf >>= fun (status, buf) ->
+       ok (Ssh_msg_channel_request (channel, request, want_reply,
+                                    Exit_status (status)))
+     | "exit-signal" ->
+       get_string buf >>= fun (name, buf) ->
+       get_bool buf >>= fun (core_dumped, buf) ->
+       get_string buf >>= fun (message, buf) ->
+       get_string buf >>= fun (lang, buf) ->
+       ok (Ssh_msg_channel_request (channel, request, want_reply,
+                                    Exit_signal (name, core_dumped, message, lang)))
+     | _ -> error ("Unknown request " ^ request))
   | SSH_MSG_CHANNEL_SUCCESS ->
     get_uint32 buf >>= fun (channel, buf) ->
     ok (Ssh_msg_channel_success channel)
@@ -382,7 +536,6 @@ let get_message buf =
 
 let put_message msg buf =
   let open Ssh in
-  let unimplemented () = failwith "implement me" in
   let guard p e = if not p then invalid_arg e in
   let put_id = put_message_id in (* save some columns *)
   match msg with
@@ -488,23 +641,86 @@ let put_message msg buf =
        | None -> buf)
     | Ssh_msg_request_failure ->
       put_id SSH_MSG_REQUEST_FAILURE buf
-    | Ssh_msg_channel_open -> unimplemented ()
-    | Ssh_msg_channel_open_confirmation -> unimplemented ()
-    | Ssh_msg_channel_open_failure ->
-      put_id SSH_MSG_CHANNEL_OPEN_FAILURE buf
+    | Ssh_msg_channel_open (request, channel, init_win_size, max_pkt_size,
+                            channel_data ) ->
+      put_id SSH_MSG_CHANNEL_OPEN buf |>
+      put_string request |>
+      put_uint32 channel |>
+      put_uint32 init_win_size |>
+      put_uint32 max_pkt_size |>
+      put_channel_data channel_data
+    | Ssh_msg_channel_open_confirmation (recp_channel, send_channel,
+                                            init_win_size, max_pkt_size,
+                                            channel_data ) ->
+      put_id SSH_MSG_CHANNEL_OPEN_CONFIRMATION buf |>
+      put_uint32 recp_channel |>
+      put_uint32 send_channel |>
+      put_uint32 init_win_size |>
+      put_uint32 max_pkt_size |>
+      put_channel_data channel_data
+    | Ssh_msg_channel_open_failure (recp_channel, reason, desc, lang) ->
+      put_id SSH_MSG_CHANNEL_OPEN_FAILURE buf |>
+      put_uint32 recp_channel |>
+      put_uint32 reason |>
+      put_string desc |>
+      put_string lang
     | Ssh_msg_channel_window_adjust (channel, n) ->
       put_id SSH_MSG_CHANNEL_WINDOW_ADJUST buf |>
       put_uint32 channel |>
       put_uint32 n
-    | Ssh_msg_channel_data -> unimplemented ()
-    | Ssh_msg_channel_extended_data -> unimplemented ()
+    | Ssh_msg_channel_data (channel, data) ->
+      put_id SSH_MSG_CHANNEL_DATA buf |>
+      put_uint32 channel |>
+      put_string data
+    | Ssh_msg_channel_extended_data (channel, data_type, data) ->
+      put_id SSH_MSG_CHANNEL_EXTENDED_DATA buf |>
+      put_uint32 channel |>
+      put_uint32 data_type |>
+      put_string data
     | Ssh_msg_channel_eof channel ->
       put_id SSH_MSG_CHANNEL_EOF buf |>
       put_uint32 channel
     | Ssh_msg_channel_close channel ->
       put_id SSH_MSG_CHANNEL_CLOSE buf |>
       put_uint32 channel
-    | Ssh_msg_channel_request -> unimplemented ()
+    | Ssh_msg_channel_request (channel, request, want_reply, channel_request) ->
+      let buf = put_id SSH_MSG_CHANNEL_REQUEST buf |>
+                put_uint32 channel |>
+                put_string request |>
+                put_bool want_reply
+      in
+      (match channel_request with
+       | Pty_req (term_env, width_char, height_row, width_px, height_px,
+                  term_modes) ->
+         put_string term_env buf |>
+         put_uint32 width_char |>
+         put_uint32 height_row |>
+         put_uint32 width_px |>
+         put_uint32 height_px |>
+         put_string term_modes
+       | X11_req (single_con, x11_auth_proto, x11_auth_cookie, x11_screen_nr) ->
+         put_bool single_con buf |>
+         put_string x11_auth_proto |>
+         put_string x11_auth_cookie |>
+         put_uint32 x11_screen_nr
+       | Env (name, value) ->
+         put_string name buf|>
+         put_string value
+       | Exec (command) -> put_string command buf
+       | Subsystem (name) -> put_string name buf
+       | Window_change (width_char, height_row, width_px, height_px) ->
+         put_uint32 width_char buf |>
+         put_uint32 height_row |>
+         put_uint32 width_px |>
+         put_uint32 height_px
+       | Xon_xoff (client_can_do) -> put_bool client_can_do buf
+       | Signal (name) -> put_string name buf
+       | Exit_status (status) -> put_uint32 status buf
+       | Exit_signal (name, core_dumped, message, lang) ->
+         put_string name buf |>
+         put_bool core_dumped |>
+         put_string message |>
+         put_string lang)
     | Ssh_msg_channel_success channel ->
       put_id SSH_MSG_CHANNEL_SUCCESS buf |>
       put_uint32 channel
