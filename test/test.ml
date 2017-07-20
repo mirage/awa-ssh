@@ -28,9 +28,6 @@ let green fmt  = colored_or_not ("\027[32m"^^fmt^^"\027[m") fmt
 let yellow fmt = colored_or_not ("\027[33m"^^fmt^^"\027[m") fmt
 let blue fmt   = colored_or_not ("\027[36m"^^fmt^^"\027[m") fmt
 
-let secret_a = Cstruct.of_string "Pyotr Alexeyevich Kropotkin 1842"
-let secret_b = Cstruct.of_string "Buenaventura Durruti - CNT/FAI!!"
-
 let cipher_key_of cipher key =
   let open Nocrypto.Cipher_block.AES in
   let open Cipher in
@@ -308,9 +305,10 @@ let t_crypto () =
   in
   let make cipher hmac =
     let open Cipher in
-    let iv = Cstruct.set_len secret_a 16 in
-    let cipher = cipher_key_of cipher secret_a in
-    let mac = hmac_key_of hmac secret_a in
+    let secret = Cstruct.of_string "Pyotr Alexeyevich Kropotkin 1842" in
+    let iv = Cstruct.set_len secret 16 in
+    let cipher = cipher_key_of cipher secret in
+    let mac = hmac_key_of hmac secret in
     Kex.{ iv; cipher; mac }
   in
   List.iter (fun cipher ->
