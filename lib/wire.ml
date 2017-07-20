@@ -138,11 +138,19 @@ let pubkey_of_blob blob =
     ok (Hostkey.Rsa_pub pub)
   | key_alg -> ok Hostkey.Unknown
 
-(* Extracts the blob and converts to a pubkey *)
-let get_pubkey buf =
+(* Prefer using get_pubkey_alg always *)
+let get_pubkey_any buf =
   get_cstring buf >>= fun (blob, buf) ->
   pubkey_of_blob blob >>= fun pubkey ->
   ok (pubkey, buf)
+
+(* Always use get_pubkey_alg since it returns Unknown if key_alg mismatches *)
+let get_pubkey key_alg buf =
+  get_pubkey_any buf >>= fun (pubkey, buf) ->
+  if (Hostkey.sshname pubkey) = key_alg then
+    ok (pubkey, buf)
+  else
+    ok (Hostkey.Unknown, buf)
 
 let put_pubkey pubkey t =
   put_cstring (blob_of_pubkey pubkey) t
@@ -277,7 +285,7 @@ let get_message buf =
   | SSH_MSG_KEXDH_INIT -> get_mpint buf >>= fun (e, buf) ->
     ok (Ssh_msg_kexdh_init e)
   | SSH_MSG_KEXDH_REPLY ->
-    get_pubkey buf >>= fun (k_s, buf) ->
+    get_pubkey_any buf >>= fun (k_s, buf) ->
     get_mpint buf >>= fun (f, buf) ->
     get_signature k_s buf >>= fun (key_alg, key_sig) ->
     ok (Ssh_msg_kexdh_reply (k_s, f, key_sig))
@@ -289,14 +297,12 @@ let get_message buf =
      | "publickey" ->
        get_bool buf >>= fun (has_sig, buf) ->
        get_string buf >>= fun (key_alg, buf) ->
-       get_pubkey buf >>= fun (pubkey, buf) ->
-       guard ((Hostkey.sshname pubkey) = key_alg) "Key type mismatch"
-       >>= fun () ->
+       get_pubkey key_alg buf >>= fun (pubkey, buf) ->
        if has_sig then
          get_signature pubkey buf >>= fun (key_alg, key_sig) ->
-         ok (Pubkey (key_alg, pubkey, Some key_sig), buf)
+         ok (Pubkey (pubkey, Some key_sig), buf)
        else
-         ok (Pubkey (key_alg, pubkey, None), buf)
+         ok (Pubkey (pubkey, None), buf)
      | "password" ->
        get_bool buf >>= fun (has_old, buf) ->
        if has_old then
@@ -324,7 +330,7 @@ let get_message buf =
   | SSH_MSG_USERAUTH_SUCCESS -> ok Ssh_msg_userauth_success
   | SSH_MSG_USERAUTH_PK_OK ->
     get_string buf >>= fun (key_alg, buf) ->
-    get_pubkey buf >>= fun (pubkey, buf) ->
+    get_pubkey key_alg buf >>= fun (pubkey, buf) ->
     ok (Ssh_msg_userauth_pk_ok pubkey)
   | SSH_MSG_USERAUTH_BANNER ->
     get_string buf >>= fun (s1, buf) ->
@@ -405,10 +411,10 @@ let put_message msg buf =
                 put_string service
       in
       (match auth_method with
-       | Pubkey (key_alg, pubkey, signature) ->
+       | Pubkey (pubkey, signature) ->
          let buf = put_string "publickey" buf |>
                    put_bool (is_some signature) |>
-                   put_string key_alg |>
+                   put_string (Hostkey.sshname pubkey) |>
                    put_pubkey pubkey
          in
          (match signature with

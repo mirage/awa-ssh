@@ -159,10 +159,10 @@ let t_parsing () =
       Ssh_msg_newkeys;
       Ssh_msg_userauth_request
         ("haesbaert", "ssh-userauth",
-         Pubkey ("ssh-rsa", pub_rsa, None));
+         Pubkey (pub_rsa, None));
       Ssh_msg_userauth_request
         ("haesbaert", "ssh-userauth",
-         Pubkey ("ssh-rsa", pub_rsa, Some signature));
+         Pubkey (pub_rsa, Some signature));
       Ssh_msg_userauth_request
         ("haesbaert", "ssh-userauth",
          Password ("a", Some "b"));

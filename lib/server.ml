@@ -161,36 +161,34 @@ let handle_userauth_request t username service auth_method =
     guard (service = "ssh-connection") "Bad service" >>= fun () ->
     match auth_method with
     (* Public key authentication probing *)
-    | Pubkey (key_alg, pubkey, None) ->
-      (match pubkey with
-       | Hostkey.Rsa_pub rsa_pub ->
-         if key_alg = Hostkey.sshname pubkey then
-           pk_ok t pubkey
-         else
-           fail t
-       | Hostkey.Unknown -> fail t)
+    | Pubkey (pubkey, None) ->
+      if pubkey = Hostkey.Unknown then
+        fail t
+      else
+        pk_ok t pubkey
     (* Public key authentication *)
-    | Pubkey (key_alg, pubkey, Some signed) ->
-      (guard (key_alg = Hostkey.sshname pubkey) "Key type mismatch"
-       >>= fun () ->
-       match find_user_key t username pubkey with
+    | Pubkey (pubkey, Some signed) ->
+      (match find_user_key t username pubkey with
        | None -> fail t
        | Some pubkey ->
-         let unsigned =
-           let open Wire in
-           put_cstring session_id (Dbuf.create ()) |>
-           put_message_id SSH_MSG_USERAUTH_REQUEST |>
-           put_string username |>
-           put_string service |>
-           put_string "publickey" |>
-           put_bool true |>
-           put_string (Hostkey.sshname pubkey) |>
-           put_pubkey pubkey |>
-           Dbuf.to_cstruct
-         in
-         match Hostkey.verify pubkey ~unsigned ~signed with
-         | Ok () -> success t
-         | Error e -> fail t)
+         if pubkey = Hostkey.Unknown then
+           fail t
+         else
+           let unsigned =
+             let open Wire in
+             put_cstring session_id (Dbuf.create ()) |>
+             put_message_id SSH_MSG_USERAUTH_REQUEST |>
+             put_string username |>
+             put_string service |>
+             put_string "publickey" |>
+             put_bool true |>
+             put_string (Hostkey.sshname pubkey) |>
+             put_pubkey pubkey |>
+             Dbuf.to_cstruct
+           in
+           match Hostkey.verify pubkey ~unsigned ~signed with
+           | Ok () -> success t
+           | Error e -> fail t)
     (* Password authentication *)
     | Password (password, None) ->
       (match find_user t username with
