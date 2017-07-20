@@ -25,6 +25,11 @@ type user = {
   keys     : Hostkey.pub list;
 }
 
+type auth_state =
+  | Preauth
+  | Inprogress of (string * string * int)
+  | Done
+
 type t = {
   client_version : string option;         (* Without crlf *)
   server_version : string;                (* Without crlf *)
@@ -38,8 +43,8 @@ type t = {
   new_keys_ctos  : Kex.keys option;       (* Install when we receive NEWKEYS *)
   new_keys_stoc  : Kex.keys option;       (* Install after we send NEWKEYS *)
   input_buffer   : Cstruct.t;             (* Unprocessed input *)
-  expect         : Ssh.message_id option; (* Which messages are expected, None if any *)
-  auth_state     : (string * string) option; (* username * service in progress *)
+  expect         : Ssh.message_id option; (* Messages to expect, None if any *)
+  auth_state     : auth_state;		  (* username * service in progress *)
   user_db        : user list;             (* username database *)
   ignore_next_packet : bool;              (* Ignore the next packet from the wire *)
 }
@@ -73,7 +78,7 @@ let make host_key user_db =
             new_keys_stoc = None;
             input_buffer = Cstruct.create 0;
             expect = Some SSH_MSG_VERSION;
-            auth_state = None;
+            auth_state = Preauth;
             user_db;
             ignore_next_packet = false }
   in
@@ -126,6 +131,88 @@ let pop_msg2 t buf =
   | Some _ -> decrypt t buf
 
 let pop_msg t = pop_msg2 t t.input_buffer
+
+let handle_userauth_request t username service auth_method =
+  let open Ssh in
+  (* Normal failure, let the poor soul try ag *)
+  let fail t =
+    match t.auth_state with
+    | Preauth | Done -> error "Unexpected auth_state"
+    | Inprogress (u, s, nfailed) ->
+      let t = { t with auth_state = Inprogress (u, s, succ nfailed) } in
+      ok (t, [ Ssh_msg_userauth_failure ([ "publickey"; "password" ], false) ])
+  in
+  (* Auth is done, further attempts should be silently ignored *)
+  let success t =
+    ok ({ t with auth_state = Done }, [ Ssh_msg_userauth_success ])
+  in
+  (* XXX need to handle this properly and close the connection *)
+  let disconnect t =
+    ok (t, [ Ssh_msg_disconnect
+               (SSH_DISCONNECT_PROTOCOL_ERROR,
+                "username or service changed during authentication",
+                "") ])
+  in
+  let pk_ok t pubkey = ok (t, [ Ssh_msg_userauth_pk_ok pubkey ]) in
+  let discard t = ok (t, []) in
+  let try_auth t =
+    (* XXX verify all fail cases, what should we do and so on *)
+    guard_some t.session_id "No session_id" >>= fun session_id ->
+    guard (service = "ssh-connection") "Bad service" >>= fun () ->
+    match auth_method with
+    (* Public key authentication probing *)
+    | Pubkey (key_alg, pubkey, None) ->
+      (match pubkey with
+       | Hostkey.Rsa_pub rsa_pub ->
+         if key_alg = Hostkey.sshname pubkey then
+           pk_ok t pubkey
+         else
+           fail t
+       | Hostkey.Unknown -> fail t)
+    (* Public key authentication *)
+    | Pubkey (key_alg, pubkey, Some signed) ->
+      (guard (key_alg = Hostkey.sshname pubkey) "Key type mismatch"
+       >>= fun () ->
+       match find_user_key t username pubkey with
+       | None -> fail t
+       | Some pubkey ->
+         let unsigned =
+           let open Wire in
+           put_cstring session_id (Dbuf.create ()) |>
+           put_message_id SSH_MSG_USERAUTH_REQUEST |>
+           put_string username |>
+           put_string service |>
+           put_string "publickey" |>
+           put_bool true |>
+           put_string (Hostkey.sshname pubkey) |>
+           put_pubkey pubkey |>
+           Dbuf.to_cstruct
+         in
+         match Hostkey.verify pubkey ~unsigned ~signed with
+         | Ok () -> success t
+         | Error e -> fail t)
+    (* Password authentication *)
+    | Password (password, None) ->
+      (match find_user t username with
+       | None -> fail t
+       | Some user ->
+         if user.password = Some password then success t else fail t)
+    | Password (password, Some oldpassword) -> fail t (* Change of password *)
+    (* Host based authentication, won't support *)
+    | Hostbased _ -> fail t
+    (* None authentication, won't support *)
+    | Authnone -> fail t
+  in
+  match t.auth_state with
+  | Done -> discard t
+  | Preauth -> try_auth { t with auth_state = Inprogress (username, service, 0) }
+  | Inprogress (prev_username, prev_service, nfailed) ->
+    if nfailed >= 10 then
+      error "Maximum attempts reached, we already sent a disconnect."
+    else if prev_username = username && prev_service = service then
+      try_auth t
+    else
+      disconnect t
 
 let handle_msg t msg =
   let open Ssh in
@@ -197,72 +284,8 @@ let handle_msg t msg =
            (sprintf "service %s not available" service), "")
       in
       ok (t, [ msg ])
-  (* XXX user auth is too big, refactor this *)
   | Ssh_msg_userauth_request (username, service, auth_method) ->
-    (* XXX verify all fail cases, what should we do and so on *)
-    guard_some t.session_id "No session_id" >>= fun session_id ->
-    guard (service = "ssh-connection") ("Bad service: " ^ service) >>= fun () ->
-    let fail t = ok (t, [ Ssh_msg_userauth_failure ([ "publickey"; "password" ], false) ]) in
-    let success t = ok (t, [ Ssh_msg_userauth_success ]) in
-    let disconnect t =
-      ok (t, [ Ssh_msg_disconnect
-                 (SSH_DISCONNECT_PROTOCOL_ERROR,
-                  "username or service changed during authentication",
-                  "") ])
-    in
-    let pk_ok t pubkey = ok (t, [ Ssh_msg_userauth_pk_ok pubkey ]) in
-    let auth_ok = match t.auth_state with
-      | None -> true
-      | Some (prev_username, prev_service) ->
-        prev_username = username && prev_service = service
-    in
-    if not auth_ok then
-      disconnect t
-    else
-      let t = { t with auth_state = Some (username, service) } in
-      (match auth_method with
-       (* Public key authentication probing *)
-       | Pubkey (key_alg, pubkey, None) ->
-         (match pubkey with
-          | Hostkey.Rsa_pub rsa_pub ->
-            if key_alg = Hostkey.sshname pubkey then
-              pk_ok t pubkey
-            else
-              fail t
-          | Hostkey.Unknown -> fail t)
-       (* Public key authentication *)
-       | Pubkey (key_alg, pubkey, Some signed) ->
-         (guard (key_alg = Hostkey.sshname pubkey) "Key type mismatch"
-          >>= fun () ->
-          match find_user_key t username pubkey with
-          | None -> fail t
-          | Some pubkey ->
-            let unsigned =
-              let open Wire in
-              put_cstring session_id (Dbuf.create ()) |>
-              put_message_id SSH_MSG_USERAUTH_REQUEST |>
-              put_string username |>
-              put_string service |>
-              put_string "publickey" |>
-              put_bool true |>
-              put_string (Hostkey.sshname pubkey) |>
-              put_pubkey pubkey |>
-              Dbuf.to_cstruct
-            in
-            match Hostkey.verify pubkey ~unsigned ~signed with
-            | Ok () -> success t
-            | Error e -> fail t)
-       (* Password authentication *)
-       | Password (password, None) ->
-         (match find_user t username with
-          | None -> fail t
-          | Some user ->
-            if user.password = Some password then success t else fail t)
-       | Password (password, Some oldpassword) -> fail t (* Change of password *)
-       (* Host based authentication *)
-       | Hostbased _ -> fail t                      (* TODO *)
-       (* None authentication *)
-       | Authnone -> fail t)                        (* Always fail *)
+    handle_userauth_request t username service auth_method
   | Ssh_msg_version v ->
     ok ({ t with client_version = Some v;
                  expect = Some SSH_MSG_KEXINIT }, [])
