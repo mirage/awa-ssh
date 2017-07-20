@@ -289,32 +289,29 @@ let handle_msg t msg =
                  expect = Some SSH_MSG_KEXINIT }, [])
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))
 
-let output_msg t msg =
-  (match msg with
-   | Ssh.Ssh_msg_version v ->
-     ok (t, Cstruct.of_string (v ^ "\r\n"))
-   | msg ->
-     let enc, keys = Packet.encrypt t.keys_stoc msg in
-     ok ({ t with keys_stoc = keys }, enc))
-  >>= fun (t, buf) ->
+type action =
+  | Send_data of (t * Cstruct.t)
+  | Disconnect of (t * Cstruct.t)
+  | Ssh_error of string
+
+let action_of_msg t msg =
+  let t, buf =
+    match msg with
+    | Ssh.Ssh_msg_version v ->
+      t, Cstruct.of_string (v ^ "\r\n")
+    | msg ->
+      let enc, keys = Packet.encrypt t.keys_stoc msg in
+      { t with keys_stoc = keys }, enc
+  in
   (* Do state transitions *)
   match msg with
   | Ssh.Ssh_msg_newkeys ->
-    patch_new_keys t.keys_stoc t.new_keys_stoc >>= fun new_keys_stoc ->
-    let t = { t with keys_stoc = new_keys_stoc;
-                     new_keys_stoc = None }
-    in
-    ok (t, buf)
-  | _ -> ok (t, buf)
-
-let output_msgs t = function
-  | [] -> invalid_arg "empty msg list"
-  | [msg] -> output_msg t msg
-  | msgs ->
-    List.fold_left
-      (fun a msg ->
-         a >>= fun (t, buf) ->
-         output_msg t msg >>= fun (t, msgbuf) ->
-         ok (t, Cstruct.append buf msgbuf))
-      (ok (t, Cstruct.create 0))
-      msgs
+    (match patch_new_keys t.keys_stoc t.new_keys_stoc with
+     | Error e -> Ssh_error e
+     | Ok new_keys_stoc ->
+       let t = { t with keys_stoc = new_keys_stoc;
+                        new_keys_stoc = None }
+       in
+       Send_data (t, buf))
+  | Ssh.Ssh_msg_disconnect _ -> Disconnect (t, buf)
+  | _ -> Send_data (t, buf)

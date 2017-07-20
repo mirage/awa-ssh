@@ -39,23 +39,39 @@ let write_cstruct fd buf =
   let n = Unix.write fd bytes 0 len in
   assert (n > 0)
 
-let rec msg_loop t fd = 
+(* NEW SHIT *)
+let rec output_msg_loop t fd msgs =
+  let open Server in
+  match msgs with
+  | [] -> ok t
+  | msg :: tl ->
+    match action_of_msg t msg with
+    | Send_data (t, data) ->
+      write_cstruct fd data;
+      output_msg_loop t fd tl
+    | Disconnect (t, data) ->
+      write_cstruct fd data;
+      error "We sent a disconnect"
+    | Ssh_error e -> error e
+
+let rec input_msg_loop t fd =
   Server.pop_msg t >>= fun (t, msg) ->
   match msg with
   | None -> ok t
   | Some msg ->
     Server.handle_msg t msg >>= fun (t, replies) ->
     match replies with
-    | [] -> msg_loop t fd
+    | [] -> input_msg_loop t fd
     | replies ->
-      Server.output_msgs t replies >>= fun (t, obuf) ->
-      write_cstruct fd obuf;
-      msg_loop t fd
+      (* Process our replies (actions) *)
+      output_msg_loop t fd replies >>= fun t ->
+      (* Loop for more input *)
+      input_msg_loop t fd
 
 let rec main_loop t fd =
   let buf = read_cstruct fd in
   let t = Server.input_buf t buf in
-  msg_loop t fd >>= fun t ->
+  input_msg_loop t fd >>= fun t ->
   main_loop t fd
 
 let get_ok_s = function
@@ -83,9 +99,6 @@ let () =
   let client_fd, _ = Unix.(accept listen_fd) in
   let rsa = Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048) in
   let t, greetings = Server.make rsa user_db in
-  let t, obuf = Server.output_msgs t greetings |> get_ok_s in
-  write_cstruct client_fd obuf;
-  let r = main_loop t client_fd in
-  match r with
+  match output_msg_loop t client_fd greetings >>= fun t -> main_loop t client_fd with
   | Ok _ -> printf "ok"
   | Error e -> printf "error: %s" e
