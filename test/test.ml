@@ -344,6 +344,34 @@ let t_signature () =
     Cstruct.set_uint8 signed off evilbyte;
   done
 
+let t_ignore_next_packet () =
+  let t, _ = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) [] in
+  let t = Server.{ t with client_version = Some "SSH-2.0-client";
+                          expect = Some(Ssh.SSH_MSG_KEXINIT) }
+  in
+  let kexinit = Ssh.{ (Kex.make_kexinit()) with
+                      encryption_algs_ctos = ["aes256-cbc"];
+                      first_kex_packet_follows = true }
+  in
+  (* Should set ignore_next_packet since the guess of the client is wrong *)
+  let message = Ssh.Ssh_msg_kexinit kexinit in
+  let buf = encrypt_plain message in
+  let t, message = get_ok (Server.pop_msg2 t buf) in
+  let message = get_some message in
+  let t, _ = get_ok (Server.handle_msg t message) in
+  assert (t.Server.ignore_next_packet = true);
+  (* Should ignore the next packet since ignore_next_packet is true *)
+  let message = Ssh.Ssh_msg_debug(true, "woop", "Look at me") in
+  let buf = encrypt_plain message in
+  let t, msg = get_ok (Server.pop_msg2 t buf) in
+  assert (t.Server.ignore_next_packet = false);
+  assert (msg = None);
+  (* Should not ignore the packet which follows after *)
+  let buf = encrypt_plain message in
+  let t, msg = get_ok (Server.pop_msg2 t buf) in
+  assert (t.Server.ignore_next_packet = false);
+  assert (msg = Some message)
+
 let run_test test =
   let f = fst test in
   let name = snd test in
@@ -364,6 +392,7 @@ let all_tests = [
   (t_crypto, "encrypt/decrypt");
   (t_openssh_pub, "OpenSSH public key format");
   (t_signature, "signatures");
+  (t_ignore_next_packet, "ignore next packet");
 ]
 
 let _ =
