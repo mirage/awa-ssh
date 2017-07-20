@@ -123,6 +123,68 @@ let sexp_of_global_request = function
     sexp_of_string
       (sprintf "cancel-tcpip-forward bind-to=%s port=%ld" address port)
 
+type channel_request =
+  | Pty_req of (string * int32 * int32 * int32 * int32 * string)
+  | X11_req of (bool * string * string * int32)
+  | Env of (string * string)
+  | Exec of string
+  | Subsystem of string
+  | Window_change of (int32 * int32 * int32 * int32)
+  | Xon_xoff of bool
+  | Signal of string
+  | Exit_status of int32
+  | Exit_signal of (string * bool * string * string)
+
+let sexp_of_channel_request = function
+  | Pty_req (term_env, width_char, height_row, width_px, height_px,
+             term_modes) ->
+    sexp_of_string (sprintf "pty-req term_env: %s width_char: %ld \
+                             height_row: %ld width_px: %ld height_px: \
+                             %ld term_modes: %s"
+                      term_env width_char height_row width_px height_px
+                      term_modes)
+  | X11_req (single_con, x11_auth_proto, x11_auth_cookie, x11_screen_nr) ->
+    sexp_of_string (sprintf "x11-req single_con: %B x11_auth_proto: %s \
+                             x11_auth_cookie: %s x11_screen_nr: %ld"
+                      single_con x11_auth_proto x11_auth_cookie x11_screen_nr)
+  | Env (name, value) ->
+    sexp_of_string (sprintf "env name: %s value: %s" name value)
+  | Exec (command) -> sexp_of_string (sprintf "exec command: %s" command)
+  | Subsystem (name) -> sexp_of_string (sprintf "subsystem name: %s" name)
+  | Window_change (width_char, height_row, width_px, height_px) ->
+    sexp_of_string (sprintf "window-change width_char: %ld height_row: %ld \
+                             width_px: %ld height_px %ld"
+                      width_char height_row width_px height_px)
+  | Xon_xoff (client_can_do) ->
+    sexp_of_string (sprintf "xon-xoff client_can_do %B" client_can_do)
+  | Signal (name) -> sexp_of_string (sprintf "signal name: %s" name)
+  | Exit_status (status) ->
+    sexp_of_string (sprintf "exit-status status: %ld" status)
+  | Exit_signal (name, core_dumped, message, lang) ->
+    sexp_of_string (sprintf "exit-signal name: %s core_dumped: %B message: %s\
+                            lang: %s" name core_dumped message lang)
+
+type channel_open =
+  | X11 of (string * int32)
+  | Forwarded_tcpip of (string * int32 * string * int32)
+  | Direct_tcpip of (string * int32 * string * int32)
+  | Raw_data of Cstruct.t
+
+let sexp_of_channel_open = function
+  | X11 (address, port) ->
+    sexp_of_string (sprintf "x11 originator address: %s port: %ld" address port)
+  | Forwarded_tcpip (con_address, con_port, origin_address, origin_port) ->
+    sexp_of_string
+      (sprintf "forwarded-tcpip connected address: %s port %ld \
+       originator address: %s port: %ld" con_address con_port
+         origin_address origin_port)
+  | Direct_tcpip (address, port, origin_address, origin_port) ->
+    sexp_of_string
+      (sprintf "direct-tcpip host address: %s port %ld \
+       originator address: %s port: %ld" address port
+         origin_address origin_port)
+  | Raw_data data -> sexp_of_string ("Cstruct")
+
 type auth_method =
   | Pubkey of (Hostkey.pub * Cstruct.t option)
   | Password of (string * string option)
@@ -182,15 +244,17 @@ type message =
   | Ssh_msg_global_request of string * bool * global_request
   | Ssh_msg_request_success of Cstruct.t option
   | Ssh_msg_request_failure
-  | Ssh_msg_channel_open
-  | Ssh_msg_channel_open_confirmation
-  | Ssh_msg_channel_open_failure
+  | Ssh_msg_channel_open of string * int32 * int32 * int32 *
+                            channel_open option
+  | Ssh_msg_channel_open_confirmation of int32 * int32 * int32 * int32 *
+                                         channel_open option
+  | Ssh_msg_channel_open_failure of int32 * int32 * string * string
   | Ssh_msg_channel_window_adjust of int32 * int32
-  | Ssh_msg_channel_data
-  | Ssh_msg_channel_extended_data
+  | Ssh_msg_channel_data of int32 * string
+  | Ssh_msg_channel_extended_data of int32 * int32 * string
   | Ssh_msg_channel_eof of int32
   | Ssh_msg_channel_close of int32
-  | Ssh_msg_channel_request
+  | Ssh_msg_channel_request of int32 * string * bool * channel_request
   | Ssh_msg_channel_success of int32
   | Ssh_msg_channel_failure of int32
   | Ssh_msg_version of string       (* Mocked version *)
@@ -218,15 +282,15 @@ let message_to_id = function
   | Ssh_msg_global_request _           -> SSH_MSG_GLOBAL_REQUEST
   | Ssh_msg_request_success _          -> SSH_MSG_REQUEST_SUCCESS
   | Ssh_msg_request_failure            -> SSH_MSG_REQUEST_FAILURE
-  | Ssh_msg_channel_open               -> SSH_MSG_CHANNEL_OPEN
-  | Ssh_msg_channel_open_confirmation  -> SSH_MSG_CHANNEL_OPEN_CONFIRMATION
-  | Ssh_msg_channel_open_failure       -> SSH_MSG_CHANNEL_OPEN_FAILURE
+  | Ssh_msg_channel_open _             -> SSH_MSG_CHANNEL_OPEN
+  | Ssh_msg_channel_open_confirmation _-> SSH_MSG_CHANNEL_OPEN_CONFIRMATION
+  | Ssh_msg_channel_open_failure _     -> SSH_MSG_CHANNEL_OPEN_FAILURE
   | Ssh_msg_channel_window_adjust _    -> SSH_MSG_CHANNEL_WINDOW_ADJUST
-  | Ssh_msg_channel_data               -> SSH_MSG_CHANNEL_DATA
-  | Ssh_msg_channel_extended_data      -> SSH_MSG_CHANNEL_EXTENDED_DATA
+  | Ssh_msg_channel_data _             -> SSH_MSG_CHANNEL_DATA
+  | Ssh_msg_channel_extended_data _    -> SSH_MSG_CHANNEL_EXTENDED_DATA
   | Ssh_msg_channel_eof _              -> SSH_MSG_CHANNEL_EOF
   | Ssh_msg_channel_close _            -> SSH_MSG_CHANNEL_CLOSE
-  | Ssh_msg_channel_request            -> SSH_MSG_CHANNEL_REQUEST
+  | Ssh_msg_channel_request _          -> SSH_MSG_CHANNEL_REQUEST
   | Ssh_msg_channel_success _          -> SSH_MSG_CHANNEL_SUCCESS
   | Ssh_msg_channel_failure _          -> SSH_MSG_CHANNEL_FAILURE
   | Ssh_msg_version _                  -> SSH_MSG_VERSION

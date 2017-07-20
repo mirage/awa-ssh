@@ -181,18 +181,22 @@ let t_parsing () =
       Ssh_msg_userauth_pk_ok pub_rsa;
       Ssh_msg_global_request
         ("tcpip-forward", true,
-        Tcpip_forward ("127.0.0.1", Int32.of_int 443));
+        Tcpip_forward ("127.0.0.1", long));
       Ssh_msg_request_success (None);
       Ssh_msg_request_failure;
-      (* Ssh_msg_channel_open; *)
-      (* Ssh_msg_channel_open_confirmation; *)
-      (* Ssh_msg_channel_open_failure; *)
+      Ssh_msg_channel_open
+        ("x11", long, long, long,
+         Some (X11 ("::1", long)));
+      Ssh_msg_channel_open_confirmation
+        (long, long, long, long, None);
+      Ssh_msg_channel_open_failure
+        (long, long, "Because you stink", "enEN");
       Ssh_msg_channel_window_adjust (long, Int32.succ long);
-      (* Ssh_msg_channel_data; *)
-      (* Ssh_msg_channel_extended_data; *)
+      Ssh_msg_channel_data (long, "DATADATA");
+      Ssh_msg_channel_extended_data (long, long, "DATADATA");
       Ssh_msg_channel_eof long;
       Ssh_msg_channel_close long;
-      (* Ssh_msg_channel_request; *)
+      Ssh_msg_channel_request (long, "signal", false, Signal("kill"));
       Ssh_msg_channel_success long;
       Ssh_msg_channel_failure long; ]
   in
