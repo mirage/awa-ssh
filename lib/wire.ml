@@ -371,18 +371,18 @@ let get_message buf =
   | SSH_MSG_REQUEST_FAILURE -> ok Ssh_msg_request_failure
   | SSH_MSG_CHANNEL_OPEN ->
     get_string buf >>= fun (request, buf) ->
-    get_uint32 buf >>= fun (channel, buf) ->
+    get_uint32 buf >>= fun (send_channel, buf) ->
     get_uint32 buf >>= fun (init_win_size, buf) ->
     get_uint32 buf >>= fun (max_pkt_size, buf) ->
     (match request with
      | "session" ->
        ok (Ssh_msg_channel_open
-             (channel, init_win_size, max_pkt_size, Session))
+             (send_channel, init_win_size, max_pkt_size, Session))
      | "x11" ->
        get_string buf >>= fun (address, buf) ->
        get_uint32 buf >>= fun (port, buf) ->
        ok (Ssh_msg_channel_open
-             (channel, init_win_size, max_pkt_size,
+             (send_channel, init_win_size, max_pkt_size,
               (X11 (address, port))))
      | "forwarded-tcpip" ->
        get_string buf >>= fun (con_address, buf) ->
@@ -390,7 +390,7 @@ let get_message buf =
        get_string buf >>= fun (origin_address, buf) ->
        get_uint32 buf >>= fun (origin_port, buf) ->
        ok (Ssh_msg_channel_open
-             (channel, init_win_size, max_pkt_size,
+             (send_channel, init_win_size, max_pkt_size,
                 Forwarded_tcpip (con_address, con_port, origin_address,
                                  origin_port)))
      | _ -> error ("Unknown request " ^ request))
