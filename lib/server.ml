@@ -275,7 +275,6 @@ let handle_msg t msg =
       ok ({ t with expect = Some SSH_MSG_USERAUTH_REQUEST },
           [ Ssh_msg_service_accept service ])
     else
-      (* XXX need to tell user to close socket when we send a disconnect. *)
       let msg =
         Ssh_msg_disconnect
           (SSH_DISCONNECT_SERVICE_NOT_AVAILABLE,
