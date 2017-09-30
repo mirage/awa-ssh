@@ -136,6 +136,13 @@ let t_parsing () =
       Ssh_msg_kexdh_reply (pub_rsa2, mpint2, sigb) ->
       assert (pub_rsa1 = pub_rsa2 && mpint1 = mpint2);
       assert (Hostkey.signature_equal siga sigb)
+    | Ssh_msg_channel_open_confirmation (a1, a2, a3, a4, a5),
+      Ssh_msg_channel_open_confirmation (b1, b2, b3, b4, b5) ->
+      assert (a1 = b1);
+      assert (a2 = b2);
+      assert (a3 = b3);
+      assert (a4 = b4);
+      assert (Cstruct.equal a5 b5);
     | msg, msg2 -> assert (msg = msg2)
   in
   let long = Int32.of_int 180586 in
@@ -185,10 +192,10 @@ let t_parsing () =
       Ssh_msg_request_success (None);
       Ssh_msg_request_failure;
       Ssh_msg_channel_open
-        ("x11", long, long, long,
-         Some (X11 ("::1", long)));
+        (long, long, long,
+         X11 ("::1", long));
       Ssh_msg_channel_open_confirmation
-        (long, long, long, long, None);
+        (long, long, long, long, Cstruct.of_string "Freedom of Mind");
       Ssh_msg_channel_open_failure
         (long, long, "Because you stink", "enEN");
       Ssh_msg_channel_window_adjust (long, Int32.succ long);

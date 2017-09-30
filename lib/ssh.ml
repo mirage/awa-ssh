@@ -165,12 +165,13 @@ let sexp_of_channel_request = function
                             lang: %s" name core_dumped message lang)
 
 type channel_open =
+  | Session
   | X11 of (string * int32)
   | Forwarded_tcpip of (string * int32 * string * int32)
   | Direct_tcpip of (string * int32 * string * int32)
-  | Raw_data of Cstruct.t
 
 let sexp_of_channel_open = function
+  | Session -> sexp_of_string "session"
   | X11 (address, port) ->
     sexp_of_string (sprintf "x11 originator address: %s port: %ld" address port)
   | Forwarded_tcpip (con_address, con_port, origin_address, origin_port) ->
@@ -183,7 +184,6 @@ let sexp_of_channel_open = function
       (sprintf "direct-tcpip host address: %s port %ld \
        originator address: %s port: %ld" address port
          origin_address origin_port)
-  | Raw_data data -> sexp_of_string ("Cstruct")
 
 type auth_method =
   | Pubkey of (Hostkey.pub * Cstruct.t option)
@@ -244,10 +244,8 @@ type message =
   | Ssh_msg_global_request of (string * bool * global_request)
   | Ssh_msg_request_success of Cstruct.t option
   | Ssh_msg_request_failure
-  | Ssh_msg_channel_open of (string * int32 * int32 * int32 *
-                            channel_open option)
-  | Ssh_msg_channel_open_confirmation of (int32 * int32 * int32 * int32 *
-                                          channel_open option)
+  | Ssh_msg_channel_open of (int32 * int32 * int32 * channel_open)
+  | Ssh_msg_channel_open_confirmation of (int32 * int32 * int32 * int32 * Cstruct.t)
   | Ssh_msg_channel_open_failure of (int32 * int32 * string * string)
   | Ssh_msg_channel_window_adjust of (int32 * int32)
   | Ssh_msg_channel_data of (int32 * string)
