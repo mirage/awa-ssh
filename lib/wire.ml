@@ -273,10 +273,6 @@ let get_message buf =
   let open Ssh in
   let msgbuf = buf in
   get_message_id buf >>= fun (msgid, buf) ->
-  let unimplemented () =
-    (* XXX should send SSH_MSG_UNIMPLEMENTED *)
-    error (sprintf "Message %d unimplemented" (message_id_to_int msgid))
-  in
   match msgid with
   | SSH_MSG_DISCONNECT ->
     get_uint32 buf >>= fun (code, buf) ->
