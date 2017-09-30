@@ -236,25 +236,25 @@ type message =
   | Ssh_msg_newkeys
   | Ssh_msg_kexdh_reply of (Hostkey.pub * mpint * Cstruct.t)
   | Ssh_msg_kexdh_init of mpint
-  | Ssh_msg_userauth_request of string * string * auth_method
-  | Ssh_msg_userauth_failure of string list * bool
+  | Ssh_msg_userauth_request of (string * string * auth_method)
+  | Ssh_msg_userauth_failure of (string list * bool)
   | Ssh_msg_userauth_success
-  | Ssh_msg_userauth_banner of string * string
+  | Ssh_msg_userauth_banner of (string * string)
   | Ssh_msg_userauth_pk_ok of Hostkey.pub
-  | Ssh_msg_global_request of string * bool * global_request
+  | Ssh_msg_global_request of (string * bool * global_request)
   | Ssh_msg_request_success of Cstruct.t option
   | Ssh_msg_request_failure
-  | Ssh_msg_channel_open of string * int32 * int32 * int32 *
-                            channel_open option
-  | Ssh_msg_channel_open_confirmation of int32 * int32 * int32 * int32 *
-                                         channel_open option
-  | Ssh_msg_channel_open_failure of int32 * int32 * string * string
-  | Ssh_msg_channel_window_adjust of int32 * int32
-  | Ssh_msg_channel_data of int32 * string
-  | Ssh_msg_channel_extended_data of int32 * int32 * string
+  | Ssh_msg_channel_open of (string * int32 * int32 * int32 *
+                            channel_open option)
+  | Ssh_msg_channel_open_confirmation of (int32 * int32 * int32 * int32 *
+                                          channel_open option)
+  | Ssh_msg_channel_open_failure of (int32 * int32 * string * string)
+  | Ssh_msg_channel_window_adjust of (int32 * int32)
+  | Ssh_msg_channel_data of (int32 * string)
+  | Ssh_msg_channel_extended_data of (int32 * int32 * string)
   | Ssh_msg_channel_eof of int32
   | Ssh_msg_channel_close of int32
-  | Ssh_msg_channel_request of int32 * string * bool * channel_request
+  | Ssh_msg_channel_request of (int32 * string * bool * channel_request)
   | Ssh_msg_channel_success of int32
   | Ssh_msg_channel_failure of int32
   | Ssh_msg_version of string       (* Mocked version *)
