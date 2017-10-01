@@ -179,8 +179,9 @@ let openssh_of_pubkey key =
 
 let privkey_of_pem buf =
   trap_error (fun () ->
-      match X509.Encoding.Pem.Private_key.of_pem_cstruct1 buf with
-        X509.Encoding.Pem.(`RSA key) -> Hostkey.Rsa_priv key)
+      let open X509.Encoding.Pem in
+      match Private_key.of_pem_cstruct1 buf with
+        `RSA key -> Hostkey.Rsa_priv key)
 
 let put_kexinit kex t =
   let open Ssh in
