@@ -146,7 +146,6 @@ let handle_userauth_request t username service auth_method =
   let success t =
     ok ({ t with auth_state = Done }, [ Ssh_msg_userauth_success ])
   in
-  (* XXX need to handle this properly and close the connection *)
   let disconnect t =
     ok (t, [ Ssh_msg_disconnect
                (SSH_DISCONNECT_PROTOCOL_ERROR,
