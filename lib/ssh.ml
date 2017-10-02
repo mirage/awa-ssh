@@ -24,8 +24,11 @@ type pkt_hdr = {
   pad_len: uint8_t;
 } [@@big_endian]]
 
-let max_pkt_len = 512 * 1024    (* 512KB should be enough *)
-let max_len = 256 * 1024        (* 256KB for a field is enough *)
+let max_pkt_len = 512 * 1024          (* 512KB should be enough *)
+let max_len = 256 * 1024              (* 256KB for a field is enough *)
+let channel_win_len = 4 * 1024 * 1024 (* 4MB channel window *)
+let channel_max_pkt_len = 64 * 1024   (* Must be smaller than max_pkt_len *)
+let max_channels = 1024               (* 1024 maximum channels per connection *)
 
 let guard_sshlen len =
   guard (len >= 0 && len <= max_len) (sprintf "Bad length: %d" len)
@@ -107,6 +110,15 @@ let int_to_disconnect_code code =
   | Some disc -> disc
   | None -> SSH_DISCONNECT_PROTOCOL_ERROR (* Mock up *)
 
+(* Channel open codes *)
+[%%cenum
+type channel_open_code =
+  | SSH_OPEN_ADMINISTRATIVELY_PROHIBITED  [@id 1]
+  | SSH_OPEN_CONNECT_FAILED               [@id 2]
+  | SSH_OPEN_UNKNOWN_CHANNEL_TYPE         [@id 3]
+  | SSH_OPEN_RESOURCE_SHORTAGE            [@id 4]
+[@@uint32_t][@@sexp]]
+
 type mpint = Nocrypto.Numeric.Z.t
 
 let sexp_of_mpint mpint = sexp_of_string (Z.to_string mpint)
@@ -169,6 +181,7 @@ type channel_open =
   | X11 of (string * int32)
   | Forwarded_tcpip of (string * int32 * string * int32)
   | Direct_tcpip of (string * int32 * string * int32)
+  | Raw_data of Cstruct.t
 
 let sexp_of_channel_open = function
   | Session -> sexp_of_string "session"
@@ -184,6 +197,7 @@ let sexp_of_channel_open = function
       (sprintf "direct-tcpip host address: %s port %ld \
        originator address: %s port: %ld" address port
          origin_address origin_port)
+  | Raw_data _ -> sexp_of_string ("Raw data/Unknown")
 
 type auth_method =
   | Pubkey of (Hostkey.pub * Cstruct.t option)

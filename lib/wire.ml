@@ -241,6 +241,11 @@ let put_channel_data channel_data buf =
     put_uint32 port |>
     put_string origin_addr |>
     put_uint32 origin_port
+  | Raw_data data -> put_raw data buf
+
+let blob_of_channel_data channel_data =
+  (* XXX Dbuf.create() allocates 1KB for just a few bytes *)
+  put_channel_data channel_data (Dbuf.create ()) |> Dbuf.to_cstruct
 
 let get_message buf =
   let open Ssh in
@@ -373,17 +378,17 @@ let get_message buf =
   | SSH_MSG_CHANNEL_OPEN ->
     get_string buf >>= fun (request, buf) ->
     get_uint32 buf >>= fun (send_channel, buf) ->
-    get_uint32 buf >>= fun (init_win_size, buf) ->
-    get_uint32 buf >>= fun (max_pkt_size, buf) ->
+    get_uint32 buf >>= fun (init_win, buf) ->
+    get_uint32 buf >>= fun (max_pkt, buf) ->
     (match request with
      | "session" ->
        ok (Ssh_msg_channel_open
-             (send_channel, init_win_size, max_pkt_size, Session))
+             (send_channel, init_win, max_pkt, Session))
      | "x11" ->
        get_string buf >>= fun (address, buf) ->
        get_uint32 buf >>= fun (port, buf) ->
        ok (Ssh_msg_channel_open
-             (send_channel, init_win_size, max_pkt_size,
+             (send_channel, init_win, max_pkt,
               (X11 (address, port))))
      | "forwarded-tcpip" ->
        get_string buf >>= fun (con_address, buf) ->
@@ -391,22 +396,22 @@ let get_message buf =
        get_string buf >>= fun (origin_address, buf) ->
        get_uint32 buf >>= fun (origin_port, buf) ->
        ok (Ssh_msg_channel_open
-             (send_channel, init_win_size, max_pkt_size,
+             (send_channel, init_win, max_pkt,
                 Forwarded_tcpip (con_address, con_port, origin_address,
                                  origin_port)))
      | _ -> error ("Unknown request " ^ request))
   | SSH_MSG_CHANNEL_OPEN_CONFIRMATION ->
     get_uint32 buf >>= fun (recp_channel, buf) ->
     get_uint32 buf >>= fun (send_channel, buf) ->
-    get_uint32 buf >>= fun (init_win_size, buf) ->
-    get_uint32 buf >>= fun (max_pkt_size, buf) ->
+    get_uint32 buf >>= fun (init_win, buf) ->
+    get_uint32 buf >>= fun (max_pkt, buf) ->
     (*
      * The protocol does not tell us which channel type this is, so we can't
      * give the caller a good type for channel open and must return Raw_data.
      * We must provide the caller a function to make the conversion.
      *)
     ok (Ssh_msg_channel_open_confirmation (recp_channel, send_channel,
-                                           init_win_size, max_pkt_size,
+                                           init_win, max_pkt,
                                            buf))
   | SSH_MSG_CHANNEL_OPEN_FAILURE ->
     get_uint32 buf >>= fun (recp_channel, buf) ->
@@ -613,26 +618,27 @@ let put_message msg buf =
        | None -> buf)
     | Ssh_msg_request_failure ->
       put_id SSH_MSG_REQUEST_FAILURE buf
-    | Ssh_msg_channel_open (channel, init_win_size, max_pkt_size, channel_data) ->
-      let request = match channel_data with
+    | Ssh_msg_channel_open (channel, init_win, max_pkt, data) ->
+      let request = match data with
         | Session -> "session"
         | X11 _ -> "x11"
         | Forwarded_tcpip _ -> "forwarded-tcpip"
         | Direct_tcpip _ -> "direct-tcpip"
+        | Raw_data _ -> invalid_arg "Unknown channel type"
       in
       put_id SSH_MSG_CHANNEL_OPEN buf |>
       put_string request |>
       put_uint32 channel |>
-      put_uint32 init_win_size |>
-      put_uint32 max_pkt_size |>
-      put_channel_data channel_data
+      put_uint32 init_win |>
+      put_uint32 max_pkt |>
+      put_channel_data data
     | Ssh_msg_channel_open_confirmation (recp_channel, send_channel,
-                                            init_win_size, max_pkt_size, data) ->
+                                            init_win, max_pkt, data) ->
       put_id SSH_MSG_CHANNEL_OPEN_CONFIRMATION buf |>
       put_uint32 recp_channel |>
       put_uint32 send_channel |>
-      put_uint32 init_win_size |>
-      put_uint32 max_pkt_size |>
+      put_uint32 init_win |>
+      put_uint32 max_pkt |>
       put_raw data
     | Ssh_msg_channel_open_failure (recp_channel, reason, desc, lang) ->
       put_id SSH_MSG_CHANNEL_OPEN_FAILURE buf |>

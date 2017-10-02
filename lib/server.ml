@@ -44,8 +44,9 @@ type t = {
   new_keys_stoc  : Kex.keys option;       (* Install after we send NEWKEYS *)
   input_buffer   : Cstruct.t;             (* Unprocessed input *)
   expect         : Ssh.message_id option; (* Messages to expect, None if any *)
-  auth_state     : auth_state;		  (* username * service in progress *)
+  auth_state     : auth_state;            (* username * service in progress *)
   user_db        : user list;             (* username database *)
+  channels       : Channels.t;            (* Ssh channels *)
   ignore_next_packet : bool;              (* Ignore the next packet from the wire *)
 }
 
@@ -80,6 +81,7 @@ let make host_key user_db =
             expect = Some SSH_MSG_VERSION;
             auth_state = Preauth;
             user_db;
+            channels = Channels.make ();
             ignore_next_packet = false }
   in
   t, [ banner_msg; kex_msg ]
@@ -144,7 +146,8 @@ let handle_userauth_request t username service auth_method =
   in
   (* Auth is done, further attempts should be silently ignored *)
   let success t =
-    ok ({ t with auth_state = Done }, [ Ssh_msg_userauth_success ])
+    (* XXX Not sure about expect being None, maybe we can restrict it more ? *)
+    ok ({ t with auth_state = Done; expect = None }, [ Ssh_msg_userauth_success ])
   in
   let disconnect t =
     ok (t, [ Ssh_msg_disconnect
@@ -210,6 +213,55 @@ let handle_userauth_request t username service auth_method =
       try_auth t
     else
       disconnect t
+
+let handle_channel_open t send_channel init_win_size max_pkt_size data =
+  let open Ssh in
+  let fail t code s =
+    let fmsg = Ssh_msg_channel_open_failure
+        (send_channel, Ssh.channel_open_code_to_int code, s, "")
+    in
+    ok (t, [ fmsg ])
+  in
+  let known data = match data with
+    | Session -> true
+    | X11 _ -> true
+    | Forwarded_tcpip _ -> true
+    | Direct_tcpip _ -> true
+    | Raw_data _ -> false
+  in
+  let allowed data =
+    match data with
+    | Session -> true
+    | X11 _ -> false
+    | Forwarded_tcpip _ -> false
+    | Direct_tcpip _ -> false
+    | Raw_data _ -> false
+  in
+  let do_open t send_channel init_win_size max_pkt_size data =
+    match
+      Channels.add ~id:send_channel ~win:init_win_size
+        ~max_pkt:max_pkt_size t.channels
+    with
+    | Error `No_channels_left ->
+      fail t SSH_OPEN_RESOURCE_SHORTAGE "Maximum number of channels reached"
+    | Ok (c, channels) ->
+      let open Channel in
+      let confirmation =
+        Ssh_msg_channel_open_confirmation
+          (send_channel,
+           c.us.id,
+           c.us.win,
+           c.us.max_pkt,
+           Wire.blob_of_channel_data data)
+      in
+      ok ({ t with channels }, [ confirmation ])
+  in
+  if not (known data) then
+    fail t SSH_OPEN_UNKNOWN_CHANNEL_TYPE ""
+  else if not (allowed data) then (* XXX also covers unimplemented *)
+    fail t SSH_OPEN_ADMINISTRATIVELY_PROHIBITED ""
+  else
+    do_open t send_channel init_win_size max_pkt_size data
 
 let handle_msg t msg =
   let open Ssh in
@@ -282,6 +334,8 @@ let handle_msg t msg =
       ok (t, [ msg ])
   | Ssh_msg_userauth_request (username, service, auth_method) ->
     handle_userauth_request t username service auth_method
+  | Ssh_msg_channel_open (send_channel, init_win_size, max_pkt_size, data) ->
+    handle_channel_open t send_channel init_win_size max_pkt_size data
   | Ssh_msg_version v ->
     ok ({ t with client_version = Some v;
                  expect = Some SSH_MSG_KEXINIT }, [])

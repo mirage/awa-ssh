@@ -5,3 +5,5 @@ Cipher
 Hmac
 Kex
 Server
+Channel
+Channels
