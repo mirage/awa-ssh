@@ -279,28 +279,24 @@ let handle_channel_open t send_channel init_win_size max_pkt_size data =
 let handle_channel_request t recp_channel want_reply data =
   let open Ssh in
   let fail t =
-    let reply =
-      if want_reply then
-        [ Ssh_msg_channel_failure recp_channel ]
-      else
-        []
-    in
-    ok (t, reply)
+    let failure = Ssh_msg_channel_failure recp_channel in
+    ok (t, if want_reply then [ failure ] else [])
   in
   let success t =
-    let reply =
-      if want_reply then
-        [ Ssh_msg_channel_success recp_channel ]
-      else
-        []
+    let succ = Ssh_msg_channel_success recp_channel in
+    ok (t, if want_reply then [ succ ] else []) in
+  let send_data t c data =
+    let open Channel in
+    let succ = Ssh_msg_channel_success recp_channel in
+    let msgs = [ Ssh_msg_channel_data (c.them.id, data);
+                 Ssh_msg_channel_close c.them.id ]
     in
-    ok (t, reply)
+    ok (t, if want_reply then succ :: msgs else msgs)
   in
   let handle_exec t c cmd data =
-    let open Channel in
     (* XXX for testing *)
     let ans = if cmd = "foo" then "bar\n" else ("Don't know `" ^ cmd ^ "`\n") in
-    ok (t, [ Ssh_msg_channel_data (c.them.id, ans) ])
+    send_data t c ans
   in
   let handle t c data =
     match data with
