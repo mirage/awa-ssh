@@ -162,16 +162,16 @@ let sexp_of_channel_request = function
                       single_con x11_auth_proto x11_auth_cookie x11_screen_nr)
   | Env (name, value) ->
     sexp_of_string (sprintf "env name: %s value: %s" name value)
-  | Exec (command) -> sexp_of_string (sprintf "exec command: %s" command)
-  | Subsystem (name) -> sexp_of_string (sprintf "subsystem name: %s" name)
+  | Exec command -> sexp_of_string (sprintf "exec command: %s" command)
+  | Subsystem name -> sexp_of_string (sprintf "subsystem name: %s" name)
   | Window_change (width_char, height_row, width_px, height_px) ->
     sexp_of_string (sprintf "window-change width_char: %ld height_row: %ld \
                              width_px: %ld height_px %ld"
                       width_char height_row width_px height_px)
-  | Xon_xoff (client_can_do) ->
+  | Xon_xoff client_can_do ->
     sexp_of_string (sprintf "xon-xoff client_can_do %B" client_can_do)
-  | Signal (name) -> sexp_of_string (sprintf "signal name: %s" name)
-  | Exit_status (status) ->
+  | Signal name -> sexp_of_string (sprintf "signal name: %s" name)
+  | Exit_status status ->
     sexp_of_string (sprintf "exit-status status: %ld" status)
   | Exit_signal (name, core_dumped, message, lang) ->
     sexp_of_string (sprintf "exit-signal name: %s core_dumped: %B message: %s\

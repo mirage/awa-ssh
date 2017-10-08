@@ -276,6 +276,51 @@ let handle_channel_open t send_channel init_win_size max_pkt_size data =
   else
     do_open t send_channel init_win_size max_pkt_size data
 
+let handle_channel_request t recp_channel want_reply data =
+  let open Ssh in
+  let fail t =
+    let reply =
+      if want_reply then
+        [ Ssh_msg_channel_failure recp_channel ]
+      else
+        []
+    in
+    ok (t, reply)
+  in
+  let success t =
+    let reply =
+      if want_reply then
+        [ Ssh_msg_channel_success recp_channel ]
+      else
+        []
+    in
+    ok (t, reply)
+  in
+  let handle_exec t c cmd data =
+    let open Channel in
+    (* XXX for testing *)
+    let ans = if cmd = "foo" then "bar\n" else ("Don't know `" ^ cmd ^ "`\n") in
+    ok (t, [ Ssh_msg_channel_data (c.them.id, ans) ])
+  in
+  let handle t c data =
+    match data with
+    | Pty_req _ -> fail t
+    | X11_req _ -> fail t
+    | Env (key, value) -> success t  (* TODO implement me *)
+    | Exec cmd -> handle_exec t c cmd data
+    | Subsystem _ -> fail t
+    | Window_change _ -> fail t
+    | Xon_xoff _ -> fail t
+    | Signal _ -> fail t
+    | Exit_status _ -> fail t
+    | Exit_signal _ -> fail t
+    | Raw_data _ -> fail t
+  in
+  (* Lookup the channel *)
+  match Channels.lookup recp_channel t.channels with
+  | None -> fail t
+  | Some c -> handle t c data
+
 let handle_msg t msg =
   let open Ssh in
   let open Nocrypto in
@@ -345,6 +390,8 @@ let handle_msg t msg =
     handle_userauth_request t username service auth_method
   | Ssh_msg_channel_open (send_channel, init_win_size, max_pkt_size, data) ->
     handle_channel_open t send_channel init_win_size max_pkt_size data
+  | Ssh_msg_channel_request (recp_channel, want_reply, data) ->
+    handle_channel_request t recp_channel want_reply data
   | Ssh_msg_version v ->
     ok ({ t with client_version = Some v;
                  expect = Some SSH_MSG_KEXINIT }, [])
