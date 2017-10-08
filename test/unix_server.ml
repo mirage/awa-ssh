@@ -47,11 +47,11 @@ let rec output_msg_loop t fd msgs =
   | msg :: tl ->
     match action_of_msg t msg with
     | Send_data (t, data) ->
-      Printf.printf ">>> %s\n" (Ssh.message_to_string msg);
+      Printf.printf ">>> %s\n%!" (Ssh.message_to_string msg);
       write_cstruct fd data;
       output_msg_loop t fd tl
     | Disconnect (t, data) ->
-      Printf.printf ">>> %s\n" (Ssh.message_to_string msg);
+      Printf.printf ">>> %s\n%!" (Ssh.message_to_string msg);
       write_cstruct fd data;
       error "We sent a disconnect"
     | Ssh_error e -> error e
@@ -61,7 +61,7 @@ let rec input_msg_loop t fd =
   match msg with
   | None -> ok t
   | Some msg ->
-    Printf.printf "<<< %s\n" (Ssh.message_to_string msg);
+    Printf.printf "<<< %s\n%!" (Ssh.message_to_string msg);
     Server.handle_msg t msg >>= fun (t, replies) ->
     match replies with
     | [] -> input_msg_loop t fd
