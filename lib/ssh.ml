@@ -146,6 +146,7 @@ type channel_request =
   | Signal of string
   | Exit_status of int32
   | Exit_signal of (string * bool * string * string)
+  | Raw_data of Cstruct.t
 
 let sexp_of_channel_request = function
   | Pty_req (term_env, width_char, height_row, width_px, height_px,
@@ -175,6 +176,7 @@ let sexp_of_channel_request = function
   | Exit_signal (name, core_dumped, message, lang) ->
     sexp_of_string (sprintf "exit-signal name: %s core_dumped: %B message: %s\
                             lang: %s" name core_dumped message lang)
+  | Raw_data _ -> sexp_of_string ("Raw data/Unknown")
 
 type channel_open =
   | Session
@@ -266,7 +268,7 @@ type message =
   | Ssh_msg_channel_extended_data of (int32 * int32 * string)
   | Ssh_msg_channel_eof of int32
   | Ssh_msg_channel_close of int32
-  | Ssh_msg_channel_request of (int32 * string * bool * channel_request)
+  | Ssh_msg_channel_request of (int32 * bool * channel_request)
   | Ssh_msg_channel_success of int32
   | Ssh_msg_channel_failure of int32
   | Ssh_msg_version of string       (* Mocked version *)

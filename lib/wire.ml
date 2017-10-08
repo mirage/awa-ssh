@@ -450,7 +450,7 @@ let get_message buf =
        get_uint32 buf >>= fun (width_px, buf) ->
        get_uint32 buf >>= fun (height_px, buf) ->
        get_string buf >>= fun (term_modes, buf) ->
-       ok (Ssh_msg_channel_request (channel, request, want_reply,
+       ok (Ssh_msg_channel_request (channel, want_reply,
                                     Pty_req (term_env, width_char, height_row,
                                              width_px, height_px, term_modes)))
      | "x11-req" ->
@@ -458,48 +458,48 @@ let get_message buf =
        get_string buf >>= fun (x11_auth_proto, buf) ->
        get_string buf >>= fun (x11_auth_cookie, buf) ->
        get_uint32 buf >>= fun (x11_screen_nr, buf) ->
-       ok (Ssh_msg_channel_request (channel, request, want_reply,
+       ok (Ssh_msg_channel_request (channel, want_reply,
                                     X11_req (single_con, x11_auth_proto,
                                              x11_auth_cookie, x11_screen_nr)))
      | "env" ->
        get_string buf >>= fun (name, buf) ->
        get_string buf >>= fun (value, buf) ->
-       ok (Ssh_msg_channel_request (channel, request, want_reply,
+       ok (Ssh_msg_channel_request (channel, want_reply,
                                     Env (name, value)))
      | "exec" ->
        get_string buf >>= fun (command, buf) ->
-       ok (Ssh_msg_channel_request (channel, request, want_reply,
+       ok (Ssh_msg_channel_request (channel, want_reply,
                                     Exec (command)))
      | "subsystem" ->
        get_string buf >>= fun (name, buf) ->
-       ok (Ssh_msg_channel_request (channel, request, want_reply,
+       ok (Ssh_msg_channel_request (channel, want_reply,
                                     Subsystem (name)))
      | "window-change" ->
        get_uint32 buf >>= fun (width_char, buf) ->
        get_uint32 buf >>= fun (height_row, buf) ->
        get_uint32 buf >>= fun (width_px, buf) ->
        get_uint32 buf >>= fun (height_px, buf) ->
-       ok (Ssh_msg_channel_request (channel, request, want_reply,
+       ok (Ssh_msg_channel_request (channel, want_reply,
                                     Window_change (width_char, height_row,
                                              width_px, height_px)))
      | "xon-xoff" ->
        get_bool buf >>= fun (client_can_do, buf) ->
-       ok (Ssh_msg_channel_request (channel, request, want_reply,
+       ok (Ssh_msg_channel_request (channel, want_reply,
                                     Xon_xoff (client_can_do)))
      | "signal" ->
        get_string buf >>= fun (name, buf) ->
-       ok (Ssh_msg_channel_request (channel, request, want_reply,
+       ok (Ssh_msg_channel_request (channel, want_reply,
                                     Signal (name)))
      | "exit-status" ->
        get_uint32 buf >>= fun (status, buf) ->
-       ok (Ssh_msg_channel_request (channel, request, want_reply,
+       ok (Ssh_msg_channel_request (channel, want_reply,
                                     Exit_status (status)))
      | "exit-signal" ->
        get_string buf >>= fun (name, buf) ->
        get_bool buf >>= fun (core_dumped, buf) ->
        get_string buf >>= fun (message, buf) ->
        get_string buf >>= fun (lang, buf) ->
-       ok (Ssh_msg_channel_request (channel, request, want_reply,
+       ok (Ssh_msg_channel_request (channel, want_reply,
                                     Exit_signal (name, core_dumped, message, lang)))
      | _ -> error ("Unknown request " ^ request))
   | SSH_MSG_CHANNEL_SUCCESS ->
@@ -665,13 +665,26 @@ let put_message msg buf =
     | Ssh_msg_channel_close channel ->
       put_id SSH_MSG_CHANNEL_CLOSE buf |>
       put_uint32 channel
-    | Ssh_msg_channel_request (channel, request, want_reply, channel_request) ->
+    | Ssh_msg_channel_request (channel, want_reply, data) ->
+      let request = match data with
+        | Pty_req _ -> "pty-req"
+        | X11_req _ -> "x11-req"
+        | Env _ -> "env"
+        | Exec _ -> "exec"
+        | Subsystem _ -> "subsystem"
+        | Window_change _ -> "window-change"
+        | Xon_xoff _ -> "xon-xoff"
+        | Signal _ -> "signal"
+        | Exit_status _ -> "exit-status"
+        | Exit_signal _ -> "exit-signal"
+        | Raw_data _ -> invalid_arg "Unknown channel request type"
+      in
       let buf = put_id SSH_MSG_CHANNEL_REQUEST buf |>
                 put_uint32 channel |>
                 put_string request |>
                 put_bool want_reply
       in
-      (match channel_request with
+      (match data with
        | Pty_req (term_env, width_char, height_row, width_px, height_px,
                   term_modes) ->
          put_string term_env buf |>
@@ -688,21 +701,22 @@ let put_message msg buf =
        | Env (name, value) ->
          put_string name buf|>
          put_string value
-       | Exec (command) -> put_string command buf
-       | Subsystem (name) -> put_string name buf
+       | Exec command -> put_string command buf
+       | Subsystem name -> put_string name buf
        | Window_change (width_char, height_row, width_px, height_px) ->
          put_uint32 width_char buf |>
          put_uint32 height_row |>
          put_uint32 width_px |>
          put_uint32 height_px
-       | Xon_xoff (client_can_do) -> put_bool client_can_do buf
-       | Signal (name) -> put_string name buf
-       | Exit_status (status) -> put_uint32 status buf
+       | Xon_xoff client_can_do -> put_bool client_can_do buf
+       | Signal name -> put_string name buf
+       | Exit_status status -> put_uint32 status buf
        | Exit_signal (name, core_dumped, message, lang) ->
          put_string name buf |>
          put_bool core_dumped |>
          put_string message |>
-         put_string lang)
+         put_string lang
+       | Raw_data _ -> invalid_arg "Unknown channel request type")
     | Ssh_msg_channel_success channel ->
       put_id SSH_MSG_CHANNEL_SUCCESS buf |>
       put_uint32 channel

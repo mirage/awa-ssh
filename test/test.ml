@@ -203,7 +203,7 @@ let t_parsing () =
       Ssh_msg_channel_extended_data (long, long, "DATADATA");
       Ssh_msg_channel_eof long;
       Ssh_msg_channel_close long;
-      Ssh_msg_channel_request (long, "signal", false, Signal("kill"));
+      Ssh_msg_channel_request (long, false, Signal("kill"));
       Ssh_msg_channel_success long;
       Ssh_msg_channel_failure long; ]
   in
