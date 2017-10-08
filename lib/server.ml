@@ -100,12 +100,25 @@ let find_user_key t user key =
 let of_buf t buf =
   { t with input_buffer = buf }
 
-let patch_new_keys old_keys new_keys =
+(* t with updated keys from new_keys_ctos *)
+let of_new_keys_ctos t =
   let open Kex in
   let open Hmac in
-  guard_some new_keys "No new_keys_ctos" >>= fun new_keys ->
-  let new_mac = { new_keys.mac with seq = old_keys.mac.seq } in
-  ok { new_keys with mac = new_mac }
+  guard_some t.new_keys_ctos "No new_keys_ctos" >>= fun new_keys_ctos ->
+  guard (new_keys_ctos <> plaintext_keys) "Plaintext new keys" >>= fun () ->
+  let new_mac_ctos = { new_keys_ctos.mac with seq = t.keys_ctos.mac.seq } in
+  let new_keys_ctos = { new_keys_ctos with mac = new_mac_ctos } in
+  ok { t with keys_ctos = new_keys_ctos; new_keys_ctos = None }
+
+(* t with updated keys from new_keys_stoc *)
+let of_new_keys_stoc t =
+  let open Kex in
+  let open Hmac in
+  guard_some t.new_keys_stoc "No new_keys_stoc" >>= fun new_keys_stoc ->
+  guard (new_keys_stoc <> plaintext_keys) "Plaintext new keys" >>= fun () ->
+  let new_mac_stoc = { new_keys_stoc.mac with seq = t.keys_stoc.mac.seq } in
+  let new_keys_stoc = { new_keys_stoc with mac = new_mac_stoc } in
+  ok { t with keys_stoc = new_keys_stoc; new_keys_stoc = None }
 
 let input_buf t buf =
   of_buf t (cs_join t.input_buffer buf)
@@ -314,13 +327,9 @@ let handle_msg t msg =
       else
         None
     in
-    patch_new_keys t.keys_ctos t.new_keys_ctos >>= fun new_keys_ctos ->
-    (* paranoia *)
-    assert (new_keys_ctos <> Kex.plaintext_keys);
-    ok ({ t with keys_ctos = new_keys_ctos;
-                 new_keys_ctos = None;
-                 expect },
-        [])
+    (* Update keys *)
+    of_new_keys_ctos t >>= fun t ->
+    ok ({ t with expect }, [])
   | Ssh_msg_service_request service ->
     if service = "ssh-userauth" then
       ok ({ t with expect = Some SSH_MSG_USERAUTH_REQUEST },
@@ -358,12 +367,8 @@ let action_of_msg t msg =
   (* Do state transitions *)
   match msg with
   | Ssh.Ssh_msg_newkeys ->
-    (match patch_new_keys t.keys_stoc t.new_keys_stoc with
+    (match of_new_keys_stoc t with
      | Error e -> Ssh_error e
-     | Ok new_keys_stoc ->
-       let t = { t with keys_stoc = new_keys_stoc;
-                        new_keys_stoc = None }
-       in
-       Send_data (t, buf))
+     | Ok t -> Send_data (t, buf))
   | Ssh.Ssh_msg_disconnect _ -> Disconnect (t, buf)
   | _ -> Send_data (t, buf)
