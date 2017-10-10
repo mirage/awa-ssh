@@ -55,7 +55,7 @@ let by_pubkey username pubkey session_id service signed db =
       let unsigned =
         let open Wire in
         put_cstring session_id (Dbuf.create ()) |>
-        put_message_id Ssh.SSH_MSG_USERAUTH_REQUEST |>
+        put_message_id Ssh.MSG_USERAUTH_REQUEST |>
         put_string username |>
         put_string service |>
         put_string "publickey" |>

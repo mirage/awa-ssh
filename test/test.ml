@@ -96,7 +96,7 @@ let t_parsing () =
   (*
    * Case 1: Full buff consumed
    *)
-  let msg = Ssh_msg_ignore "a" in
+  let msg = Msg_ignore "a" in
   let buf = encrypt_plain msg in
   let pkt, rbuf = get_some @@ get_ok @@ decrypt_plain buf in
   let msg2 = get_ok @@ Packet.to_msg pkt in
@@ -106,7 +106,7 @@ let t_parsing () =
   (*
    * Case 2: 1 byte left
    *)
-  let msg = Ssh_msg_ignore "a" in
+  let msg = Msg_ignore "a" in
   let buf, _ = Packet.encrypt Kex.plaintext_keys msg in
   let buf = Cstruct.append buf (Cstruct.of_string "b") in
   let pkt, rbuf = get_some @@ get_ok @@ decrypt_plain buf in
@@ -128,16 +128,16 @@ let t_parsing () =
     assert ((Cstruct.len buf) = 0);
     match msg, msg2 with
     (* Can't compare Cstruct.t, must unpack and Cstruct.equal () *)
-    | Ssh_msg_userauth_request (user_a, service_a, authmethod_a),
-      Ssh_msg_userauth_request (user_b, service_b, authmethod_b) ->
+    | Msg_userauth_request (user_a, service_a, authmethod_a),
+      Msg_userauth_request (user_b, service_b, authmethod_b) ->
       assert ((user_a, service_a) = (user_b, service_b));
       assert (auth_method_equal authmethod_a authmethod_b);
-    | Ssh_msg_kexdh_reply (pub_rsa1, mpint1, siga),
-      Ssh_msg_kexdh_reply (pub_rsa2, mpint2, sigb) ->
+    | Msg_kexdh_reply (pub_rsa1, mpint1, siga),
+      Msg_kexdh_reply (pub_rsa2, mpint2, sigb) ->
       assert (pub_rsa1 = pub_rsa2 && mpint1 = mpint2);
       assert (Hostkey.signature_equal siga sigb)
-    | Ssh_msg_channel_open_confirmation (a1, a2, a3, a4, a5),
-      Ssh_msg_channel_open_confirmation (b1, b2, b3, b4, b5) ->
+    | Msg_channel_open_confirmation (a1, a2, a3, a4, a5),
+      Msg_channel_open_confirmation (b1, b2, b3, b4, b5) ->
       assert (a1 = b1);
       assert (a2 = b2);
       assert (a3 = b3);
@@ -154,58 +154,58 @@ let t_parsing () =
   let pub_rsa = Hostkey.Rsa_pub (Nocrypto.Rsa.pub_of_priv rsa) in
   let signature = Hostkey.sign priv_rsa cstring in
   let l =
-    [ Ssh_msg_disconnect (SSH_DISCONNECT_PROTOCOL_ERROR, "foo", "bar");
-      Ssh_msg_ignore "Fora Temer";
-      Ssh_msg_unimplemented long;
-      Ssh_msg_debug (false, "Fora", "Temer");
-      Ssh_msg_service_request "Fora Temer";
-      Ssh_msg_service_accept "Ricardo Flores Magon";
-      (* Ssh_msg_kexinit foo; *)
-      Ssh_msg_kexdh_init mpint;
-      Ssh_msg_kexdh_reply (pub_rsa, mpint, signature);
-      Ssh_msg_newkeys;
-      Ssh_msg_userauth_request
+    [ Msg_disconnect (DISCONNECT_PROTOCOL_ERROR, "foo", "bar");
+      Msg_ignore "Fora Temer";
+      Msg_unimplemented long;
+      Msg_debug (false, "Fora", "Temer");
+      Msg_service_request "Fora Temer";
+      Msg_service_accept "Ricardo Flores Magon";
+      (* Msg_kexinit foo; *)
+      Msg_kexdh_init mpint;
+      Msg_kexdh_reply (pub_rsa, mpint, signature);
+      Msg_newkeys;
+      Msg_userauth_request
         ("haesbaert", "ssh-userauth",
          Pubkey (pub_rsa, None));
-      Ssh_msg_userauth_request
+      Msg_userauth_request
         ("haesbaert", "ssh-userauth",
          Pubkey (pub_rsa, Some signature));
-      Ssh_msg_userauth_request
+      Msg_userauth_request
         ("haesbaert", "ssh-userauth",
          Password ("a", Some "b"));
-      Ssh_msg_userauth_request
+      Msg_userauth_request
         ("haesbaert", "ssh-userauth",
          Password ("a", None));
-      Ssh_msg_userauth_request
+      Msg_userauth_request
         ("haesbaert", "ssh-userauth",
          Hostbased ("a", (Cstruct.of_string "b"), "c", "d",
                     (Cstruct.of_string "e")));
-      Ssh_msg_userauth_request
+      Msg_userauth_request
         ("haesbaert", "ssh-userauth", Authnone);
-      Ssh_msg_userauth_failure (["Fora"; "Temer"], true);
-      Ssh_msg_userauth_success;
-      Ssh_msg_userauth_banner ("Fora", "Temer");
-      Ssh_msg_userauth_pk_ok pub_rsa;
-      Ssh_msg_global_request
+      Msg_userauth_failure (["Fora"; "Temer"], true);
+      Msg_userauth_success;
+      Msg_userauth_banner ("Fora", "Temer");
+      Msg_userauth_pk_ok pub_rsa;
+      Msg_global_request
         ("tcpip-forward", true,
         Tcpip_forward ("127.0.0.1", long));
-      Ssh_msg_request_success (None);
-      Ssh_msg_request_failure;
-      Ssh_msg_channel_open
+      Msg_request_success (None);
+      Msg_request_failure;
+      Msg_channel_open
         (long, long, long,
          X11 ("::1", long));
-      Ssh_msg_channel_open_confirmation
+      Msg_channel_open_confirmation
         (long, long, long, long, Cstruct.of_string "Freedom of Mind");
-      Ssh_msg_channel_open_failure
+      Msg_channel_open_failure
         (long, long, "Because you stink", "enEN");
-      Ssh_msg_channel_window_adjust (long, Int32.succ long);
-      Ssh_msg_channel_data (long, "DATADATA");
-      Ssh_msg_channel_extended_data (long, long, "DATADATA");
-      Ssh_msg_channel_eof long;
-      Ssh_msg_channel_close long;
-      Ssh_msg_channel_request (long, false, Signal("kill"));
-      Ssh_msg_channel_success long;
-      Ssh_msg_channel_failure long; ]
+      Msg_channel_window_adjust (long, Int32.succ long);
+      Msg_channel_data (long, "DATADATA");
+      Msg_channel_extended_data (long, long, "DATADATA");
+      Msg_channel_eof long;
+      Msg_channel_close long;
+      Msg_channel_request (long, false, Signal("kill"));
+      Msg_channel_success long;
+      Msg_channel_failure long; ]
   in
   List.iter (fun m -> id m) l
 
@@ -217,10 +217,10 @@ let t_key_exchange () =
   let pkt, rbuf = get_some @@ get_ok @@ decrypt_plain buf in
   let msg = get_ok @@ Packet.to_msg pkt in
   let () = match msg with
-    | Ssh.Ssh_msg_kexinit kex ->
+    | Ssh.Msg_kexinit kex ->
       (* printf "%s\n%!" (Sexplib.Sexp.to_string_hum (Ssh.sexp_of_kex_pkt kex)); *)
       ()
-    | _ -> failwith "Expected Ssh_msg_kexinit"
+    | _ -> failwith "Expected Msg_kexinit"
   in
   Unix.close fd
 
@@ -289,9 +289,9 @@ let t_version () =
   | Error e -> failwith e
   | Ok (t, msg) ->
     match get_some msg with
-    | Ssh.Ssh_msg_version v ->
+    | Ssh.Msg_version v ->
       assert (v = "SSH-2.0-OpenSSH_6.9");
-      let t, _ =  get_ok @@ Server.input_msg t (Ssh.Ssh_msg_version v) in
+      let t, _ =  get_ok @@ Server.input_msg t (Ssh.Msg_version v) in
       assert (t.Server.client_version = (Some "SSH-2.0-OpenSSH_6.9"))
     | _ -> failwith "Expected Ssh_version"
 
@@ -299,14 +299,14 @@ let t_crypto () =
   let test keys =
     let open Kex in
     let txt = "abcdefghijklmnopqrstuvxz" in
-    let msg = Ssh.Ssh_msg_ignore txt in
+    let msg = Ssh.Msg_ignore txt in
     let buf_enc, keys_next = Packet.encrypt keys msg in
     let pkt, buf, keys_next2 =
       get_some @@ get_ok @@ Packet.decrypt keys buf_enc
     in
     let msg = get_ok @@ Packet.to_msg pkt in
     let () = match msg with
-      | Ssh.Ssh_msg_ignore s ->
+      | Ssh.Msg_ignore s ->
         assert (s = txt)
       | _ -> failwith "bad msg"
     in
@@ -355,21 +355,21 @@ let t_signature () =
 let t_ignore_next_packet () =
   let t, _ = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) [] in
   let t = Server.{ t with client_version = Some "SSH-2.0-client";
-                          expect = Some(Ssh.SSH_MSG_KEXINIT) }
+                          expect = Some(Ssh.MSG_KEXINIT) }
   in
   let kexinit = Ssh.{ (Kex.make_kexinit()) with
                       encryption_algs_ctos = ["aes256-cbc"];
                       first_kex_packet_follows = true }
   in
   (* Should set ignore_next_packet since the guess of the client is wrong *)
-  let message = Ssh.Ssh_msg_kexinit kexinit in
+  let message = Ssh.Msg_kexinit kexinit in
   let buf = encrypt_plain message in
   let t, message = get_ok (Server.pop_msg2 t buf) in
   let message = get_some message in
   let t, _ = get_ok (Server.input_msg t message) in
   assert (t.Server.ignore_next_packet = true);
   (* Should ignore the next packet since ignore_next_packet is true *)
-  let message = Ssh.Ssh_msg_debug(true, "woop", "Look at me") in
+  let message = Ssh.Msg_debug(true, "woop", "Look at me") in
   let buf = encrypt_plain message in
   let t, msg = get_ok (Server.pop_msg2 t buf) in
   assert (t.Server.ignore_next_packet = false);

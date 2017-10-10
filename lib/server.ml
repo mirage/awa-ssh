@@ -43,18 +43,18 @@ let guard_msg t msg =
   let open Ssh in
   match t.expect with
   | None -> ok ()
-  | Some SSH_MSG_DISCONNECT -> ok ()
-  | Some SSH_MSG_IGNORE -> ok ()
-  | Some SSH_MSG_DEBUG -> ok ()
+  | Some MSG_DISCONNECT -> ok ()
+  | Some MSG_IGNORE -> ok ()
+  | Some MSG_DEBUG -> ok ()
   | Some id ->
     let msgid = message_to_id msg in
     guard (id = msgid) ("Unexpected message " ^ (message_id_to_string msgid))
 
 let make host_key user_db =
   let open Ssh in
-  let banner_msg = Ssh_msg_version version_banner in
+  let banner_msg = Msg_version version_banner in
   let server_kexinit = Kex.make_kexinit () in
-  let kex_msg = Ssh.Ssh_msg_kexinit server_kexinit in
+  let kex_msg = Msg_kexinit server_kexinit in
   let t = { client_version = None;
             server_version = version_banner;
             server_kexinit;
@@ -67,7 +67,7 @@ let make host_key user_db =
             new_keys_ctos = None;
             new_keys_stoc = None;
             input_buffer = Cstruct.create 0;
-            expect = Some SSH_MSG_VERSION;
+            expect = Some MSG_VERSION;
             auth_state = Auth.Preauth;
             user_db;
             channels = Channels.make ();
@@ -104,7 +104,7 @@ let pop_msg2 t buf =
     match client_version with
     | None -> ok (t, None)
     | Some v ->
-      let msg = Ssh.Ssh_msg_version v in
+      let msg = Ssh.Msg_version v in
       ok ({ t with input_buffer }, Some msg)
   in
   let decrypt t buf =
@@ -125,22 +125,22 @@ let pop_msg t = pop_msg2 t t.input_buffer
 let rec input_userauth_request t username service auth_method =
   let open Ssh in
   let open Auth in
-  let disconnect t code s = ok (t, [ Ssh.disconnect_msg code s ]) in
+  let disconnect t code s = ok (t, [ disconnect_msg code s ]) in
   let discard t = ok (t, []) in
   let failure t =
     match t.auth_state with
     | Preauth | Done -> error "Unexpected auth_state"
     | Inprogress (u, s, nfailed) ->
       ok ({ t with auth_state = Inprogress (u, s, succ nfailed) },
-          [ Ssh_msg_userauth_failure ([ "publickey"; "password" ], false) ])
+          [ Msg_userauth_failure ([ "publickey"; "password" ], false) ])
   in
   let success t =
     ok ({ t with auth_state = Done; expect = None },
-        [ Ssh_msg_userauth_success ])
+        [ Msg_userauth_success ])
   in
   let try_probe t pubkey =
     if pubkey <> Hostkey.Unknown then
-      ok (t, [ Ssh_msg_userauth_pk_ok pubkey ])
+      ok (t, [ Msg_userauth_pk_ok pubkey ])
     else
       failure t
   in
@@ -167,13 +167,13 @@ let rec input_userauth_request t username service auth_method =
     input_userauth_request t username service auth_method
   | Inprogress (prev_username, prev_service, nfailed) ->
     if service <> "ssh-connection" then
-      disconnect t SSH_DISCONNECT_SERVICE_NOT_AVAILABLE
+      disconnect t DISCONNECT_SERVICE_NOT_AVAILABLE
         (sprintf "Don't know service `%s`" service)
     else if prev_username <> username || prev_service <> service then
-      disconnect t SSH_DISCONNECT_PROTOCOL_ERROR
+      disconnect t DISCONNECT_PROTOCOL_ERROR
         "Username or service changed during authentication"
     else if nfailed = 10 then
-      disconnect t SSH_DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE
+      disconnect t DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE
         "Maximum authentication attempts reached"
     else if nfailed > 10 then
       error "Maximum authentication attempts reached, already sent disconnect"
@@ -183,8 +183,8 @@ let rec input_userauth_request t username service auth_method =
 let input_channel_open t send_channel init_win_size max_pkt_size data =
   let open Ssh in
   let fail t code s =
-    let fmsg = Ssh_msg_channel_open_failure
-        (send_channel, Ssh.channel_open_code_to_int code, s, "")
+    let fmsg = Msg_channel_open_failure
+        (send_channel, channel_open_code_to_int code, s, "")
     in
     ok (t, [ fmsg ])
   in
@@ -209,11 +209,11 @@ let input_channel_open t send_channel init_win_size max_pkt_size data =
         ~max_pkt:max_pkt_size t.channels
     with
     | Error `No_channels_left ->
-      fail t SSH_OPEN_RESOURCE_SHORTAGE "Maximum number of channels reached"
+      fail t OPEN_RESOURCE_SHORTAGE "Maximum number of channels reached"
     | Ok (c, channels) ->
       let open Channel in
       let confirmation =
-        Ssh_msg_channel_open_confirmation
+        Msg_channel_open_confirmation
           (send_channel,
            c.us.id,
            c.us.win,
@@ -223,26 +223,26 @@ let input_channel_open t send_channel init_win_size max_pkt_size data =
       ok ({ t with channels }, [ confirmation ])
   in
   if not (known data) then
-    fail t SSH_OPEN_UNKNOWN_CHANNEL_TYPE ""
+    fail t OPEN_UNKNOWN_CHANNEL_TYPE ""
   else if not (allowed data) then (* XXX also covers unimplemented *)
-    fail t SSH_OPEN_ADMINISTRATIVELY_PROHIBITED ""
+    fail t OPEN_ADMINISTRATIVELY_PROHIBITED ""
   else
     do_open t send_channel init_win_size max_pkt_size data
 
 let input_channel_request t recp_channel want_reply data =
   let open Ssh in
   let fail t =
-    let failure = Ssh_msg_channel_failure recp_channel in
+    let failure = Msg_channel_failure recp_channel in
     ok (t, if want_reply then [ failure ] else [])
   in
   let success t =
-    let succ = Ssh_msg_channel_success recp_channel in
+    let succ = Msg_channel_success recp_channel in
     ok (t, if want_reply then [ succ ] else []) in
   let send_data t c data =
     let open Channel in
-    let succ = Ssh_msg_channel_success recp_channel in
-    let msgs = [ Ssh_msg_channel_data (c.them.id, data);
-                 Ssh_msg_channel_close c.them.id ]
+    let succ = Msg_channel_success recp_channel in
+    let msgs = [ Msg_channel_data (c.them.id, data);
+                 Msg_channel_close c.them.id ]
     in
     ok (t, if want_reply then succ :: msgs else msgs)
   in
@@ -275,7 +275,7 @@ let input_msg t msg =
   let open Nocrypto in
   guard_msg t msg >>= fun () ->
   match msg with
-  | Ssh_msg_kexinit kex ->
+  | Msg_kexinit kex ->
     Kex.negotiate ~s:t.server_kexinit ~c:kex
     >>= fun neg ->
     let ignore_next_packet =
@@ -284,10 +284,10 @@ let input_msg t msg =
     in
     ok ({ t with client_kexinit = Some kex;
                  neg_kex = Some neg;
-                 expect = Some SSH_MSG_KEXDH_INIT;
+                 expect = Some MSG_KEXDH_INIT;
                  ignore_next_packet },
         [])
-  | Ssh_msg_kexdh_init e ->
+  | Msg_kexdh_init e ->
     guard_some t.neg_kex "No negotiated kex" >>= fun neg ->
     guard_some t.client_version "No client version" >>= fun client_version ->
     guard_none t.new_keys_stoc "Already got new_keys_stoc" >>= fun () ->
@@ -309,37 +309,37 @@ let input_msg t msg =
     ok ({t with session_id = Some session_id;
                 new_keys_ctos = Some new_keys_ctos;
                 new_keys_stoc = Some new_keys_stoc;
-                expect = Some SSH_MSG_NEWKEYS },
-        [ Ssh_msg_kexdh_reply (pub_host_key, f, signature);
-          Ssh_msg_newkeys ])
-  | Ssh_msg_newkeys ->
+                expect = Some MSG_NEWKEYS },
+        [ Msg_kexdh_reply (pub_host_key, f, signature);
+          Msg_newkeys ])
+  | Msg_newkeys ->
     (* If this is the first time we keyed, we must take a service request *)
     let expect = if t.keys_ctos = Kex.plaintext_keys then
-        Some SSH_MSG_SERVICE_REQUEST
+        Some MSG_SERVICE_REQUEST
       else
         None
     in
     (* Update keys *)
     of_new_keys_ctos t >>= fun t ->
     ok ({ t with expect }, [])
-  | Ssh_msg_service_request service ->
+  | Msg_service_request service ->
     if service = "ssh-userauth" then
-      ok ({ t with expect = Some SSH_MSG_USERAUTH_REQUEST },
-          [ Ssh_msg_service_accept service ])
+      ok ({ t with expect = Some MSG_USERAUTH_REQUEST },
+          [ Msg_service_accept service ])
     else
-      let msg = Ssh.disconnect_msg SSH_DISCONNECT_SERVICE_NOT_AVAILABLE
+      let msg = disconnect_msg DISCONNECT_SERVICE_NOT_AVAILABLE
           (sprintf "service %s not available" service)
       in
       ok (t, [ msg ])
-  | Ssh_msg_userauth_request (username, service, auth_method) ->
+  | Msg_userauth_request (username, service, auth_method) ->
     input_userauth_request t username service auth_method
-  | Ssh_msg_channel_open (send_channel, init_win_size, max_pkt_size, data) ->
+  | Msg_channel_open (send_channel, init_win_size, max_pkt_size, data) ->
     input_channel_open t send_channel init_win_size max_pkt_size data
-  | Ssh_msg_channel_request (recp_channel, want_reply, data) ->
+  | Msg_channel_request (recp_channel, want_reply, data) ->
     input_channel_request t recp_channel want_reply data
-  | Ssh_msg_version v ->
+  | Msg_version v ->
     ok ({ t with client_version = Some v;
-                 expect = Some SSH_MSG_KEXINIT }, [])
+                 expect = Some MSG_KEXINIT }, [])
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))
 
 type output_action =
@@ -350,7 +350,7 @@ type output_action =
 let output_msg t msg =
   let t, buf =
     match msg with
-    | Ssh.Ssh_msg_version v ->
+    | Ssh.Msg_version v ->
       t, Cstruct.of_string (v ^ "\r\n")
     | msg ->
       let enc, keys = Packet.encrypt t.keys_stoc msg in
@@ -358,9 +358,9 @@ let output_msg t msg =
   in
   (* Do state transitions *)
   match msg with
-  | Ssh.Ssh_msg_newkeys ->
+  | Ssh.Msg_newkeys ->
     (match of_new_keys_stoc t with
      | Error e -> Ssh_error e
      | Ok t -> Send_data (t, buf))
-  | Ssh.Ssh_msg_disconnect _ -> Disconnect (t, buf)
+  | Ssh.Msg_disconnect _ -> Disconnect (t, buf)
   | _ -> Send_data (t, buf)

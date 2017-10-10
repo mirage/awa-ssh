@@ -38,36 +38,36 @@ let guard_sshlen_exn len =
 
 [%%cenum
 type message_id =
-  | SSH_MSG_DISCONNECT                [@id 1]
-  | SSH_MSG_IGNORE                    [@id 2]
-  | SSH_MSG_UNIMPLEMENTED             [@id 3]
-  | SSH_MSG_DEBUG                     [@id 4]
-  | SSH_MSG_SERVICE_REQUEST           [@id 5]
-  | SSH_MSG_SERVICE_ACCEPT            [@id 6]
-  | SSH_MSG_KEXINIT                   [@id 20]
-  | SSH_MSG_NEWKEYS                   [@id 21]
-  | SSH_MSG_KEXDH_INIT                [@id 30]
-  | SSH_MSG_KEXDH_REPLY               [@id 31]
-  | SSH_MSG_USERAUTH_REQUEST          [@id 50]
-  | SSH_MSG_USERAUTH_FAILURE          [@id 51]
-  | SSH_MSG_USERAUTH_SUCCESS          [@id 52]
-  | SSH_MSG_USERAUTH_BANNER           [@id 53]
-  | SSH_MSG_USERAUTH_PK_OK            [@id 60]
-  | SSH_MSG_GLOBAL_REQUEST            [@id 80]
-  | SSH_MSG_REQUEST_SUCCESS           [@id 81]
-  | SSH_MSG_REQUEST_FAILURE           [@id 82]
-  | SSH_MSG_CHANNEL_OPEN              [@id 90]
-  | SSH_MSG_CHANNEL_OPEN_CONFIRMATION [@id 91]
-  | SSH_MSG_CHANNEL_OPEN_FAILURE      [@id 92]
-  | SSH_MSG_CHANNEL_WINDOW_ADJUST     [@id 93]
-  | SSH_MSG_CHANNEL_DATA              [@id 94]
-  | SSH_MSG_CHANNEL_EXTENDED_DATA     [@id 95]
-  | SSH_MSG_CHANNEL_EOF               [@id 96]
-  | SSH_MSG_CHANNEL_CLOSE             [@id 97]
-  | SSH_MSG_CHANNEL_REQUEST           [@id 98]
-  | SSH_MSG_CHANNEL_SUCCESS           [@id 99]
-  | SSH_MSG_CHANNEL_FAILURE           [@id 100]
-  | SSH_MSG_VERSION                   [@id -1]
+  | MSG_DISCONNECT                [@id 1]
+  | MSG_IGNORE                    [@id 2]
+  | MSG_UNIMPLEMENTED             [@id 3]
+  | MSG_DEBUG                     [@id 4]
+  | MSG_SERVICE_REQUEST           [@id 5]
+  | MSG_SERVICE_ACCEPT            [@id 6]
+  | MSG_KEXINIT                   [@id 20]
+  | MSG_NEWKEYS                   [@id 21]
+  | MSG_KEXDH_INIT                [@id 30]
+  | MSG_KEXDH_REPLY               [@id 31]
+  | MSG_USERAUTH_REQUEST          [@id 50]
+  | MSG_USERAUTH_FAILURE          [@id 51]
+  | MSG_USERAUTH_SUCCESS          [@id 52]
+  | MSG_USERAUTH_BANNER           [@id 53]
+  | MSG_USERAUTH_PK_OK            [@id 60]
+  | MSG_GLOBAL_REQUEST            [@id 80]
+  | MSG_REQUEST_SUCCESS           [@id 81]
+  | MSG_REQUEST_FAILURE           [@id 82]
+  | MSG_CHANNEL_OPEN              [@id 90]
+  | MSG_CHANNEL_OPEN_CONFIRMATION [@id 91]
+  | MSG_CHANNEL_OPEN_FAILURE      [@id 92]
+  | MSG_CHANNEL_WINDOW_ADJUST     [@id 93]
+  | MSG_CHANNEL_DATA              [@id 94]
+  | MSG_CHANNEL_EXTENDED_DATA     [@id 95]
+  | MSG_CHANNEL_EOF               [@id 96]
+  | MSG_CHANNEL_CLOSE             [@id 97]
+  | MSG_CHANNEL_REQUEST           [@id 98]
+  | MSG_CHANNEL_SUCCESS           [@id 99]
+  | MSG_CHANNEL_FAILURE           [@id 100]
+  | MSG_VERSION                   [@id -1]
 [@@uint8_t][@@sexp]]
 
 type kexinit = {
@@ -88,35 +88,35 @@ type kexinit = {
 
 [%%cenum
 type disconnect_code =
-  | SSH_DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT      [@id  1]
-  | SSH_DISCONNECT_PROTOCOL_ERROR                   [@id  2]
-  | SSH_DISCONNECT_KEY_EXCHANGE_FAILED              [@id  3]
-  | SSH_DISCONNECT_RESERVED                         [@id  4]
-  | SSH_DISCONNECT_MAC_ERROR                        [@id  5]
-  | SSH_DISCONNECT_COMPRESSION_ERROR                [@id  6]
-  | SSH_DISCONNECT_SERVICE_NOT_AVAILABLE            [@id  7]
-  | SSH_DISCONNECT_PROTOCOL_VERSION_NOT_SUPPORTED   [@id  8]
-  | SSH_DISCONNECT_HOST_KEY_NOT_VERIFIABLE          [@id  9]
-  | SSH_DISCONNECT_CONNECTION_LOST                  [@id 10]
-  | SSH_DISCONNECT_BY_APPLICATION                   [@id 11]
-  | SSH_DISCONNECT_TOO_MANY_CONNECTIONS             [@id 12]
-  | SSH_DISCONNECT_AUTH_CANCELLED_BY_USER           [@id 13]
-  | SSH_DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE   [@id 14]
-  | SSH_DISCONNECT_ILLEGAL_USER_NAME                [@id 15]
+  | DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT      [@id  1]
+  | DISCONNECT_PROTOCOL_ERROR                   [@id  2]
+  | DISCONNECT_KEY_EXCHANGE_FAILED              [@id  3]
+  | DISCONNECT_RESERVED                         [@id  4]
+  | DISCONNECT_MAC_ERROR                        [@id  5]
+  | DISCONNECT_COMPRESSION_ERROR                [@id  6]
+  | DISCONNECT_SERVICE_NOT_AVAILABLE            [@id  7]
+  | DISCONNECT_PROTOCOL_VERSION_NOT_SUPPORTED   [@id  8]
+  | DISCONNECT_HOST_KEY_NOT_VERIFIABLE          [@id  9]
+  | DISCONNECT_CONNECTION_LOST                  [@id 10]
+  | DISCONNECT_BY_APPLICATION                   [@id 11]
+  | DISCONNECT_TOO_MANY_CONNECTIONS             [@id 12]
+  | DISCONNECT_AUTH_CANCELLED_BY_USER           [@id 13]
+  | DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE   [@id 14]
+  | DISCONNECT_ILLEGAL_USER_NAME                [@id 15]
 [@@uint32_t][@@sexp]]
 
 let int_to_disconnect_code code =
   match int_to_disconnect_code code with
   | Some disc -> disc
-  | None -> SSH_DISCONNECT_PROTOCOL_ERROR (* Mock up *)
+  | None -> DISCONNECT_PROTOCOL_ERROR (* Mock up *)
 
 (* Channel open codes *)
 [%%cenum
 type channel_open_code =
-  | SSH_OPEN_ADMINISTRATIVELY_PROHIBITED  [@id 1]
-  | SSH_OPEN_CONNECT_FAILED               [@id 2]
-  | SSH_OPEN_UNKNOWN_CHANNEL_TYPE         [@id 3]
-  | SSH_OPEN_RESOURCE_SHORTAGE            [@id 4]
+  | OPEN_ADMINISTRATIVELY_PROHIBITED  [@id 1]
+  | OPEN_CONNECT_FAILED               [@id 2]
+  | OPEN_UNKNOWN_CHANNEL_TYPE         [@id 3]
+  | OPEN_RESOURCE_SHORTAGE            [@id 4]
 [@@uint32_t][@@sexp]]
 
 type mpint = Nocrypto.Numeric.Z.t
@@ -245,74 +245,74 @@ let auth_method_equal a b =
   | _ -> false
 
 type message =
-  | Ssh_msg_disconnect of (disconnect_code * string * string)
-  | Ssh_msg_ignore of string
-  | Ssh_msg_unimplemented of int32
-  | Ssh_msg_debug of (bool * string * string)
-  | Ssh_msg_service_request of string
-  | Ssh_msg_service_accept of string
-  | Ssh_msg_kexinit of kexinit
-  | Ssh_msg_newkeys
-  | Ssh_msg_kexdh_reply of (Hostkey.pub * mpint * Cstruct.t)
-  | Ssh_msg_kexdh_init of mpint
-  | Ssh_msg_userauth_request of (string * string * auth_method)
-  | Ssh_msg_userauth_failure of (string list * bool)
-  | Ssh_msg_userauth_success
-  | Ssh_msg_userauth_banner of (string * string)
-  | Ssh_msg_userauth_pk_ok of Hostkey.pub
-  | Ssh_msg_global_request of (string * bool * global_request)
-  | Ssh_msg_request_success of Cstruct.t option
-  | Ssh_msg_request_failure
-  | Ssh_msg_channel_open of (int32 * int32 * int32 * channel_open)
-  | Ssh_msg_channel_open_confirmation of (int32 * int32 * int32 * int32 * Cstruct.t)
-  | Ssh_msg_channel_open_failure of (int32 * int32 * string * string)
-  | Ssh_msg_channel_window_adjust of (int32 * int32)
-  | Ssh_msg_channel_data of (int32 * string)
-  | Ssh_msg_channel_extended_data of (int32 * int32 * string)
-  | Ssh_msg_channel_eof of int32
-  | Ssh_msg_channel_close of int32
-  | Ssh_msg_channel_request of (int32 * bool * channel_request)
-  | Ssh_msg_channel_success of int32
-  | Ssh_msg_channel_failure of int32
-  | Ssh_msg_version of string       (* Mocked version *)
+  | Msg_disconnect of (disconnect_code * string * string)
+  | Msg_ignore of string
+  | Msg_unimplemented of int32
+  | Msg_debug of (bool * string * string)
+  | Msg_service_request of string
+  | Msg_service_accept of string
+  | Msg_kexinit of kexinit
+  | Msg_newkeys
+  | Msg_kexdh_reply of (Hostkey.pub * mpint * Cstruct.t)
+  | Msg_kexdh_init of mpint
+  | Msg_userauth_request of (string * string * auth_method)
+  | Msg_userauth_failure of (string list * bool)
+  | Msg_userauth_success
+  | Msg_userauth_banner of (string * string)
+  | Msg_userauth_pk_ok of Hostkey.pub
+  | Msg_global_request of (string * bool * global_request)
+  | Msg_request_success of Cstruct.t option
+  | Msg_request_failure
+  | Msg_channel_open of (int32 * int32 * int32 * channel_open)
+  | Msg_channel_open_confirmation of (int32 * int32 * int32 * int32 * Cstruct.t)
+  | Msg_channel_open_failure of (int32 * int32 * string * string)
+  | Msg_channel_window_adjust of (int32 * int32)
+  | Msg_channel_data of (int32 * string)
+  | Msg_channel_extended_data of (int32 * int32 * string)
+  | Msg_channel_eof of int32
+  | Msg_channel_close of int32
+  | Msg_channel_request of (int32 * bool * channel_request)
+  | Msg_channel_success of int32
+  | Msg_channel_failure of int32
+  | Msg_version of string       (* Mocked version *)
   [@@deriving sexp_of]
 
 let message_to_string msg =
   Sexplib.Sexp.to_string_hum (sexp_of_message msg)
 
 let message_to_id = function
-  | Ssh_msg_disconnect _               -> SSH_MSG_DISCONNECT
-  | Ssh_msg_ignore _                   -> SSH_MSG_IGNORE
-  | Ssh_msg_unimplemented _            -> SSH_MSG_UNIMPLEMENTED
-  | Ssh_msg_debug _                    -> SSH_MSG_DEBUG
-  | Ssh_msg_service_request _          -> SSH_MSG_SERVICE_REQUEST
-  | Ssh_msg_service_accept _           -> SSH_MSG_SERVICE_ACCEPT
-  | Ssh_msg_kexinit _                  -> SSH_MSG_KEXINIT
-  | Ssh_msg_newkeys                    -> SSH_MSG_NEWKEYS
-  | Ssh_msg_kexdh_init _               -> SSH_MSG_KEXDH_INIT
-  | Ssh_msg_kexdh_reply _              -> SSH_MSG_KEXDH_REPLY
-  | Ssh_msg_userauth_request _         -> SSH_MSG_USERAUTH_REQUEST
-  | Ssh_msg_userauth_failure _         -> SSH_MSG_USERAUTH_FAILURE
-  | Ssh_msg_userauth_success           -> SSH_MSG_USERAUTH_SUCCESS
-  | Ssh_msg_userauth_banner _          -> SSH_MSG_USERAUTH_BANNER
-  | Ssh_msg_userauth_pk_ok _           -> SSH_MSG_USERAUTH_PK_OK
-  | Ssh_msg_global_request _           -> SSH_MSG_GLOBAL_REQUEST
-  | Ssh_msg_request_success _          -> SSH_MSG_REQUEST_SUCCESS
-  | Ssh_msg_request_failure            -> SSH_MSG_REQUEST_FAILURE
-  | Ssh_msg_channel_open _             -> SSH_MSG_CHANNEL_OPEN
-  | Ssh_msg_channel_open_confirmation _-> SSH_MSG_CHANNEL_OPEN_CONFIRMATION
-  | Ssh_msg_channel_open_failure _     -> SSH_MSG_CHANNEL_OPEN_FAILURE
-  | Ssh_msg_channel_window_adjust _    -> SSH_MSG_CHANNEL_WINDOW_ADJUST
-  | Ssh_msg_channel_data _             -> SSH_MSG_CHANNEL_DATA
-  | Ssh_msg_channel_extended_data _    -> SSH_MSG_CHANNEL_EXTENDED_DATA
-  | Ssh_msg_channel_eof _              -> SSH_MSG_CHANNEL_EOF
-  | Ssh_msg_channel_close _            -> SSH_MSG_CHANNEL_CLOSE
-  | Ssh_msg_channel_request _          -> SSH_MSG_CHANNEL_REQUEST
-  | Ssh_msg_channel_success _          -> SSH_MSG_CHANNEL_SUCCESS
-  | Ssh_msg_channel_failure _          -> SSH_MSG_CHANNEL_FAILURE
-  | Ssh_msg_version _                  -> SSH_MSG_VERSION
+  | Msg_disconnect _               -> MSG_DISCONNECT
+  | Msg_ignore _                   -> MSG_IGNORE
+  | Msg_unimplemented _            -> MSG_UNIMPLEMENTED
+  | Msg_debug _                    -> MSG_DEBUG
+  | Msg_service_request _          -> MSG_SERVICE_REQUEST
+  | Msg_service_accept _           -> MSG_SERVICE_ACCEPT
+  | Msg_kexinit _                  -> MSG_KEXINIT
+  | Msg_newkeys                    -> MSG_NEWKEYS
+  | Msg_kexdh_init _               -> MSG_KEXDH_INIT
+  | Msg_kexdh_reply _              -> MSG_KEXDH_REPLY
+  | Msg_userauth_request _         -> MSG_USERAUTH_REQUEST
+  | Msg_userauth_failure _         -> MSG_USERAUTH_FAILURE
+  | Msg_userauth_success           -> MSG_USERAUTH_SUCCESS
+  | Msg_userauth_banner _          -> MSG_USERAUTH_BANNER
+  | Msg_userauth_pk_ok _           -> MSG_USERAUTH_PK_OK
+  | Msg_global_request _           -> MSG_GLOBAL_REQUEST
+  | Msg_request_success _          -> MSG_REQUEST_SUCCESS
+  | Msg_request_failure            -> MSG_REQUEST_FAILURE
+  | Msg_channel_open _             -> MSG_CHANNEL_OPEN
+  | Msg_channel_open_confirmation _-> MSG_CHANNEL_OPEN_CONFIRMATION
+  | Msg_channel_open_failure _     -> MSG_CHANNEL_OPEN_FAILURE
+  | Msg_channel_window_adjust _    -> MSG_CHANNEL_WINDOW_ADJUST
+  | Msg_channel_data _             -> MSG_CHANNEL_DATA
+  | Msg_channel_extended_data _    -> MSG_CHANNEL_EXTENDED_DATA
+  | Msg_channel_eof _              -> MSG_CHANNEL_EOF
+  | Msg_channel_close _            -> MSG_CHANNEL_CLOSE
+  | Msg_channel_request _          -> MSG_CHANNEL_REQUEST
+  | Msg_channel_success _          -> MSG_CHANNEL_SUCCESS
+  | Msg_channel_failure _          -> MSG_CHANNEL_FAILURE
+  | Msg_version _                  -> MSG_VERSION
 
 let message_to_int msg = message_id_to_int (message_to_id msg)
 
 let disconnect_msg code s =
-  Ssh_msg_disconnect (code, s, "")
+  Msg_disconnect (code, s, "")
