@@ -97,9 +97,6 @@ let find_user_key t user key =
   | None -> None
   | Some user -> find_key user key
 
-let of_buf t buf =
-  { t with input_buffer = buf }
-
 (* t with updated keys from new_keys_ctos *)
 let of_new_keys_ctos t =
   let open Kex in
@@ -121,25 +118,25 @@ let of_new_keys_stoc t =
   ok { t with keys_stoc = new_keys_stoc; new_keys_stoc = None }
 
 let input_buf t buf =
-  of_buf t (cs_join t.input_buffer buf)
+  { t with input_buffer = cs_join t.input_buffer buf }
 
 let pop_msg2 t buf =
   let version t buf =
-    Wire.get_version buf >>= fun (client_version, buf) ->
+    Wire.get_version buf >>= fun (client_version, input_buffer) ->
     match client_version with
     | None -> ok (t, None)
     | Some v ->
       let msg = Ssh.Ssh_msg_version v in
-      ok (of_buf t buf, Some msg)
+      ok ({ t with input_buffer }, Some msg)
   in
   let decrypt t buf =
     Packet.decrypt t.keys_ctos buf >>= function
     | None -> ok (t, None)
-    | Some (pkt, buf, keys_ctos) ->
+    | Some (pkt, input_buffer, keys_ctos) ->
       let ignore_packet = t.ignore_next_packet in
       Packet.to_msg pkt >>= fun msg ->
-      let t = { t with keys_ctos; ignore_next_packet = false } in
-      ok (of_buf t buf, if ignore_packet then None else Some msg)
+      ok ({ t with keys_ctos; ignore_next_packet = false; input_buffer },
+          if ignore_packet then None else Some msg)
   in
   match t.client_version with
   | None -> version t buf
