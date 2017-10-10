@@ -19,17 +19,6 @@ open Util
 
 let version_banner = "SSH-2.0-awa_ssh_0.1"
 
-type user = {
-  name     : string;
-  password : string option;
-  keys     : Hostkey.pub list;
-}
-
-type auth_state =
-  | Preauth
-  | Inprogress of (string * string * int)
-  | Done
-
 type t = {
   client_version : string option;         (* Without crlf *)
   server_version : string;                (* Without crlf *)
@@ -44,8 +33,8 @@ type t = {
   new_keys_stoc  : Kex.keys option;       (* Install after we send NEWKEYS *)
   input_buffer   : Cstruct.t;             (* Unprocessed input *)
   expect         : Ssh.message_id option; (* Messages to expect, None if any *)
-  auth_state     : auth_state;            (* username * service in progress *)
-  user_db        : user list;             (* username database *)
+  auth_state     : Auth.state;            (* username * service in progress *)
+  user_db        : Auth.db;               (* username database *)
   channels       : Channels.t;            (* Ssh channels *)
   ignore_next_packet : bool;              (* Ignore the next packet from the wire *)
 }
@@ -79,23 +68,12 @@ let make host_key user_db =
             new_keys_stoc = None;
             input_buffer = Cstruct.create 0;
             expect = Some SSH_MSG_VERSION;
-            auth_state = Preauth;
+            auth_state = Auth.Preauth;
             user_db;
             channels = Channels.make ();
             ignore_next_packet = false }
   in
   t, [ banner_msg; kex_msg ]
-
-let find_user t username =
-  List.find_opt (fun user -> user.name = username) t.user_db
-
-let find_key user key  =
-  List.find_opt (fun key2 -> key = key2 ) user.keys
-
-let find_user_key t user key =
-  match find_user t user with
-  | None -> None
-  | Some user -> find_key user key
 
 (* t with updated keys from new_keys_ctos *)
 let of_new_keys_ctos t =
@@ -146,6 +124,7 @@ let pop_msg t = pop_msg2 t t.input_buffer
 
 let input_userauth_request t username service auth_method =
   let open Ssh in
+  let open Auth in
   (* Normal failure, let the poor soul try ag *)
   let fail t =
     match t.auth_state with
@@ -180,7 +159,7 @@ let input_userauth_request t username service auth_method =
         pk_ok t pubkey
     (* Public key authentication *)
     | Pubkey (pubkey, Some signed) ->
-      (match find_user_key t username pubkey with
+      (match Auth.lookup_user_key username pubkey t.user_db with
        | None -> fail t
        | Some pubkey ->
          if pubkey = Hostkey.Unknown then
@@ -203,7 +182,7 @@ let input_userauth_request t username service auth_method =
            | Error e -> fail t)
     (* Password authentication *)
     | Password (password, None) ->
-      (match find_user t username with
+      (match Auth.lookup_user username t.user_db with
        | None -> fail t
        | Some user ->
          if user.password = Some password then success t else fail t)
