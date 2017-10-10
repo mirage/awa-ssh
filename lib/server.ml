@@ -87,10 +87,10 @@ let make host_key user_db =
   t, [ banner_msg; kex_msg ]
 
 let find_user t username =
-  Util.find_some (fun user -> user.name = username) t.user_db
+  List.find_opt (fun user -> user.name = username) t.user_db
 
 let find_key user key  =
-  Util.find_some (fun key2 -> key = key2 ) user.keys
+  List.find_opt (fun key2 -> key = key2 ) user.keys
 
 let find_user_key t user key =
   match find_user t user with
