@@ -300,7 +300,7 @@ let get_message buf =
             languages_ctos;
             languages_stoc;
             first_kex_packet_follows;
-            input_buf = Some msgbuf })
+            rawkex = msgbuf })
   | SSH_MSG_NEWKEYS -> ok Ssh_msg_newkeys
   | SSH_MSG_KEXDH_INIT -> get_mpint buf >>= fun (e, buf) ->
     ok (Ssh_msg_kexdh_init e)

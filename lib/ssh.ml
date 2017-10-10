@@ -83,7 +83,7 @@ type kexinit = {
   languages_ctos           : string list;
   languages_stoc           : string list;
   first_kex_packet_follows : bool;
-  input_buf                : Cstruct.t option;   (* Incoming raw kexinit *)
+  rawkex                   : Cstruct.t;   (* raw kexinit *)
 } [@@deriving sexp]
 
 [%%cenum

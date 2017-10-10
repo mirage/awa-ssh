@@ -320,7 +320,6 @@ let handle_msg t msg =
   guard_msg t msg >>= fun () ->
   match msg with
   | Ssh_msg_kexinit kex ->
-    guard_some kex.input_buf "No kex input_buf kex" >>= fun _ ->
     Kex.negotiate ~s:t.server_kexinit ~c:kex
     >>= fun neg ->
     let ignore_next_packet =
@@ -338,13 +337,12 @@ let handle_msg t msg =
     guard_none t.new_keys_stoc "Already got new_keys_stoc" >>= fun () ->
     guard_none t.new_keys_ctos "Already got new_keys_ctos" >>= fun () ->
     guard_some t.client_kexinit "No client kex" >>= fun c ->
-    guard_some c.input_buf "No kex input_buf" >>= fun client_kexinit ->
     Kex.(Dh.generate neg.kex_alg e) >>= fun (y, f, k) ->
     let pub_host_key = Hostkey.pub_of_priv t.host_key in
     let h = Kex.Dh.compute_hash
         ~v_c:(Cstruct.of_string client_version)
         ~v_s:(Cstruct.of_string t.server_version)
-        ~i_c:client_kexinit
+        ~i_c:c.rawkex
         ~i_s:(Wire.blob_of_kexinit t.server_kexinit)
         ~k_s:(Wire.blob_of_pubkey pub_host_key)
         ~e ~f ~k

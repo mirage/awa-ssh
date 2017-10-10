@@ -59,19 +59,23 @@ let group_of_alg = function
 let preferred = [ Diffie_hellman_group14_sha1; Diffie_hellman_group1_sha1 ]
 
 let make_kexinit () =
-  { cookie = Rng.generate 16;
-    kex_algs = List.map alg_to_string preferred;
-    server_host_key_algs = [ server_host_key_alg_to_string Ssh_rsa ];
-    encryption_algs_ctos = List.map Cipher.to_string Cipher.preferred;
-    encryption_algs_stoc = List.map Cipher.to_string Cipher.preferred;
-    mac_algs_ctos = List.map Hmac.to_string Hmac.preferred;
-    mac_algs_stoc = List.map Hmac.to_string Hmac.preferred;
-    compression_algs_ctos = [ "none" ];
-    compression_algs_stoc = [ "none" ];
-    languages_ctos = [];
-    languages_stoc = [];
-    first_kex_packet_follows = false;
-    input_buf = None }
+  let k =
+    { cookie = Rng.generate 16;
+      kex_algs = List.map alg_to_string preferred;
+      server_host_key_algs = [ server_host_key_alg_to_string Ssh_rsa ];
+      encryption_algs_ctos = List.map Cipher.to_string Cipher.preferred;
+      encryption_algs_stoc = List.map Cipher.to_string Cipher.preferred;
+      mac_algs_ctos = List.map Hmac.to_string Hmac.preferred;
+      mac_algs_stoc = List.map Hmac.to_string Hmac.preferred;
+      compression_algs_ctos = [ "none" ];
+      compression_algs_stoc = [ "none" ];
+      languages_ctos = [];
+      languages_stoc = [];
+      first_kex_packet_follows = false;
+      rawkex = Cstruct.create 0 }
+  in
+  (* Patch k with rawkex, for completion sake *)
+  { k with rawkex = Wire.blob_of_kexinit k }
 
 type negotiation = {
   kex_alg              : alg;
