@@ -122,65 +122,63 @@ let pop_msg2 t buf =
 
 let pop_msg t = pop_msg2 t t.input_buffer
 
-let input_userauth_request t username service auth_method =
+let rec input_userauth_request t username service auth_method =
   let open Ssh in
   let open Auth in
-  (* Normal failure, let the poor soul try ag *)
-  let fail t =
+  let disconnect t code s = ok (t, [ Ssh.disconnect_msg code s ]) in
+  let discard t = ok (t, []) in
+  let failure t =
     match t.auth_state with
     | Preauth | Done -> error "Unexpected auth_state"
     | Inprogress (u, s, nfailed) ->
-      let t = { t with auth_state = Inprogress (u, s, succ nfailed) } in
-      ok (t, [ Ssh_msg_userauth_failure ([ "publickey"; "password" ], false) ])
+      ok ({ t with auth_state = Inprogress (u, s, succ nfailed) },
+          [ Ssh_msg_userauth_failure ([ "publickey"; "password" ], false) ])
   in
-  (* Auth is done, further attempts should be silently ignored *)
   let success t =
-    (* XXX Not sure about expect being None, maybe we can restrict it more ? *)
-    ok ({ t with auth_state = Done; expect = None }, [ Ssh_msg_userauth_success ])
+    ok ({ t with auth_state = Done; expect = None },
+        [ Ssh_msg_userauth_success ])
   in
-  let disconnect t =
-    ok (t, [ Ssh_msg_disconnect
-               (SSH_DISCONNECT_PROTOCOL_ERROR,
-                "username or service changed during authentication",
-                "") ])
+  let try_probe t pubkey =
+    if pubkey <> Hostkey.Unknown then
+      ok (t, [ Ssh_msg_userauth_pk_ok pubkey ])
+    else
+      failure t
   in
-  let pk_ok t pubkey = ok (t, [ Ssh_msg_userauth_pk_ok pubkey ]) in
-  let discard t = ok (t, []) in
-  let try_auth t =
+  let try_auth t b = if b then success t else failure t in
+  let handle_auth t =
     (* XXX verify all fail cases, what should we do and so on *)
     guard_some t.session_id "No session_id" >>= fun session_id ->
     guard (service = "ssh-connection") "Bad service" >>= fun () ->
     match auth_method with
-    (* Public key authentication probing *)
-    | Pubkey (pubkey, None) ->
-      if pubkey = Hostkey.Unknown then
-        fail t
-      else
-        pk_ok t pubkey
-    (* Public key authentication *)
-    | Pubkey (pubkey, Some signed) ->
-      if by_pubkey username pubkey session_id service signed t.user_db then
-        success t
-      else
-        fail t
-    (* Password authentication *)
-    | Password (password, None) ->
-      if Auth.by_password username password t.user_db then success t else fail t
-    | Password (password, Some oldpassword) -> fail t (* Change of password *)
-    (* Will not support Hostbased and Authnone *)
-    | Hostbased _ | Authnone -> fail t
+    | Pubkey (pubkey, None) ->        (* Public key probing *)
+      try_probe t pubkey
+    | Pubkey (pubkey, Some signed) -> (* Public key authentication *)
+      try_auth t (by_pubkey username pubkey session_id service signed t.user_db)
+    | Password (password, None) ->    (* Password authentication *)
+      try_auth t (by_password username password t.user_db)
+    (* Change of password, or Hostbased or Authnone won't be supported *)
+    | Password (_, Some _) | Hostbased _ | Authnone -> failure t
   in
+  (* See if we can actually authenticate *)
   match t.auth_state with
-  | Preauth ->
-    try_auth { t with auth_state = Inprogress (username, service, 0) }
+  | Done -> discard t (* RFC tells us we must discard requests if already authenticated *)
+  | Preauth -> (* Recurse, but now Inprogress *)
+    let t = { t with auth_state = Inprogress (username, service, 0) } in
+    input_userauth_request t username service auth_method
   | Inprogress (prev_username, prev_service, nfailed) ->
-    if nfailed >= 10 then
-      error "Maximum attempts reached, we already sent a disconnect."
-    else if prev_username = username && prev_service = service then
-      try_auth t
+    if service <> "ssh-connection" then
+      disconnect t SSH_DISCONNECT_SERVICE_NOT_AVAILABLE
+        (sprintf "Don't know service `%s`" service)
+    else if prev_username <> username || prev_service <> service then
+      disconnect t SSH_DISCONNECT_PROTOCOL_ERROR
+        "Username or service changed during authentication"
+    else if nfailed = 10 then
+      disconnect t SSH_DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE
+        "Maximum authentication attempts reached"
+    else if nfailed > 10 then
+      error "Maximum authentication attempts reached, already sent disconnect"
     else
-      disconnect t
-  | Done -> discard t
+      handle_auth t
 
 let input_channel_open t send_channel init_win_size max_pkt_size data =
   let open Ssh in
@@ -329,10 +327,8 @@ let input_msg t msg =
       ok ({ t with expect = Some SSH_MSG_USERAUTH_REQUEST },
           [ Ssh_msg_service_accept service ])
     else
-      let msg =
-        Ssh_msg_disconnect
-          (SSH_DISCONNECT_SERVICE_NOT_AVAILABLE,
-           (sprintf "service %s not available" service), "")
+      let msg = Ssh.disconnect_msg SSH_DISCONNECT_SERVICE_NOT_AVAILABLE
+          (sprintf "service %s not available" service)
       in
       ok (t, [ msg ])
   | Ssh_msg_userauth_request (username, service, auth_method) ->

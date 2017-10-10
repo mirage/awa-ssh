@@ -313,3 +313,6 @@ let message_to_id = function
   | Ssh_msg_version _                  -> SSH_MSG_VERSION
 
 let message_to_int msg = message_id_to_int (message_to_id msg)
+
+let disconnect_msg code s =
+  Ssh_msg_disconnect (code, s, "")
