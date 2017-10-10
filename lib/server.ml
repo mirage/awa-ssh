@@ -167,10 +167,8 @@ let input_userauth_request t username service auth_method =
     | Password (password, None) ->
       if Auth.by_password username password t.user_db then success t else fail t
     | Password (password, Some oldpassword) -> fail t (* Change of password *)
-    (* Host based authentication, won't support *)
-    | Hostbased _ -> fail t
-    (* None authentication, won't support *)
-    | Authnone -> fail t
+    (* Will not support Hostbased and Authnone *)
+    | Hostbased _ | Authnone -> fail t
   in
   match t.auth_state with
   | Preauth ->
