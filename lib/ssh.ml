@@ -201,6 +201,9 @@ let sexp_of_channel_open = function
          origin_address origin_port)
   | Raw_data _ -> sexp_of_string ("Raw data/Unknown")
 
+(*
+ * Protocol Authentication
+ *)
 type auth_method =
   | Pubkey of (Hostkey.pub * Cstruct.t option)
   | Password of (string * string option)
