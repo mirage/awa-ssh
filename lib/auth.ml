@@ -40,3 +40,30 @@ let lookup_user_key user key db =
   | None -> None
   | Some user -> lookup_key user key
 
+let by_password username password db =
+  match lookup_user username db with
+  | None -> false
+  | Some user -> user.password = Some password
+
+let by_pubkey username pubkey session_id service signed db =
+  match lookup_user_key username pubkey db with
+  | None -> false
+  | Some pubkey ->
+    if pubkey = Hostkey.Unknown then
+      false
+    else
+      let unsigned =
+        let open Wire in
+        put_cstring session_id (Dbuf.create ()) |>
+        put_message_id Ssh.SSH_MSG_USERAUTH_REQUEST |>
+        put_string username |>
+        put_string service |>
+        put_string "publickey" |>
+        put_bool true |>
+        put_string (Hostkey.sshname pubkey) |>
+        put_pubkey pubkey |>
+        Dbuf.to_cstruct
+      in
+      match Hostkey.verify pubkey ~unsigned ~signed with
+      | Ok () -> true
+      | Error e -> false

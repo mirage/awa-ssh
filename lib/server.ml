@@ -159,33 +159,13 @@ let input_userauth_request t username service auth_method =
         pk_ok t pubkey
     (* Public key authentication *)
     | Pubkey (pubkey, Some signed) ->
-      (match Auth.lookup_user_key username pubkey t.user_db with
-       | None -> fail t
-       | Some pubkey ->
-         if pubkey = Hostkey.Unknown then
-           fail t
-         else
-           let unsigned =
-             let open Wire in
-             put_cstring session_id (Dbuf.create ()) |>
-             put_message_id SSH_MSG_USERAUTH_REQUEST |>
-             put_string username |>
-             put_string service |>
-             put_string "publickey" |>
-             put_bool true |>
-             put_string (Hostkey.sshname pubkey) |>
-             put_pubkey pubkey |>
-             Dbuf.to_cstruct
-           in
-           match Hostkey.verify pubkey ~unsigned ~signed with
-           | Ok () -> success t
-           | Error e -> fail t)
+      if by_pubkey username pubkey session_id service signed t.user_db then
+        success t
+      else
+        fail t
     (* Password authentication *)
     | Password (password, None) ->
-      (match Auth.lookup_user username t.user_db with
-       | None -> fail t
-       | Some user ->
-         if user.password = Some password then success t else fail t)
+      if Auth.by_password username password t.user_db then success t else fail t
     | Password (password, Some oldpassword) -> fail t (* Change of password *)
     (* Host based authentication, won't support *)
     | Hostbased _ -> fail t
@@ -193,8 +173,8 @@ let input_userauth_request t username service auth_method =
     | Authnone -> fail t
   in
   match t.auth_state with
-  | Done -> discard t
-  | Preauth -> try_auth { t with auth_state = Inprogress (username, service, 0) }
+  | Preauth ->
+    try_auth { t with auth_state = Inprogress (username, service, 0) }
   | Inprogress (prev_username, prev_service, nfailed) ->
     if nfailed >= 10 then
       error "Maximum attempts reached, we already sent a disconnect."
@@ -202,6 +182,7 @@ let input_userauth_request t username service auth_method =
       try_auth t
     else
       disconnect t
+  | Done -> discard t
 
 let input_channel_open t send_channel init_win_size max_pkt_size data =
   let open Ssh in
