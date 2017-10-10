@@ -45,7 +45,7 @@ let rec output_msg_loop t fd msgs =
   match msgs with
   | [] -> ok t
   | msg :: tl ->
-    match action_of_msg t msg with
+    match output_msg t msg with
     | Send_data (t, data) ->
       Printf.printf ">>> %s\n%!" (Ssh.message_to_string msg);
       write_cstruct fd data;

@@ -388,12 +388,12 @@ let handle_msg t msg =
                  expect = Some SSH_MSG_KEXINIT }, [])
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))
 
-type action =
+type output_action =
   | Send_data of (t * Cstruct.t)
   | Disconnect of (t * Cstruct.t)
   | Ssh_error of string
 
-let action_of_msg t msg =
+let output_msg t msg =
   let t, buf =
     match msg with
     | Ssh.Ssh_msg_version v ->
