@@ -62,7 +62,7 @@ let rec input_msg_loop t fd =
   | None -> ok t
   | Some msg ->
     Printf.printf "<<< %s\n%!" (Ssh.message_to_string msg);
-    Server.handle_msg t msg >>= fun (t, replies) ->
+    Server.input_msg t msg >>= fun (t, replies) ->
     match replies with
     | [] -> input_msg_loop t fd
     | replies ->

@@ -144,7 +144,7 @@ let pop_msg2 t buf =
 
 let pop_msg t = pop_msg2 t t.input_buffer
 
-let handle_userauth_request t username service auth_method =
+let input_userauth_request t username service auth_method =
   let open Ssh in
   (* Normal failure, let the poor soul try ag *)
   let fail t =
@@ -224,7 +224,7 @@ let handle_userauth_request t username service auth_method =
     else
       disconnect t
 
-let handle_channel_open t send_channel init_win_size max_pkt_size data =
+let input_channel_open t send_channel init_win_size max_pkt_size data =
   let open Ssh in
   let fail t code s =
     let fmsg = Ssh_msg_channel_open_failure
@@ -273,7 +273,7 @@ let handle_channel_open t send_channel init_win_size max_pkt_size data =
   else
     do_open t send_channel init_win_size max_pkt_size data
 
-let handle_channel_request t recp_channel want_reply data =
+let input_channel_request t recp_channel want_reply data =
   let open Ssh in
   let fail t =
     let failure = Ssh_msg_channel_failure recp_channel in
@@ -314,7 +314,7 @@ let handle_channel_request t recp_channel want_reply data =
   | None -> fail t
   | Some c -> handle t c data
 
-let handle_msg t msg =
+let input_msg t msg =
   let open Ssh in
   let open Nocrypto in
   guard_msg t msg >>= fun () ->
@@ -378,11 +378,11 @@ let handle_msg t msg =
       in
       ok (t, [ msg ])
   | Ssh_msg_userauth_request (username, service, auth_method) ->
-    handle_userauth_request t username service auth_method
+    input_userauth_request t username service auth_method
   | Ssh_msg_channel_open (send_channel, init_win_size, max_pkt_size, data) ->
-    handle_channel_open t send_channel init_win_size max_pkt_size data
+    input_channel_open t send_channel init_win_size max_pkt_size data
   | Ssh_msg_channel_request (recp_channel, want_reply, data) ->
-    handle_channel_request t recp_channel want_reply data
+    input_channel_request t recp_channel want_reply data
   | Ssh_msg_version v ->
     ok ({ t with client_version = Some v;
                  expect = Some SSH_MSG_KEXINIT }, [])
