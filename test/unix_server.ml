@@ -83,13 +83,13 @@ let get_ok_s = function
 
 let user_db =
   (* User foo auths by passoword *)
-  let foo = Auth.{ name = "foo"; password = Some "bar"; keys = [] } in
+  let foo = Auth.make_user "foo" ~password:"bar" [] in
   (* User awa auths by pubkey *)
   let fd = Unix.(openfile "test/awa_test_rsa.pub" [O_RDONLY] 0) in
   let file_buf = Unix_cstruct.of_fd fd in
   let key = get_ok (Wire.pubkey_of_openssh file_buf) in
   Unix.close fd;
-  let awa = Auth.{ name = "awa"; password = None; keys = [ key ] } in
+  let awa = Auth.make_user "awa" [ key ] in
   [ foo; awa ]
 
 let () =

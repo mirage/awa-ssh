@@ -29,8 +29,13 @@ type state =
   | Inprogress of (string * string * int)
   | Done
 
-let lookup_user username db =
-  List.find_opt (fun user -> user.name = username) db
+let make_user name ?password keys =
+  if password = None && keys = [] then
+    invalid_arg "password must be Some, and/or keys must not be empty";
+  { name; password; keys }
+
+let lookup_user name db =
+  List.find_opt (fun user -> user.name = name) db
 
 let lookup_key user key  =
   List.find_opt (fun key2 -> key = key2 ) user.keys
@@ -40,13 +45,13 @@ let lookup_user_key user key db =
   | None -> None
   | Some user -> lookup_key user key
 
-let by_password username password db =
-  match lookup_user username db with
+let by_password name password db =
+  match lookup_user name db with
   | None -> false
   | Some user -> user.password = Some password
 
-let by_pubkey username pubkey session_id service signed db =
-  match lookup_user_key username pubkey db with
+let by_pubkey name pubkey session_id service signed db =
+  match lookup_user_key name pubkey db with
   | None -> false
   | Some pubkey ->
     if pubkey = Hostkey.Unknown then
@@ -56,7 +61,7 @@ let by_pubkey username pubkey session_id service signed db =
         let open Wire in
         put_cstring session_id (Dbuf.create ()) |>
         put_message_id Ssh.MSG_USERAUTH_REQUEST |>
-        put_string username |>
+        put_string name |>
         put_string service |>
         put_string "publickey" |>
         put_bool true |>
