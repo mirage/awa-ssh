@@ -35,7 +35,7 @@ type t = {
   expect         : Ssh.message_id option; (* Messages to expect, None if any *)
   auth_state     : Auth.state;            (* username * service in progress *)
   user_db        : Auth.db;               (* username database *)
-  channels       : Channels.t;            (* Ssh channels *)
+  channels       : Channel.db;            (* Ssh channels *)
   ignore_next_packet : bool;              (* Ignore the next packet from the wire *)
 }
 
@@ -70,7 +70,7 @@ let make host_key user_db =
             expect = Some MSG_VERSION;
             auth_state = Auth.Preauth;
             user_db;
-            channels = Channels.make ();
+            channels = Channel.empty_db;
             ignore_next_packet = false }
   in
   t, [ banner_msg; kex_msg ]
@@ -205,7 +205,7 @@ let input_channel_open t send_channel init_win_size max_pkt_size data =
   in
   let do_open t send_channel init_win_size max_pkt_size data =
     match
-      Channels.add ~id:send_channel ~win:init_win_size
+      Channel.add ~id:send_channel ~win:init_win_size
         ~max_pkt:max_pkt_size t.channels
     with
     | Error `No_channels_left ->
@@ -266,7 +266,7 @@ let input_channel_request t recp_channel want_reply data =
     | Raw_data _ -> fail t
   in
   (* Lookup the channel *)
-  match Channels.lookup recp_channel t.channels with
+  match Channel.lookup recp_channel t.channels with
   | None -> fail t
   | Some c -> handle t c data
 

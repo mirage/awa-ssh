@@ -37,7 +37,7 @@ let make_user name ?password keys =
 let lookup_user name db =
   List.find_opt (fun user -> user.name = name) db
 
-let lookup_key user key  =
+let lookup_key user key =
   List.find_opt (fun key2 -> key = key2 ) user.keys
 
 let lookup_user_key user key db =
