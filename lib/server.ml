@@ -125,15 +125,20 @@ let pop_msg t = pop_msg2 t t.input_buffer
 let rec input_userauth_request t username service auth_method =
   let open Ssh in
   let open Auth in
-  let disconnect t code s = ok (t, [ disconnect_msg code s ]) in
-  let discard t = ok (t, []) in
-  let failure t =
-    match t.auth_state with
-    | Preauth | Done -> error "Unexpected auth_state"
-    | Inprogress (u, s, nfailed) ->
-      ok ({ t with auth_state = Inprogress (u, s, succ nfailed) },
-          [ Msg_userauth_failure ([ "publickey"; "password" ], false) ])
+  let failure_msg t msg =
+    (match t.auth_state with
+     | Preauth | Done -> error "Unexpected auth_state"
+     | Inprogress (u, s, nfailed) -> Ok (Inprogress (u, s, succ nfailed)))
+    >>= fun auth_state ->
+    ok ({ t with auth_state } , [ msg ])
   in
+  let disconnect t code s =
+    failure_msg t (disconnect_msg code s)
+  in
+  let failure t =
+    failure_msg t (Msg_userauth_failure ([ "publickey"; "password" ], false))
+  in
+  let discard t = ok (t, []) in
   let success t =
     ok ({ t with auth_state = Done; expect = None },
         [ Msg_userauth_success ])
