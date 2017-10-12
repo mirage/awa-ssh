@@ -145,6 +145,11 @@ let t_parsing () =
       assert (a3 = b3);
       assert (a4 = b4);
       assert (Cstruct.equal a5 b5);
+    | Msg_channel_request (a1, a2, Raw_data a3),
+      Msg_channel_request (b1, b2, Raw_data b3) ->
+      assert (a1 = b1);
+      assert (a2 = b2);
+      assert (Cstruct.equal a3 b3);
     | msg, msg2 -> assert (msg = msg2)
   in
   let long = Int32.of_int 180586 in
@@ -205,7 +210,19 @@ let t_parsing () =
       Msg_channel_extended_data (long, long, "DATADATA");
       Msg_channel_eof long;
       Msg_channel_close long;
-      Msg_channel_request (long, false, Signal("kill"));
+      Msg_channel_request (long, false, Pty_req ("a", long, long, long, long, "b"));
+      Msg_channel_request (long, false, X11_req (false, "a", "b", long));
+      Msg_channel_request (long, false, Env ("a", "b"));
+      Msg_channel_request (long, false, Shell);
+      Msg_channel_request (long, false, Exec "a");
+      Msg_channel_request (long, false, Subsystem "a");
+      Msg_channel_request (long, false, Window_change (long, long, long, long));
+      Msg_channel_request (long, false, Xon_xoff false);
+      Msg_channel_request (long, false, Signal "a");
+      Msg_channel_request (long, false, Exit_status long);
+      Msg_channel_request (long, false, Exit_signal ("a", false, "b", "c"));
+      (* It's illegal to serialize Raw_data for now *)
+      (* Msg_channel_request (long, false, Raw_data (Cstruct.of_string "Hegel")); *)
       Msg_channel_success long;
       Msg_channel_failure long; ]
   in
