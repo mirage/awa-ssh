@@ -470,6 +470,7 @@ let get_message buf =
        get_string buf >>= fun (command, buf) ->
        ok (Msg_channel_request (channel, want_reply,
                                     Exec (command)))
+     | "shell" -> ok (Msg_channel_request (channel, want_reply, Shell))
      | "subsystem" ->
        get_string buf >>= fun (name, buf) ->
        ok (Msg_channel_request (channel, want_reply,
@@ -670,6 +671,7 @@ let put_message msg buf =
         | Pty_req _ -> "pty-req"
         | X11_req _ -> "x11-req"
         | Env _ -> "env"
+        | Shell -> "shell"
         | Exec _ -> "exec"
         | Subsystem _ -> "subsystem"
         | Window_change _ -> "window-change"
@@ -701,6 +703,7 @@ let put_message msg buf =
        | Env (name, value) ->
          put_string name buf|>
          put_string value
+       | Shell -> buf
        | Exec command -> put_string command buf
        | Subsystem name -> put_string name buf
        | Window_change (width_char, height_row, width_px, height_px) ->

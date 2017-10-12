@@ -139,6 +139,7 @@ type channel_request =
   | Pty_req of (string * int32 * int32 * int32 * int32 * string)
   | X11_req of (bool * string * string * int32)
   | Env of (string * string)
+  | Shell
   | Exec of string
   | Subsystem of string
   | Window_change of (int32 * int32 * int32 * int32)
@@ -162,6 +163,7 @@ let sexp_of_channel_request = function
                       single_con x11_auth_proto x11_auth_cookie x11_screen_nr)
   | Env (name, value) ->
     sexp_of_string (sprintf "env name: %s value: %s" name value)
+  | Shell -> sexp_of_string "shell"
   | Exec command -> sexp_of_string (sprintf "exec command: %s" command)
   | Subsystem name -> sexp_of_string (sprintf "subsystem name: %s" name)
   | Window_change (width_char, height_row, width_px, height_px) ->

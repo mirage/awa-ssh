@@ -258,9 +258,10 @@ let input_channel_request t recp_channel want_reply data =
   in
   let handle t c data =
     match data with
-    | Pty_req _ -> fail t
+    | Pty_req _ -> success t
     | X11_req _ -> fail t
     | Env (key, value) -> success t  (* TODO implement me *)
+    | Shell -> fail t
     | Exec cmd -> handle_exec t c cmd data
     | Subsystem _ -> fail t
     | Window_change _ -> fail t
