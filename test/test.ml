@@ -55,6 +55,8 @@ let assert_error x = assert (is_error x)
 
 let assert_none = function None -> () | _ -> failwith "Expected None"
 
+let assert_false x = assert (not x)
+
 let get_some = function None -> failwith "Expected Some" | Some x -> x
 
 let t_banner () =
@@ -343,12 +345,12 @@ let t_signature () =
   let pub = Hostkey.pub_of_priv priv in
   let unsigned = Nocrypto.Rng.generate 128 in
   let signed = Hostkey.sign priv unsigned in
-  Hostkey.verify pub ~signed ~unsigned |> get_ok;
+  assert (Hostkey.verify pub ~signed ~unsigned);
   (* Corrupt every one byte in the signature, all should fail *)
   for off = 0 to pred (Cstruct.len signed) do
     let evilbyte = Cstruct.get_uint8 signed off in
     Cstruct.set_uint8 signed off (succ evilbyte);
-    assert_error (Hostkey.verify pub ~signed ~unsigned);
+    assert_false (Hostkey.verify pub ~signed ~unsigned);
     Cstruct.set_uint8 signed off evilbyte;
   done
 

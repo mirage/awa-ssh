@@ -69,6 +69,4 @@ let by_pubkey name pubkey session_id service signed db =
         put_pubkey pubkey |>
         Dbuf.to_cstruct
       in
-      match Hostkey.verify pubkey ~unsigned ~signed with
-      | Ok () -> true
-      | Error e -> false
+      Hostkey.verify pubkey ~unsigned ~signed

@@ -60,19 +60,10 @@ let sign priv blob =
 
 let verify pub ~unsigned ~signed =
   match pub with
-  | Unknown -> error "Can't verify signature of key type Unknown"
+  | Unknown -> false
   | Rsa_pub pub ->
     match Rsa.PKCS1.sig_decode pub signed with
-    | None -> error "Can't decode RSA signature"
-    | Some buf ->
-      let oid_len = Cstruct.len rsa_sha1_oid in
-      guard (Cstruct.len buf >= oid_len)
-        "Unsigned blob is smaller than rsa_sha1_oid"
-      >>= fun () ->
-      let oid = Cstruct.set_len buf oid_len in
-      guard (Cstruct.equal oid rsa_sha1_oid)
-        "oid doesn't match"
-      >>= fun () ->
-      let us = Hash.SHA1.digest unsigned in
-      let them = Cstruct.shift buf oid_len in
-      guard (Cstruct.equal us them) "Host key signature mismatch"
+    | None -> false
+    | Some them ->
+      let us = Cstruct.append rsa_sha1_oid (Hash.SHA1.digest unsigned) in
+      Cstruct.equal us them
