@@ -397,8 +397,8 @@ let get_message buf =
        get_uint32 buf >>= fun (origin_port, buf) ->
        ok (Msg_channel_open
              (send_channel, init_win, max_pkt,
-                Forwarded_tcpip (con_address, con_port, origin_address,
-                                 origin_port)))
+              Forwarded_tcpip (con_address, con_port, origin_address,
+                               origin_port)))
      | _ -> error ("Unknown request " ^ request))
   | MSG_CHANNEL_OPEN_CONFIRMATION ->
     get_uint32 buf >>= fun (recp_channel, buf) ->
@@ -411,8 +411,8 @@ let get_message buf =
      * We must provide the caller a function to make the conversion.
      *)
     ok (Msg_channel_open_confirmation (recp_channel, send_channel,
-                                           init_win, max_pkt,
-                                           buf))
+                                       init_win, max_pkt,
+                                       buf))
   | MSG_CHANNEL_OPEN_FAILURE ->
     get_uint32 buf >>= fun (recp_channel, buf) ->
     get_uint32 buf >>= fun (reason, buf) ->
@@ -451,57 +451,57 @@ let get_message buf =
        get_uint32 buf >>= fun (height_px, buf) ->
        get_string buf >>= fun (term_modes, buf) ->
        ok (Msg_channel_request (channel, want_reply,
-                                    Pty_req (term_env, width_char, height_row,
-                                             width_px, height_px, term_modes)))
+                                Pty_req (term_env, width_char, height_row,
+                                         width_px, height_px, term_modes)))
      | "x11-req" ->
        get_bool buf >>= fun (single_con, buf) ->
        get_string buf >>= fun (x11_auth_proto, buf) ->
        get_string buf >>= fun (x11_auth_cookie, buf) ->
        get_uint32 buf >>= fun (x11_screen_nr, buf) ->
        ok (Msg_channel_request (channel, want_reply,
-                                    X11_req (single_con, x11_auth_proto,
-                                             x11_auth_cookie, x11_screen_nr)))
+                                X11_req (single_con, x11_auth_proto,
+                                         x11_auth_cookie, x11_screen_nr)))
      | "env" ->
        get_string buf >>= fun (name, buf) ->
        get_string buf >>= fun (value, buf) ->
        ok (Msg_channel_request (channel, want_reply,
-                                    Env (name, value)))
+                                Env (name, value)))
      | "exec" ->
        get_string buf >>= fun (command, buf) ->
        ok (Msg_channel_request (channel, want_reply,
-                                    Exec (command)))
+                                Exec (command)))
      | "shell" -> ok (Msg_channel_request (channel, want_reply, Shell))
      | "subsystem" ->
        get_string buf >>= fun (name, buf) ->
        ok (Msg_channel_request (channel, want_reply,
-                                    Subsystem (name)))
+                                Subsystem (name)))
      | "window-change" ->
        get_uint32 buf >>= fun (width_char, buf) ->
        get_uint32 buf >>= fun (height_row, buf) ->
        get_uint32 buf >>= fun (width_px, buf) ->
        get_uint32 buf >>= fun (height_px, buf) ->
        ok (Msg_channel_request (channel, want_reply,
-                                    Window_change (width_char, height_row,
-                                             width_px, height_px)))
+                                Window_change (width_char, height_row,
+                                               width_px, height_px)))
      | "xon-xoff" ->
        get_bool buf >>= fun (client_can_do, buf) ->
        ok (Msg_channel_request (channel, want_reply,
-                                    Xon_xoff (client_can_do)))
+                                Xon_xoff (client_can_do)))
      | "signal" ->
        get_string buf >>= fun (name, buf) ->
        ok (Msg_channel_request (channel, want_reply,
-                                    Signal (name)))
+                                Signal (name)))
      | "exit-status" ->
        get_uint32 buf >>= fun (status, buf) ->
        ok (Msg_channel_request (channel, want_reply,
-                                    Exit_status (status)))
+                                Exit_status (status)))
      | "exit-signal" ->
        get_string buf >>= fun (name, buf) ->
        get_bool buf >>= fun (core_dumped, buf) ->
        get_string buf >>= fun (message, buf) ->
        get_string buf >>= fun (lang, buf) ->
        ok (Msg_channel_request (channel, want_reply,
-                                    Exit_signal (name, core_dumped, message, lang)))
+                                Exit_signal (name, core_dumped, message, lang)))
      | _ -> error ("Unknown request " ^ request))
   | MSG_CHANNEL_SUCCESS ->
     get_uint32 buf >>= fun (channel, buf) ->
@@ -517,217 +517,217 @@ let put_message msg buf =
   let guard p e = if not p then invalid_arg e in
   let put_id = put_message_id in (* save some columns *)
   match msg with
-    | Msg_disconnect (code, desc, lang) ->
-      put_id MSG_DISCONNECT buf |>
-      put_uint32 (disconnect_code_to_int code) |>
-      put_string desc |>
-      put_string lang
-    | Msg_ignore s ->
-      put_id MSG_IGNORE buf |>
-      put_string s
-    | Msg_unimplemented x ->
-      put_id MSG_UNIMPLEMENTED buf |>
-      put_uint32 x
-    | Msg_debug (always_display, message, lang) ->
-      put_id MSG_DEBUG buf |>
-      put_bool always_display |>
-      put_string message |>
-      put_string lang
-    | Msg_service_request s ->
-      put_id MSG_SERVICE_REQUEST buf |>
-      put_string s
-    | Msg_service_accept s ->
-      put_id MSG_SERVICE_ACCEPT buf |>
-      put_string s
-    | Msg_kexinit kex ->
-      put_id MSG_KEXINIT buf |>
-      put_kexinit kex
-    | Msg_newkeys ->
-      put_id MSG_NEWKEYS buf
-    | Msg_kexdh_init e ->
-      put_id MSG_KEXDH_INIT buf |>
-      put_mpint e
-    | Msg_kexdh_reply (k_s, f, signature) ->
-      put_id MSG_KEXDH_REPLY buf |>
-      put_pubkey k_s |>
-      put_mpint f |>
-      put_signature k_s signature
-    | Msg_userauth_request (user, service, auth_method) ->
-      let buf = put_id MSG_USERAUTH_REQUEST buf |>
-                put_string user |>
-                put_string service
-      in
-      (match auth_method with
-       | Pubkey (pubkey, signature) ->
-         let buf = put_string "publickey" buf |>
-                   put_bool (is_some signature) |>
-                   put_string (Hostkey.sshname pubkey) |>
-                   put_pubkey pubkey
-         in
-         (match signature with
-          | None -> buf
-          | Some signature -> put_signature pubkey signature buf)
-       | Password (password, oldpassword) ->
-         let buf = put_string "password" buf in
-         (match oldpassword with
-          | None ->
-            put_bool false buf |>
-            put_string password
-          | Some oldpassword ->
-            put_bool true buf |>
-            put_string oldpassword |>
-            put_string password)
-       | Hostbased (key_alg, key_blob, hostname, hostuser, hostsig) ->
-         put_string "hostbased" buf |>
-         put_string key_alg |>
-         put_cstring key_blob |>
-         put_string hostname |>
-         put_string hostuser |>
-         put_cstring hostsig
-       | Authnone -> put_string "none" buf)
-    | Msg_userauth_failure (nl, psucc) ->
-      put_id MSG_USERAUTH_FAILURE buf |>
-      put_nl nl |>
-      put_bool psucc
-    | Msg_userauth_success ->
-      put_id MSG_USERAUTH_SUCCESS buf
-    | Msg_userauth_banner (message, lang) ->
-      put_id MSG_USERAUTH_BANNER buf |>
-      put_string message |>
-      put_string lang
-    | Msg_userauth_pk_ok pubkey ->
-      guard (pubkey <> Hostkey.Unknown) "Unknown key";
-      put_id MSG_USERAUTH_PK_OK buf |>
-      put_string (Hostkey.sshname pubkey) |>
-      put_pubkey pubkey
-    | Msg_global_request (request, want_reply, global_request) ->
-      let buf = put_id MSG_GLOBAL_REQUEST buf |>
-                put_string request |>
-                put_bool want_reply
-      in
-      (match global_request with
-       | Tcpip_forward (address, port) ->
-         put_string address buf |>
-                   put_uint32 port
-       | Cancel_tcpip_forward (address, port) ->
-         put_string address buf |>
-         put_uint32 port)
-    | Msg_request_success (req_data) ->
-      let buf = put_id MSG_REQUEST_SUCCESS buf in
-      (match req_data with
-       | Some data -> put_cstring data buf
-       | None -> buf)
-    | Msg_request_failure ->
-      put_id MSG_REQUEST_FAILURE buf
-    | Msg_channel_open (channel, init_win, max_pkt, data) ->
-      let request = match data with
-        | Session -> "session"
-        | X11 _ -> "x11"
-        | Forwarded_tcpip _ -> "forwarded-tcpip"
-        | Direct_tcpip _ -> "direct-tcpip"
-        | Raw_data _ -> invalid_arg "Unknown channel type"
-      in
-      put_id MSG_CHANNEL_OPEN buf |>
-      put_string request |>
-      put_uint32 channel |>
-      put_uint32 init_win |>
-      put_uint32 max_pkt |>
-      put_channel_data data
-    | Msg_channel_open_confirmation (recp_channel, send_channel,
-                                            init_win, max_pkt, data) ->
-      put_id MSG_CHANNEL_OPEN_CONFIRMATION buf |>
-      put_uint32 recp_channel |>
-      put_uint32 send_channel |>
-      put_uint32 init_win |>
-      put_uint32 max_pkt |>
-      put_raw data
-    | Msg_channel_open_failure (recp_channel, reason, desc, lang) ->
-      put_id MSG_CHANNEL_OPEN_FAILURE buf |>
-      put_uint32 recp_channel |>
-      put_uint32 reason |>
-      put_string desc |>
-      put_string lang
-    | Msg_channel_window_adjust (channel, n) ->
-      put_id MSG_CHANNEL_WINDOW_ADJUST buf |>
-      put_uint32 channel |>
-      put_uint32 n
-    | Msg_channel_data (channel, data) ->
-      put_id MSG_CHANNEL_DATA buf |>
-      put_uint32 channel |>
-      put_string data
-    | Msg_channel_extended_data (channel, data_type, data) ->
-      put_id MSG_CHANNEL_EXTENDED_DATA buf |>
-      put_uint32 channel |>
-      put_uint32 data_type |>
-      put_string data
-    | Msg_channel_eof channel ->
-      put_id MSG_CHANNEL_EOF buf |>
-      put_uint32 channel
-    | Msg_channel_close channel ->
-      put_id MSG_CHANNEL_CLOSE buf |>
-      put_uint32 channel
-    | Msg_channel_request (channel, want_reply, data) ->
-      let request = match data with
-        | Pty_req _ -> "pty-req"
-        | X11_req _ -> "x11-req"
-        | Env _ -> "env"
-        | Shell -> "shell"
-        | Exec _ -> "exec"
-        | Subsystem _ -> "subsystem"
-        | Window_change _ -> "window-change"
-        | Xon_xoff _ -> "xon-xoff"
-        | Signal _ -> "signal"
-        | Exit_status _ -> "exit-status"
-        | Exit_signal _ -> "exit-signal"
-        | Raw_data _ -> invalid_arg "Unknown channel request type"
-      in
-      let buf = put_id MSG_CHANNEL_REQUEST buf |>
-                put_uint32 channel |>
-                put_string request |>
-                put_bool want_reply
-      in
-      (match data with
-       | Pty_req (term_env, width_char, height_row, width_px, height_px,
-                  term_modes) ->
-         put_string term_env buf |>
-         put_uint32 width_char |>
-         put_uint32 height_row |>
-         put_uint32 width_px |>
-         put_uint32 height_px |>
-         put_string term_modes
-       | X11_req (single_con, x11_auth_proto, x11_auth_cookie, x11_screen_nr) ->
-         put_bool single_con buf |>
-         put_string x11_auth_proto |>
-         put_string x11_auth_cookie |>
-         put_uint32 x11_screen_nr
-       | Env (name, value) ->
-         put_string name buf|>
-         put_string value
-       | Shell -> buf
-       | Exec command -> put_string command buf
-       | Subsystem name -> put_string name buf
-       | Window_change (width_char, height_row, width_px, height_px) ->
-         put_uint32 width_char buf |>
-         put_uint32 height_row |>
-         put_uint32 width_px |>
-         put_uint32 height_px
-       | Xon_xoff client_can_do -> put_bool client_can_do buf
-       | Signal name -> put_string name buf
-       | Exit_status status -> put_uint32 status buf
-       | Exit_signal (name, core_dumped, message, lang) ->
-         put_string name buf |>
-         put_bool core_dumped |>
-         put_string message |>
-         put_string lang
-       | Raw_data _ -> invalid_arg "Unknown channel request type")
-    | Msg_channel_success channel ->
-      put_id MSG_CHANNEL_SUCCESS buf |>
-      put_uint32 channel
-    | Msg_channel_failure channel ->
-      put_id MSG_CHANNEL_FAILURE buf |>
-      put_uint32 channel
-    | Msg_version version ->  (* Mocked up version message *)
-      put_raw (Cstruct.of_string (version ^ "\r\n")) buf
+  | Msg_disconnect (code, desc, lang) ->
+    put_id MSG_DISCONNECT buf |>
+    put_uint32 (disconnect_code_to_int code) |>
+    put_string desc |>
+    put_string lang
+  | Msg_ignore s ->
+    put_id MSG_IGNORE buf |>
+    put_string s
+  | Msg_unimplemented x ->
+    put_id MSG_UNIMPLEMENTED buf |>
+    put_uint32 x
+  | Msg_debug (always_display, message, lang) ->
+    put_id MSG_DEBUG buf |>
+    put_bool always_display |>
+    put_string message |>
+    put_string lang
+  | Msg_service_request s ->
+    put_id MSG_SERVICE_REQUEST buf |>
+    put_string s
+  | Msg_service_accept s ->
+    put_id MSG_SERVICE_ACCEPT buf |>
+    put_string s
+  | Msg_kexinit kex ->
+    put_id MSG_KEXINIT buf |>
+    put_kexinit kex
+  | Msg_newkeys ->
+    put_id MSG_NEWKEYS buf
+  | Msg_kexdh_init e ->
+    put_id MSG_KEXDH_INIT buf |>
+    put_mpint e
+  | Msg_kexdh_reply (k_s, f, signature) ->
+    put_id MSG_KEXDH_REPLY buf |>
+    put_pubkey k_s |>
+    put_mpint f |>
+    put_signature k_s signature
+  | Msg_userauth_request (user, service, auth_method) ->
+    let buf = put_id MSG_USERAUTH_REQUEST buf |>
+              put_string user |>
+              put_string service
+    in
+    (match auth_method with
+     | Pubkey (pubkey, signature) ->
+       let buf = put_string "publickey" buf |>
+                 put_bool (is_some signature) |>
+                 put_string (Hostkey.sshname pubkey) |>
+                 put_pubkey pubkey
+       in
+       (match signature with
+        | None -> buf
+        | Some signature -> put_signature pubkey signature buf)
+     | Password (password, oldpassword) ->
+       let buf = put_string "password" buf in
+       (match oldpassword with
+        | None ->
+          put_bool false buf |>
+          put_string password
+        | Some oldpassword ->
+          put_bool true buf |>
+          put_string oldpassword |>
+          put_string password)
+     | Hostbased (key_alg, key_blob, hostname, hostuser, hostsig) ->
+       put_string "hostbased" buf |>
+       put_string key_alg |>
+       put_cstring key_blob |>
+       put_string hostname |>
+       put_string hostuser |>
+       put_cstring hostsig
+     | Authnone -> put_string "none" buf)
+  | Msg_userauth_failure (nl, psucc) ->
+    put_id MSG_USERAUTH_FAILURE buf |>
+    put_nl nl |>
+    put_bool psucc
+  | Msg_userauth_success ->
+    put_id MSG_USERAUTH_SUCCESS buf
+  | Msg_userauth_banner (message, lang) ->
+    put_id MSG_USERAUTH_BANNER buf |>
+    put_string message |>
+    put_string lang
+  | Msg_userauth_pk_ok pubkey ->
+    guard (pubkey <> Hostkey.Unknown) "Unknown key";
+    put_id MSG_USERAUTH_PK_OK buf |>
+    put_string (Hostkey.sshname pubkey) |>
+    put_pubkey pubkey
+  | Msg_global_request (request, want_reply, global_request) ->
+    let buf = put_id MSG_GLOBAL_REQUEST buf |>
+              put_string request |>
+              put_bool want_reply
+    in
+    (match global_request with
+     | Tcpip_forward (address, port) ->
+       put_string address buf |>
+       put_uint32 port
+     | Cancel_tcpip_forward (address, port) ->
+       put_string address buf |>
+       put_uint32 port)
+  | Msg_request_success (req_data) ->
+    let buf = put_id MSG_REQUEST_SUCCESS buf in
+    (match req_data with
+     | Some data -> put_cstring data buf
+     | None -> buf)
+  | Msg_request_failure ->
+    put_id MSG_REQUEST_FAILURE buf
+  | Msg_channel_open (channel, init_win, max_pkt, data) ->
+    let request = match data with
+      | Session -> "session"
+      | X11 _ -> "x11"
+      | Forwarded_tcpip _ -> "forwarded-tcpip"
+      | Direct_tcpip _ -> "direct-tcpip"
+      | Raw_data _ -> invalid_arg "Unknown channel type"
+    in
+    put_id MSG_CHANNEL_OPEN buf |>
+    put_string request |>
+    put_uint32 channel |>
+    put_uint32 init_win |>
+    put_uint32 max_pkt |>
+    put_channel_data data
+  | Msg_channel_open_confirmation (recp_channel, send_channel,
+                                   init_win, max_pkt, data) ->
+    put_id MSG_CHANNEL_OPEN_CONFIRMATION buf |>
+    put_uint32 recp_channel |>
+    put_uint32 send_channel |>
+    put_uint32 init_win |>
+    put_uint32 max_pkt |>
+    put_raw data
+  | Msg_channel_open_failure (recp_channel, reason, desc, lang) ->
+    put_id MSG_CHANNEL_OPEN_FAILURE buf |>
+    put_uint32 recp_channel |>
+    put_uint32 reason |>
+    put_string desc |>
+    put_string lang
+  | Msg_channel_window_adjust (channel, n) ->
+    put_id MSG_CHANNEL_WINDOW_ADJUST buf |>
+    put_uint32 channel |>
+    put_uint32 n
+  | Msg_channel_data (channel, data) ->
+    put_id MSG_CHANNEL_DATA buf |>
+    put_uint32 channel |>
+    put_string data
+  | Msg_channel_extended_data (channel, data_type, data) ->
+    put_id MSG_CHANNEL_EXTENDED_DATA buf |>
+    put_uint32 channel |>
+    put_uint32 data_type |>
+    put_string data
+  | Msg_channel_eof channel ->
+    put_id MSG_CHANNEL_EOF buf |>
+    put_uint32 channel
+  | Msg_channel_close channel ->
+    put_id MSG_CHANNEL_CLOSE buf |>
+    put_uint32 channel
+  | Msg_channel_request (channel, want_reply, data) ->
+    let request = match data with
+      | Pty_req _ -> "pty-req"
+      | X11_req _ -> "x11-req"
+      | Env _ -> "env"
+      | Shell -> "shell"
+      | Exec _ -> "exec"
+      | Subsystem _ -> "subsystem"
+      | Window_change _ -> "window-change"
+      | Xon_xoff _ -> "xon-xoff"
+      | Signal _ -> "signal"
+      | Exit_status _ -> "exit-status"
+      | Exit_signal _ -> "exit-signal"
+      | Raw_data _ -> invalid_arg "Unknown channel request type"
+    in
+    let buf = put_id MSG_CHANNEL_REQUEST buf |>
+              put_uint32 channel |>
+              put_string request |>
+              put_bool want_reply
+    in
+    (match data with
+     | Pty_req (term_env, width_char, height_row, width_px, height_px,
+                term_modes) ->
+       put_string term_env buf |>
+       put_uint32 width_char |>
+       put_uint32 height_row |>
+       put_uint32 width_px |>
+       put_uint32 height_px |>
+       put_string term_modes
+     | X11_req (single_con, x11_auth_proto, x11_auth_cookie, x11_screen_nr) ->
+       put_bool single_con buf |>
+       put_string x11_auth_proto |>
+       put_string x11_auth_cookie |>
+       put_uint32 x11_screen_nr
+     | Env (name, value) ->
+       put_string name buf|>
+       put_string value
+     | Shell -> buf
+     | Exec command -> put_string command buf
+     | Subsystem name -> put_string name buf
+     | Window_change (width_char, height_row, width_px, height_px) ->
+       put_uint32 width_char buf |>
+       put_uint32 height_row |>
+       put_uint32 width_px |>
+       put_uint32 height_px
+     | Xon_xoff client_can_do -> put_bool client_can_do buf
+     | Signal name -> put_string name buf
+     | Exit_status status -> put_uint32 status buf
+     | Exit_signal (name, core_dumped, message, lang) ->
+       put_string name buf |>
+       put_bool core_dumped |>
+       put_string message |>
+       put_string lang
+     | Raw_data _ -> invalid_arg "Unknown channel request type")
+  | Msg_channel_success channel ->
+    put_id MSG_CHANNEL_SUCCESS buf |>
+    put_uint32 channel
+  | Msg_channel_failure channel ->
+    put_id MSG_CHANNEL_FAILURE buf |>
+    put_uint32 channel
+  | Msg_version version ->  (* Mocked up version message *)
+    put_raw (Cstruct.of_string (version ^ "\r\n")) buf
 
 (* XXX Maybe move this to Packet *)
 let get_payload buf =

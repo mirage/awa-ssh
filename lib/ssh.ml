@@ -177,7 +177,7 @@ let sexp_of_channel_request = function
     sexp_of_string (sprintf "exit-status status: %ld" status)
   | Exit_signal (name, core_dumped, message, lang) ->
     sexp_of_string (sprintf "exit-signal name: %s core_dumped: %B message: %s\
-                            lang: %s" name core_dumped message lang)
+                             lang: %s" name core_dumped message lang)
   | Raw_data _ -> sexp_of_string ("Raw data/Unknown")
 
 type channel_open =
@@ -194,12 +194,12 @@ let sexp_of_channel_open = function
   | Forwarded_tcpip (con_address, con_port, origin_address, origin_port) ->
     sexp_of_string
       (sprintf "forwarded-tcpip connected address: %s port %ld \
-       originator address: %s port: %ld" con_address con_port
+                originator address: %s port: %ld" con_address con_port
          origin_address origin_port)
   | Direct_tcpip (address, port, origin_address, origin_port) ->
     sexp_of_string
       (sprintf "direct-tcpip host address: %s port %ld \
-       originator address: %s port: %ld" address port
+                originator address: %s port: %ld" address port
          origin_address origin_port)
   | Raw_data _ -> sexp_of_string ("Raw data/Unknown")
 
@@ -277,7 +277,7 @@ type message =
   | Msg_channel_success of int32
   | Msg_channel_failure of int32
   | Msg_version of string       (* Mocked version *)
-  [@@deriving sexp_of]
+[@@deriving sexp_of]
 
 let message_to_string msg =
   Sexplib.Sexp.to_string_hum (sexp_of_message msg)
