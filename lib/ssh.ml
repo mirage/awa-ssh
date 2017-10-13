@@ -154,9 +154,14 @@ type channel_open =
 (*
  * Protocol Authentication
  *)
+type password = string
+
+let sexp_of_password _ = sexp_of_string "????"
+let password_of_sexp _ = failwith "password_of_sexp: TODO"
+
 type auth_method =
   | Pubkey of (Hostkey.pub * Cstruct.t option)
-  | Password of (string * string option)
+  | Password of (password * password option)
   | Hostbased of (string * Cstruct.t * string * string * Cstruct.t) (* TODO *)
   | Authnone
 [@@deriving sexp]
