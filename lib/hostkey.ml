@@ -33,6 +33,8 @@ let sexp_of_pub = function
   | Rsa_pub pub -> Nocrypto.Rsa.sexp_of_pub pub
   | Unknown -> sexp_of_string "Unknown"
 
+let pub_of_sexp sexp = failwith "Hostkey.pub_of_sexp: TODO"
+
 (*
  * id-sha1 OBJECT IDENTIFIER ::= { iso(1) identified-organization(3)
  *     oiw(14) secsig(3) algorithms(2) 26 }

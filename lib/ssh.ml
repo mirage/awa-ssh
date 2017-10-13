@@ -126,14 +126,7 @@ let sexp_of_mpint mpint = sexp_of_string (Z.to_string mpint)
 type global_request =
   | Tcpip_forward of (string * int32)
   | Cancel_tcpip_forward of (string * int32)
-
-let sexp_of_global_request = function
-  | Tcpip_forward (address, port) ->
-    sexp_of_string
-      (sprintf "tcpip-forward bind-to=%s port=%ld" address port)
-  | Cancel_tcpip_forward (address, port) ->
-    sexp_of_string
-      (sprintf "cancel-tcpip-forward bind-to=%s port=%ld" address port)
+[@@deriving sexp]
 
 type channel_request =
   | Pty_req of (string * int32 * int32 * int32 * int32 * string)
@@ -148,37 +141,7 @@ type channel_request =
   | Exit_status of int32
   | Exit_signal of (string * bool * string * string)
   | Raw_data of Cstruct.t
-
-let sexp_of_channel_request = function
-  | Pty_req (term_env, width_char, height_row, width_px, height_px,
-             term_modes) ->
-    sexp_of_string (sprintf "pty-req term_env: %s width_char: %ld \
-                             height_row: %ld width_px: %ld height_px: \
-                             %ld term_modes: %s"
-                      term_env width_char height_row width_px height_px
-                      term_modes)
-  | X11_req (single_con, x11_auth_proto, x11_auth_cookie, x11_screen_nr) ->
-    sexp_of_string (sprintf "x11-req single_con: %B x11_auth_proto: %s \
-                             x11_auth_cookie: %s x11_screen_nr: %ld"
-                      single_con x11_auth_proto x11_auth_cookie x11_screen_nr)
-  | Env (name, value) ->
-    sexp_of_string (sprintf "env name: %s value: %s" name value)
-  | Shell -> sexp_of_string "shell"
-  | Exec command -> sexp_of_string (sprintf "exec command: %s" command)
-  | Subsystem name -> sexp_of_string (sprintf "subsystem name: %s" name)
-  | Window_change (width_char, height_row, width_px, height_px) ->
-    sexp_of_string (sprintf "window-change width_char: %ld height_row: %ld \
-                             width_px: %ld height_px %ld"
-                      width_char height_row width_px height_px)
-  | Xon_xoff client_can_do ->
-    sexp_of_string (sprintf "xon-xoff client_can_do %B" client_can_do)
-  | Signal name -> sexp_of_string (sprintf "signal name: %s" name)
-  | Exit_status status ->
-    sexp_of_string (sprintf "exit-status status: %ld" status)
-  | Exit_signal (name, core_dumped, message, lang) ->
-    sexp_of_string (sprintf "exit-signal name: %s core_dumped: %B message: %s\
-                             lang: %s" name core_dumped message lang)
-  | Raw_data _ -> sexp_of_string ("Raw data/Unknown")
+[@@deriving sexp]
 
 type channel_open =
   | Session
@@ -186,22 +149,7 @@ type channel_open =
   | Forwarded_tcpip of (string * int32 * string * int32)
   | Direct_tcpip of (string * int32 * string * int32)
   | Raw_data of Cstruct.t
-
-let sexp_of_channel_open = function
-  | Session -> sexp_of_string "session"
-  | X11 (address, port) ->
-    sexp_of_string (sprintf "x11 originator address: %s port: %ld" address port)
-  | Forwarded_tcpip (con_address, con_port, origin_address, origin_port) ->
-    sexp_of_string
-      (sprintf "forwarded-tcpip connected address: %s port %ld \
-                originator address: %s port: %ld" con_address con_port
-         origin_address origin_port)
-  | Direct_tcpip (address, port, origin_address, origin_port) ->
-    sexp_of_string
-      (sprintf "direct-tcpip host address: %s port %ld \
-                originator address: %s port: %ld" address port
-         origin_address origin_port)
-  | Raw_data _ -> sexp_of_string ("Raw data/Unknown")
+[@@deriving sexp]
 
 (*
  * Protocol Authentication
@@ -211,21 +159,7 @@ type auth_method =
   | Password of (string * string option)
   | Hostbased of (string * Cstruct.t * string * string * Cstruct.t) (* TODO *)
   | Authnone
-
-let sexp_of_auth_method = function
-  | Pubkey (key_blob, signature) ->
-    sexp_of_string
-      (sprintf "Publickey key_blob=TODO signature=%b" (is_some signature))
-  | Password (password, oldpassword) ->
-    sexp_of_string
-      (sprintf "Password password=XXX oldpassword=%b" (is_some oldpassword))
-  | Hostbased (key_alg, key_blob, hostname, hostuser, hostsig) ->
-    let s = sprintf
-        "Hostbased key_alg=%s key_blob=TODO hostname=%s hostuser=%s hostsig=TODO"
-        key_alg hostname hostuser
-    in
-    sexp_of_string s
-  | Authnone -> sexp_of_string "None"
+[@@deriving sexp]
 
 let auth_method_equal a b =
   match a, b with
