@@ -21,6 +21,9 @@ open Sexplib.Conv
  * Channel entry
  *)
 
+type state = Open | Sent_close
+[@@deriving sexp]
+
 type channel_end = {
   id       : int32;
   win      : int32;
@@ -28,8 +31,9 @@ type channel_end = {
 } [@@deriving sexp]
 
 type channel = {
-  us   : channel_end;
-  them : channel_end;
+  us    : channel_end;
+  them  : channel_end;
+  state : state;
 } [@@deriving sexp]
 
 let compare a b =
@@ -44,7 +48,7 @@ end
 
 let make_end id win max_pkt = { id; win; max_pkt }
 
-let make ~us ~them = { us; them }
+let make ~us ~them = { us; them; state = Open }
 
 let to_string t = Sexplib.Sexp.to_string_hum (sexp_of_channel t)
 
@@ -92,4 +96,8 @@ let add ~id ~win ~max_pkt db =
     let c = make ~us ~them in
     ok (c, Channel_map.add key c db)
 
-let lookup id db = Channel_map.find_opt id db
+let update c db = Channel_map.add c.us.id c db
+
+let remove ~id db = Channel_map.remove id db
+
+let lookup ~id db = Channel_map.find_opt id db

@@ -245,11 +245,13 @@ let input_channel_request t recp_channel want_reply data =
     ok (t, if want_reply then [ succ ] else []) in
   let send_data t c data =
     let open Channel in
+    (* XXX Be careful not to send 2 closes in the future *)
     let succ = Msg_channel_success recp_channel in
     let msgs = [ Msg_channel_data (c.them.id, data);
                  Msg_channel_close c.them.id ]
     in
-    ok (t, if want_reply then succ :: msgs else msgs)
+    let channels = Channel.update { c with state = Sent_close } t.channels in
+    ok ({ t with channels }, if want_reply then succ :: msgs else msgs)
   in
   let handle_exec t c cmd data =
     (* XXX for testing *)
@@ -343,6 +345,16 @@ let input_msg t msg =
     input_channel_open t send_channel init_win_size max_pkt_size data
   | Msg_channel_request (recp_channel, want_reply, data) ->
     input_channel_request t recp_channel want_reply data
+  | Msg_channel_close (recp_channel) ->
+    let open Channel in
+    (match lookup recp_channel t.channels with
+     | None -> ok (t, [])        (* XXX or should we disconnect ? *)
+     | Some c ->
+       let t = { t with channels = remove recp_channel t.channels } in
+       (match c.state with
+        | Open -> ok (t, [ Msg_channel_close c.them.id ] )
+        | Sent_close -> ok (t, [])))
+  (* | Msg_disconnect (code, s, _) -> *)
   | Msg_version v ->
     ok ({ t with client_version = Some v;
                  expect = Some MSG_KEXINIT }, [])
