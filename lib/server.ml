@@ -281,6 +281,9 @@ let input_channel_request t recp_channel want_reply data =
 let input_msg t msg =
   let open Ssh in
   let open Nocrypto in
+  let noreply t = ok (t, []) in        (* All ok, no replies *)
+  let reply t msg = ok (t, [ msg ]) in (* All ok, one reply *)
+  let replies t msgs = ok (t, msgs) in (* All ok, reply list *)
   guard_msg t msg >>= fun () ->
   match msg with
   | Msg_kexinit kex ->
@@ -290,11 +293,10 @@ let input_msg t msg =
       kex.first_kex_packet_follows &&
       not (Kex.guessed_right ~s:t.server_kexinit ~c:kex)
     in
-    ok ({ t with client_kexinit = Some kex;
-                 neg_kex = Some neg;
-                 expect = Some MSG_KEXDH_INIT;
-                 ignore_next_packet },
-        [])
+    noreply { t with client_kexinit = Some kex;
+                     neg_kex = Some neg;
+                     expect = Some MSG_KEXDH_INIT;
+                     ignore_next_packet }
   | Msg_kexdh_init e ->
     guard_some t.neg_kex "No negotiated kex" >>= fun neg ->
     guard_some t.client_version "No client version" >>= fun client_version ->
@@ -314,12 +316,11 @@ let input_msg t msg =
     let signature = Hostkey.sign t.host_key h in
     let session_id = match t.session_id with None -> h | Some x -> x in
     let new_keys_ctos, new_keys_stoc = Kex.Dh.derive_keys k h session_id neg in
-    ok ({t with session_id = Some session_id;
-                new_keys_ctos = Some new_keys_ctos;
-                new_keys_stoc = Some new_keys_stoc;
-                expect = Some MSG_NEWKEYS },
-        [ Msg_kexdh_reply (pub_host_key, f, signature);
-          Msg_newkeys ])
+    replies { t with session_id = Some session_id;
+                     new_keys_ctos = Some new_keys_ctos;
+                     new_keys_stoc = Some new_keys_stoc;
+                     expect = Some MSG_NEWKEYS }
+      [ Msg_kexdh_reply (pub_host_key, f, signature); Msg_newkeys ]
   | Msg_newkeys ->
     (* If this is the first time we keyed, we must take a service request *)
     let expect = if t.keys_ctos = Kex.plaintext_keys then
@@ -328,17 +329,14 @@ let input_msg t msg =
         None
     in
     (* Update keys *)
-    of_new_keys_ctos t >>= fun t ->
-    ok ({ t with expect }, [])
+    of_new_keys_ctos t >>= fun t -> noreply { t with expect }
   | Msg_service_request service ->
     if service = "ssh-userauth" then
-      ok ({ t with expect = Some MSG_USERAUTH_REQUEST },
-          [ Msg_service_accept service ])
+      reply { t with expect = Some MSG_USERAUTH_REQUEST }
+        (Msg_service_accept service)
     else
-      let msg = disconnect_msg DISCONNECT_SERVICE_NOT_AVAILABLE
-          (sprintf "service %s not available" service)
-      in
-      ok (t, [ msg ])
+      reply t (disconnect_msg DISCONNECT_SERVICE_NOT_AVAILABLE
+                 (sprintf "service %s not available" service))
   | Msg_userauth_request (username, service, auth_method) ->
     input_userauth_request t username service auth_method
   | Msg_channel_open (send_channel, init_win_size, max_pkt_size, data) ->
@@ -348,16 +346,15 @@ let input_msg t msg =
   | Msg_channel_close (recp_channel) ->
     let open Channel in
     (match lookup recp_channel t.channels with
-     | None -> ok (t, [])        (* XXX or should we disconnect ? *)
+     | None -> noreply t        (* XXX or should we disconnect ? *)
      | Some c ->
        let t = { t with channels = remove recp_channel t.channels } in
        (match c.state with
-        | Open -> ok (t, [ Msg_channel_close c.them.id ] )
-        | Sent_close -> ok (t, [])))
+        | Open -> reply t (Msg_channel_close c.them.id)
+        | Sent_close -> noreply t))
   (* | Msg_disconnect (code, s, _) -> *)
-  | Msg_version v ->
-    ok ({ t with client_version = Some v;
-                 expect = Some MSG_KEXINIT }, [])
+  | Msg_version v -> noreply { t with client_version = Some v;
+                                      expect = Some MSG_KEXINIT }
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))
 
 type output_action =
