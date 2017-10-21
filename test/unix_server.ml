@@ -111,10 +111,6 @@ let rec main_loop t fd =
   input_msg_loop t fd >>= fun t ->
   main_loop t fd
 
-let get_ok_s = function
-  | Ok x -> x
-  | Error s -> failwith s
-
 let user_db =
   (* User foo auths by passoword *)
   let foo = Auth.make_user "foo" ~password:"bar" [] in
