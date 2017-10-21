@@ -20,6 +20,7 @@ open Rresult.R
 open Awa
 
 let printf = Printf.printf
+let sprintf = Printf.sprintf
 
 let read_cstruct fd =
   let len = Ssh.max_pkt_len in
@@ -39,37 +40,70 @@ let write_cstruct fd buf =
   let n = Unix.write fd bytes 0 len in
   assert (n > 0)
 
-(* NEW SHIT *)
-let rec output_msg_loop t fd msgs =
-  let open Server in
-  match msgs with
-  | [] -> ok t
-  | msg :: tl ->
-    match output_msg t msg with
-    | Send_data (t, data) ->
-      Printf.printf ">>> %s\n%!" (Ssh.message_to_string msg);
-      write_cstruct fd data;
-      output_msg_loop t fd tl
-    | Disconnect (t, data) ->
-      Printf.printf ">>> %s\n%!" (Ssh.message_to_string msg);
-      write_cstruct fd data;
-      error "We sent a disconnect"
-    | Ssh_error e -> error e
+let send_msg t fd msg =
+  match Server.output_msg t msg with
+  | Server.Send_data (t, data) ->
+    printf ">>> %s\n%!" (Ssh.message_to_string msg);
+    write_cstruct fd data;
+    ok t
+  | Server.Disconnect (t, data) ->
+    printf ">>> %s\n%!" (Ssh.message_to_string msg);
+    write_cstruct fd data;
+    printf "We sent a disconnect\n%!";
+    exit 0
+  | Server.Ssh_error e ->
+    printf "Ssh error: %s\n%!" e;
+    exit 1
+
+let send_msgs t fd msgs =
+  ok (List.fold_left
+        (fun t msg ->
+           match send_msg t fd msg with
+           | Ok t -> t
+           | Error e ->
+             printf "Ssh error: %s\n%!" e;
+             exit 1)
+        t msgs)
 
 let rec input_msg_loop t fd =
   Server.pop_msg t >>= fun (t, msg) ->
   match msg with
   | None -> ok t
   | Some msg ->
-    Printf.printf "<<< %s\n%!" (Ssh.message_to_string msg);
-    Server.input_msg t msg >>= fun (t, replies) ->
-    match replies with
-    | [] -> input_msg_loop t fd
-    | replies ->
-      (* Process our replies (actions) *)
-      output_msg_loop t fd replies >>= fun t ->
-      (* Loop for more input *)
+    printf "<<< %s\n%!" (Ssh.message_to_string msg);
+    match Server.input_msg t msg with
+    | Server.Ssh_error e -> error e
+    | Server.Eof c ->
+      (* XXX assumes correct channel *)
+      printf "Client sent EOF\n%!";
+      exit 0
+    | Server.Disconnect (code, s) ->
+      printf "Client disconnected with code %s (%s)\n%!"
+        (Ssh.disconnect_code_to_string code) s;
+      exit 0
+    | Server.Exec_cmd (c, want_reply, cmd) ->
+      if want_reply then
+        if cmd <> "echo" then
+          send_msg t fd (Channel.deny_request c) >>= fun t ->
+          (* XXX send disconnect and so on *)
+          printf "Unknown command %s\n%!" cmd;
+          exit 2
+        else
+          send_msg t fd (Channel.accept_request c) >>= fun t ->
+          let data = sprintf "executing %s...\n" cmd in
+          send_msg t fd (Channel.data_msg c data) >>= fun t ->
+          input_msg_loop t fd
+      else
+        input_msg_loop t fd
+    | Server.Channel_data (c, data) ->
+      (* XXX we always assume the request was successfull ! *)
+      send_msg t fd (Channel.data_msg c data) >>= fun t ->
       input_msg_loop t fd
+    | Server.Reply (t, replies) -> match replies with
+      | [] -> input_msg_loop t fd
+      | replies ->
+        send_msgs t fd replies >>= fun t ->
+        input_msg_loop t fd
 
 let rec main_loop t fd =
   let buf = read_cstruct fd in
@@ -99,9 +133,11 @@ let () =
   Unix.(setsockopt listen_fd SO_REUSEADDR true);
   Unix.(bind listen_fd (ADDR_INET (inet_addr_any, server_port)));
   Unix.listen listen_fd 1;
+  printf "Awa server waiting connections on port %d\n%!" server_port;
   let client_fd, _ = Unix.(accept listen_fd) in
+  printf "Client connected !\n%!";
   let rsa = Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048) in
   let t, greetings = Server.make rsa user_db in
-  match output_msg_loop t client_fd greetings >>= fun t -> main_loop t client_fd with
+  match send_msgs t client_fd greetings >>= fun t -> main_loop t client_fd with
   | Ok _ -> printf "ok"
   | Error e -> printf "error: %s" e

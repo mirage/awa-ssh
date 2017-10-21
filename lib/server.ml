@@ -122,6 +122,18 @@ let pop_msg2 t buf =
 
 let pop_msg t = pop_msg2 t t.input_buffer
 
+type input_result =
+  | Reply of (t * Ssh.message list)
+  | Exec_cmd of (Channel.t * bool * string)
+  | Channel_data of (Channel.t * string)
+  | Eof of Channel.t
+  | Disconnect of (Ssh.disconnect_code * string)
+  | Ssh_error of string
+
+let make_noreply t = ok (Reply (t, []))
+let make_reply t m = ok (Reply (t, [ m ]))
+let make_replies t m = ok (Reply (t, m))
+
 let rec input_userauth_request t username service auth_method =
   let open Ssh in
   let open Auth in
@@ -130,7 +142,7 @@ let rec input_userauth_request t username service auth_method =
      | Preauth | Done -> error "Unexpected auth_state"
      | Inprogress (u, s, nfailed) -> Ok (Inprogress (u, s, succ nfailed)))
     >>= fun auth_state ->
-    ok ({ t with auth_state } , [ msg ])
+    make_reply { t with auth_state } msg
   in
   let disconnect t code s =
     failure_msg t (disconnect_msg code s)
@@ -138,14 +150,13 @@ let rec input_userauth_request t username service auth_method =
   let failure t =
     failure_msg t (Msg_userauth_failure ([ "publickey"; "password" ], false))
   in
-  let discard t = ok (t, []) in
+  let discard t = make_noreply t in
   let success t =
-    ok ({ t with auth_state = Done; expect = None },
-        [ Msg_userauth_success ])
+    make_reply { t with auth_state = Done; expect = None } Msg_userauth_success
   in
   let try_probe t pubkey =
     if pubkey <> Hostkey.Unknown then
-      ok (t, [ Msg_userauth_pk_ok pubkey ])
+      make_reply t (Msg_userauth_pk_ok pubkey)
     else
       failure t
   in
@@ -188,10 +199,9 @@ let rec input_userauth_request t username service auth_method =
 let input_channel_open t send_channel init_win_size max_pkt_size data =
   let open Ssh in
   let fail t code s =
-    let fmsg = Msg_channel_open_failure
-        (send_channel, channel_open_code_to_int code, s, "")
-    in
-    ok (t, [ fmsg ])
+    make_reply t
+      (Msg_channel_open_failure
+         (send_channel, channel_open_code_to_int code, s, ""))
   in
   let known data = match data with
     | Session -> true
@@ -217,15 +227,13 @@ let input_channel_open t send_channel init_win_size max_pkt_size data =
       fail t OPEN_RESOURCE_SHORTAGE "Maximum number of channels reached"
     | Ok (c, channels) ->
       let open Channel in
-      let confirmation =
-        Msg_channel_open_confirmation
-          (send_channel,
-           c.us.id,
-           c.us.win,
-           c.us.max_pkt,
-           Wire.blob_of_channel_data data)
-      in
-      ok ({ t with channels }, [ confirmation ])
+      make_reply { t with channels }
+        (Msg_channel_open_confirmation
+           (send_channel,
+            c.us.id,
+            c.us.win,
+            c.us.max_pkt,
+            Wire.blob_of_channel_data data))
   in
   if not (known data) then
     fail t OPEN_UNKNOWN_CHANNEL_TYPE ""
@@ -238,25 +246,11 @@ let input_channel_request t recp_channel want_reply data =
   let open Ssh in
   let fail t =
     let failure = Msg_channel_failure recp_channel in
-    ok (t, if want_reply then [ failure ] else [])
+    if want_reply then make_reply t failure else make_noreply t
   in
   let success t =
-    let succ = Msg_channel_success recp_channel in
-    ok (t, if want_reply then [ succ ] else []) in
-  let send_data t c data =
-    let open Channel in
-    (* XXX Be careful not to send 2 closes in the future *)
-    let succ = Msg_channel_success recp_channel in
-    let msgs = [ Msg_channel_data (c.them.id, data);
-                 Msg_channel_close c.them.id ]
-    in
-    let channels = Channel.update { c with state = Sent_close } t.channels in
-    ok ({ t with channels }, if want_reply then succ :: msgs else msgs)
-  in
-  let handle_exec t c cmd data =
-    (* XXX for testing *)
-    let ans = if cmd = "foo" then "bar\n" else ("Don't know `" ^ cmd ^ "`\n") in
-    send_data t c ans
+    let succ = (Msg_channel_success recp_channel) in
+    if want_reply then make_reply t succ else make_noreply t
   in
   let handle t c data =
     match data with
@@ -264,7 +258,7 @@ let input_channel_request t recp_channel want_reply data =
     | X11_req _ -> fail t
     | Env (key, value) -> success t  (* TODO implement me *)
     | Shell -> fail t
-    | Exec cmd -> handle_exec t c cmd data
+    | Exec cmd -> ok (Exec_cmd (c, want_reply, cmd))
     | Subsystem _ -> fail t
     | Window_change _ -> fail t
     | Xon_xoff _ -> fail t
@@ -278,12 +272,9 @@ let input_channel_request t recp_channel want_reply data =
   | None -> fail t
   | Some c -> handle t c data
 
-let input_msg t msg =
+let input_msg_ t msg =
   let open Ssh in
   let open Nocrypto in
-  let noreply t = ok (t, []) in        (* All ok, no replies *)
-  let reply t msg = ok (t, [ msg ]) in (* All ok, one reply *)
-  let replies t msgs = ok (t, msgs) in (* All ok, reply list *)
   guard_msg t msg >>= fun () ->
   match msg with
   | Msg_kexinit kex ->
@@ -293,10 +284,10 @@ let input_msg t msg =
       kex.first_kex_packet_follows &&
       not (Kex.guessed_right ~s:t.server_kexinit ~c:kex)
     in
-    noreply { t with client_kexinit = Some kex;
-                     neg_kex = Some neg;
-                     expect = Some MSG_KEXDH_INIT;
-                     ignore_next_packet }
+    make_noreply { t with client_kexinit = Some kex;
+                          neg_kex = Some neg;
+                          expect = Some MSG_KEXDH_INIT;
+                          ignore_next_packet }
   | Msg_kexdh_init e ->
     guard_some t.neg_kex "No negotiated kex" >>= fun neg ->
     guard_some t.client_version "No client version" >>= fun client_version ->
@@ -316,10 +307,10 @@ let input_msg t msg =
     let signature = Hostkey.sign t.host_key h in
     let session_id = match t.session_id with None -> h | Some x -> x in
     let new_keys_ctos, new_keys_stoc = Kex.Dh.derive_keys k h session_id neg in
-    replies { t with session_id = Some session_id;
-                     new_keys_ctos = Some new_keys_ctos;
-                     new_keys_stoc = Some new_keys_stoc;
-                     expect = Some MSG_NEWKEYS }
+    make_replies { t with session_id = Some session_id;
+                          new_keys_ctos = Some new_keys_ctos;
+                          new_keys_stoc = Some new_keys_stoc;
+                          expect = Some MSG_NEWKEYS }
       [ Msg_kexdh_reply (pub_host_key, f, signature); Msg_newkeys ]
   | Msg_newkeys ->
     (* If this is the first time we keyed, we must take a service request *)
@@ -329,35 +320,45 @@ let input_msg t msg =
         None
     in
     (* Update keys *)
-    of_new_keys_ctos t >>= fun t -> noreply { t with expect }
+    of_new_keys_ctos t >>= fun t -> make_noreply { t with expect }
   | Msg_service_request service ->
     if service = "ssh-userauth" then
-      reply { t with expect = Some MSG_USERAUTH_REQUEST }
+      make_reply { t with expect = Some MSG_USERAUTH_REQUEST }
         (Msg_service_accept service)
     else
-      reply t (disconnect_msg DISCONNECT_SERVICE_NOT_AVAILABLE
-                 (sprintf "service %s not available" service))
+      make_reply t (disconnect_msg DISCONNECT_SERVICE_NOT_AVAILABLE
+                      (sprintf "service %s not available" service))
   | Msg_userauth_request (username, service, auth_method) ->
     input_userauth_request t username service auth_method
   | Msg_channel_open (send_channel, init_win_size, max_pkt_size, data) ->
     input_channel_open t send_channel init_win_size max_pkt_size data
   | Msg_channel_request (recp_channel, want_reply, data) ->
     input_channel_request t recp_channel want_reply data
-  | Msg_channel_close (recp_channel) ->
+  | Msg_channel_close recp_channel ->
     let open Channel in
     (match lookup recp_channel t.channels with
-     | None -> noreply t        (* XXX or should we disconnect ? *)
+     | None -> make_noreply t        (* XXX or should we disconnect ? *)
      | Some c ->
        let t = { t with channels = remove recp_channel t.channels } in
        (match c.state with
-        | Open -> reply t (Msg_channel_close c.them.id)
-        | Sent_close -> noreply t))
-  (* | Msg_disconnect (code, s, _) -> *)
-  | Msg_version v -> noreply { t with client_version = Some v;
-                                      expect = Some MSG_KEXINIT }
+        | Open -> make_reply t (Msg_channel_close c.them.id)
+        | Sent_close -> make_noreply t))
+  | Msg_channel_data (recp_channel, data) ->
+    (match Channel.lookup recp_channel t.channels with
+     | None -> error "no such channel" (* XXX temporary for testing *)
+     | Some c -> ok (Channel_data (c, data)))
+  | Msg_channel_eof recp_channel ->
+    (match Channel.lookup recp_channel t.channels with
+     | None -> error "no such channel" (* XXX temporary for testing *)
+     | Some c -> ok (Eof c))
+  | Msg_disconnect (code, s, _) -> ok (Disconnect (code, s))
+  | Msg_version v -> make_noreply { t with client_version = Some v;
+                                           expect = Some MSG_KEXINIT }
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))
 
-type output_action =
+let input_msg t m = match input_msg_ t m with Ok x -> x | Error e -> Ssh_error e
+
+type output_result =
   | Send_data of (t * Cstruct.t)
   | Disconnect of (t * Cstruct.t)
   | Ssh_error of string

@@ -59,6 +59,8 @@ let assert_false x = assert (not x)
 
 let get_some = function None -> failwith "Expected Some" | Some x -> x
 
+let get_reply = function Server.Reply x -> x | _ -> failwith "expected reply"
+
 let t_banner () =
   let good_strings = [
     "SSH-2.0-foobar lalal\r\n";
@@ -310,7 +312,7 @@ let t_version () =
     match get_some msg with
     | Ssh.Msg_version v ->
       assert (v = "SSH-2.0-OpenSSH_6.9");
-      let t, _ =  get_ok @@ Server.input_msg t (Ssh.Msg_version v) in
+      let t, _ = get_reply (Server.input_msg t (Ssh.Msg_version v)) in
       assert (t.Server.client_version = (Some "SSH-2.0-OpenSSH_6.9"))
     | _ -> failwith "Expected Ssh_version"
 
@@ -385,7 +387,7 @@ let t_ignore_next_packet () =
   let buf = encrypt_plain message in
   let t, message = get_ok (Server.pop_msg2 t buf) in
   let message = get_some message in
-  let t, _ = get_ok (Server.input_msg t message) in
+  let t, _ = get_reply (Server.input_msg t message) in
   assert (t.Server.ignore_next_packet = true);
   (* Should ignore the next packet since ignore_next_packet is true *)
   let message = Ssh.Msg_debug(true, "woop", "Look at me") in
