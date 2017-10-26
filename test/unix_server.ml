@@ -64,12 +64,9 @@ let send_msgs t fd msgs =
         t msgs)
 
 let handle_event t fd = function
-  | Server.Channel_data (c, data) ->
-    send_msg t fd (Channel.data_msg c data)
-  | Server.Exec_cmd (c, cmd) ->
-    match cmd with
-    | "echo" ->
-      send_msg t fd (Channel.data_msg c "executing echo...\n")
+  | Server.Channel_data (c, data) -> send_msg t fd (Channel.data_msg c data)
+  | Server.Exec_cmd (c, cmd) -> match cmd with
+    | "echo" -> send_msg t fd (Channel.data_msg c "executing echo...\n")
     | unknown ->
       let m = sprintf "Unknown command %s\n%!" cmd in
       send_msg t fd (Channel.data_msg c m) >>= fun _ ->
