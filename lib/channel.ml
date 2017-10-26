@@ -106,10 +106,4 @@ let lookup ~id db = Channel_map.find_opt id db
  * User API
  *)
 
-let accept_request c = Ssh.Msg_channel_success c.us.id
-
-let deny_request c = Ssh.Msg_channel_failure c.us.id
-
-let close c = Ssh.Msg_channel_close c.them.id
-
 let data_msg c data = Ssh.Msg_channel_data (c.them.id, data)
