@@ -65,45 +65,28 @@ let send_msgs t fd msgs =
              exit 1)
         t msgs)
 
+let handle_event t fd = function
+  | Server.Channel_data (c, data) ->
+    send_msg t fd (Channel.data_msg c data)
+  | Server.Exec_cmd (c, cmd) ->
+    match cmd with
+    | "echo" ->
+      send_msg t fd (Channel.data_msg c "executing echo...\n")
+    | unknown ->
+      printf "Unknown command %s\n%!" cmd;
+      exit 2
+
 let rec input_msg_loop t fd =
   Server.pop_msg t >>= fun (t, msg) ->
   match msg with
   | None -> ok t
   | Some msg ->
     printf "<<< %s\n%!" (Ssh.message_to_string msg);
-    match Server.input_msg t msg with
-    | Server.Ssh_error e -> error e
-    | Server.Eof c ->
-      (* XXX assumes correct channel *)
-      printf "Client sent EOF\n%!";
-      exit 0
-    | Server.Disconnect (code, s) ->
-      printf "Client disconnected with code %s (%s)\n%!"
-        (Ssh.disconnect_code_to_string code) s;
-      exit 0
-    | Server.Exec_cmd (c, want_reply, cmd) ->
-      if want_reply then
-        if cmd <> "echo" then
-          send_msg t fd (Channel.deny_request c) >>= fun t ->
-          (* XXX send disconnect and so on *)
-          printf "Unknown command %s\n%!" cmd;
-          exit 2
-        else
-          send_msg t fd (Channel.accept_request c) >>= fun t ->
-          let data = sprintf "executing %s...\n" cmd in
-          send_msg t fd (Channel.data_msg c data) >>= fun t ->
-          input_msg_loop t fd
-      else
-        input_msg_loop t fd
-    | Server.Channel_data (c, data) ->
-      (* XXX we always assume the request was successfull ! *)
-      send_msg t fd (Channel.data_msg c data) >>= fun t ->
-      input_msg_loop t fd
-    | Server.Reply (t, replies) -> match replies with
-      | [] -> input_msg_loop t fd
-      | replies ->
-        send_msgs t fd replies >>= fun t ->
-        input_msg_loop t fd
+    Server.input_msg t msg >>= fun (t, replies, event) ->
+    send_msgs t fd replies >>= fun t ->
+    match event with
+    | None -> input_msg_loop t fd
+    | Some e -> handle_event t fd e >>= fun t -> input_msg_loop t fd
 
 let rec main_loop t fd =
   let buf = read_cstruct fd in

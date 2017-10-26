@@ -122,17 +122,14 @@ let pop_msg2 t buf =
 
 let pop_msg t = pop_msg2 t t.input_buffer
 
-type input_result =
-  | Reply of (t * Ssh.message list)
-  | Exec_cmd of (Channel.t * bool * string)
+type event =
+  | Exec_cmd of (Channel.t * string)
   | Channel_data of (Channel.t * string)
-  | Eof of Channel.t
-  | Disconnect of (Ssh.disconnect_code * string)
-  | Ssh_error of string
 
-let make_noreply t = ok (Reply (t, []))
-let make_reply t m = ok (Reply (t, [ m ]))
-let make_replies t m = ok (Reply (t, m))
+let make_noreply t = ok (t, [], None)
+let make_reply t m = ok (t, [ m ], None)
+let make_replies t m = ok (t, m, None)
+let make_event t e = ok (t, [], Some e)
 
 let rec input_userauth_request t username service auth_method =
   let open Ssh in
@@ -244,21 +241,22 @@ let input_channel_open t send_channel init_win_size max_pkt_size data =
 
 let input_channel_request t recp_channel want_reply data =
   let open Ssh in
-  let fail t =
-    let failure = Msg_channel_failure recp_channel in
-    if want_reply then make_reply t failure else make_noreply t
+  let fail_msg =
+    if want_reply then [ Msg_channel_failure recp_channel ] else []
   in
-  let success t =
-    let succ = (Msg_channel_success recp_channel) in
-    if want_reply then make_reply t succ else make_noreply t
+  let succ_msg =
+    if want_reply then [ Msg_channel_success recp_channel ] else []
   in
+  let fail t = ok (t, fail_msg, None) in
+  let success t = ok (t, succ_msg, None) in
+  let success_with_event t event = ok (t, succ_msg, Some event) in
   let handle t c data =
     match data with
     | Pty_req _ -> success t
     | X11_req _ -> fail t
     | Env (key, value) -> success t  (* TODO implement me *)
     | Shell -> fail t
-    | Exec cmd -> ok (Exec_cmd (c, want_reply, cmd))
+    | Exec cmd -> success_with_event t (Exec_cmd (c, cmd))
     | Subsystem _ -> fail t
     | Window_change _ -> fail t
     | Xon_xoff _ -> fail t
@@ -272,7 +270,7 @@ let input_channel_request t recp_channel want_reply data =
   | None -> fail t
   | Some c -> handle t c data
 
-let input_msg_ t msg =
+let input_msg t msg =
   let open Ssh in
   let open Nocrypto in
   guard_msg t msg >>= fun () ->
@@ -346,17 +344,15 @@ let input_msg_ t msg =
   | Msg_channel_data (recp_channel, data) ->
     (match Channel.lookup recp_channel t.channels with
      | None -> error "no such channel" (* XXX temporary for testing *)
-     | Some c -> ok (Channel_data (c, data)))
-  | Msg_channel_eof recp_channel ->
-    (match Channel.lookup recp_channel t.channels with
-     | None -> error "no such channel" (* XXX temporary for testing *)
-     | Some c -> ok (Eof c))
-  | Msg_disconnect (code, s, _) -> ok (Disconnect (code, s))
+     | Some c -> make_event t (Channel_data (c, data)))
+  (* | Msg_channel_eof recp_channel -> *)
+  (*   (match Channel.lookup recp_channel t.channels with *)
+  (*    | None -> error "no such channel" (\* XXX temporary for testing *\) *)
+  (*    | Some c -> ok (Eof c)) *)
+  (* | Msg_disconnect (code, s, _) -> ok (Disconnect (code, s)) *)
   | Msg_version v -> make_noreply { t with client_version = Some v;
                                            expect = Some MSG_KEXINIT }
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))
-
-let input_msg t m = match input_msg_ t m with Ok x -> x | Error e -> Ssh_error e
 
 type output_result =
   | Send_data of (t * Cstruct.t)
