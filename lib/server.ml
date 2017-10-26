@@ -122,7 +122,7 @@ let pop_msg2 t buf =
 
 let pop_msg t = pop_msg2 t t.input_buffer
 
-type event =
+type input_event =
   | Exec_cmd of (Channel.t * string)
   | Channel_data of (Channel.t * string)
 
@@ -354,9 +354,8 @@ let input_msg t msg =
                                            expect = Some MSG_KEXINIT }
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))
 
-type output_result =
-  | Send_data of (t * Cstruct.t)
-  | Disconnect of (t * Cstruct.t)
+type output_event =
+  | Disconnect
 
 let output_msg t msg =
   let t, buf =
@@ -369,7 +368,6 @@ let output_msg t msg =
   in
   (* Do state transitions *)
   match msg with
-  | Ssh.Msg_newkeys ->
-    of_new_keys_stoc t >>= fun t -> ok (Send_data (t, buf))
-  | Ssh.Msg_disconnect _ -> ok (Disconnect (t, buf))
-  | _ -> ok (Send_data (t, buf))
+  | Ssh.Msg_newkeys -> of_new_keys_stoc t >>= fun t -> ok (t, buf, None)
+  | Ssh.Msg_disconnect _ -> ok (t, buf, Some Disconnect)
+  | _ -> ok (t, buf, None)

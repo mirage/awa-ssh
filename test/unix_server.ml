@@ -41,15 +41,12 @@ let write_cstruct fd buf =
   assert (n > 0)
 
 let send_msg t fd msg =
-  Server.output_msg t msg >>= fun r ->
-  match r with
-  | Server.Send_data (t, data) ->
-    printf ">>> %s\n%!" (Ssh.message_to_string msg);
-    write_cstruct fd data;
-    ok t
-  | Server.Disconnect (t, data) ->
-    printf ">>> %s\n%!" (Ssh.message_to_string msg);
-    write_cstruct fd data;
+  Server.output_msg t msg >>= fun (t, buf, event) ->
+  printf ">>> %s\n%!" (Ssh.message_to_string msg);
+  write_cstruct fd buf;
+  match event with
+  | None -> ok t
+  | Some Server.Disconnect ->
     printf "We sent a disconnect\n%!";
     exit 0
 
