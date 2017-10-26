@@ -41,7 +41,8 @@ let write_cstruct fd buf =
   assert (n > 0)
 
 let send_msg t fd msg =
-  match Server.output_msg t msg with
+  Server.output_msg t msg >>= fun r ->
+  match r with
   | Server.Send_data (t, data) ->
     printf ">>> %s\n%!" (Ssh.message_to_string msg);
     write_cstruct fd data;
@@ -51,9 +52,6 @@ let send_msg t fd msg =
     write_cstruct fd data;
     printf "We sent a disconnect\n%!";
     exit 0
-  | Server.Ssh_error e ->
-    printf "Ssh error: %s\n%!" e;
-    exit 1
 
 let send_msgs t fd msgs =
   ok (List.fold_left
@@ -73,7 +71,9 @@ let handle_event t fd = function
     | "echo" ->
       send_msg t fd (Channel.data_msg c "executing echo...\n")
     | unknown ->
-      printf "Unknown command %s\n%!" cmd;
+      let m = sprintf "Unknown command %s\n%!" cmd in
+      send_msg t fd (Channel.data_msg c m) >>= fun _ ->
+      printf "%s\n%!" m;
       exit 2
 
 let rec input_msg_loop t fd =

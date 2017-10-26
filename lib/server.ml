@@ -357,7 +357,6 @@ let input_msg t msg =
 type output_result =
   | Send_data of (t * Cstruct.t)
   | Disconnect of (t * Cstruct.t)
-  | Ssh_error of string
 
 let output_msg t msg =
   let t, buf =
@@ -371,8 +370,6 @@ let output_msg t msg =
   (* Do state transitions *)
   match msg with
   | Ssh.Msg_newkeys ->
-    (match of_new_keys_stoc t with
-     | Error e -> Ssh_error e
-     | Ok t -> Send_data (t, buf))
-  | Ssh.Msg_disconnect _ -> Disconnect (t, buf)
-  | _ -> Send_data (t, buf)
+    of_new_keys_stoc t >>= fun t -> ok (Send_data (t, buf))
+  | Ssh.Msg_disconnect _ -> ok (Disconnect (t, buf))
+  | _ -> ok (Send_data (t, buf))
