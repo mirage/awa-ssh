@@ -125,6 +125,7 @@ let pop_msg t = pop_msg2 t t.input_buffer
 type input_event =
   | Exec_cmd of (Channel.t * string)
   | Channel_data of (Channel.t * string)
+  | Eof of (Channel.t)
 
 let make_noreply t = ok (t, [], None)
 let make_reply t m = ok (t, [ m ], None)
@@ -345,10 +346,10 @@ let input_msg t msg =
     (match Channel.lookup recp_channel t.channels with
      | None -> error "no such channel" (* XXX temporary for testing *)
      | Some c -> make_event t (Channel_data (c, data)))
-  (* | Msg_channel_eof recp_channel -> *)
-  (*   (match Channel.lookup recp_channel t.channels with *)
-  (*    | None -> error "no such channel" (\* XXX temporary for testing *\) *)
-  (*    | Some c -> ok (Eof c)) *)
+  | Msg_channel_eof recp_channel ->
+    (match Channel.lookup recp_channel t.channels with
+     | None -> error "no such channel" (* XXX temporary for testing *)
+     | Some c -> make_event t (Eof c))
   (* | Msg_disconnect (code, s, _) -> ok (Disconnect (code, s)) *)
   | Msg_version v -> make_noreply { t with client_version = Some v;
                                            expect = Some MSG_KEXINIT }
