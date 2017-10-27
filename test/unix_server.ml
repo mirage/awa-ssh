@@ -68,7 +68,7 @@ let handle_event t fd = function
       send_msg t fd (Channel.data_msg c "pong\n") >>= fun t ->
       printf "sent pong\n%!";
       exit 0
-    | "echo" -> send_msg t fd (Channel.data_msg c "executing echo...\n")
+    | "echo" -> ok t
     | unknown ->
       let m = sprintf "Unknown command %s\n%!" cmd in
       send_msg t fd (Channel.data_msg c m) >>= fun _ ->

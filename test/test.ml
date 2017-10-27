@@ -399,6 +399,25 @@ let t_ignore_next_packet () =
   assert (t.Server.ignore_next_packet = false);
   assert (msg = Some message)
 
+let t_openssh_client () =
+  let s1 = "Georg Wilhelm Friedrich Hegel" in
+  let s2 = "Karl Marx" in
+  let ossh_cmd = "ssh -p 18022 awa@127.0.0.1 -i test/awa_test_rsa echo" in
+  let awa_cmd = "./unix_server.native" in
+  let awa_args = Array.of_list [] in
+  let null = Unix.openfile "/dev/null" [ Unix.O_RDWR ] 0o666 in
+  let awa_pid = Unix.create_process awa_cmd awa_args null null null in
+  let ossh = Unix.open_process_full ossh_cmd (Unix.environment ()) in
+  let ossh_out, ossh_in = match ossh with o, i, e -> o, i in
+  output_string ossh_in (s1 ^ "\n");
+  flush ossh_in;
+  assert (input_line ossh_out = s1);
+  output_string ossh_in (s2 ^ "\n");
+  flush ossh_in;
+  assert (input_line ossh_out = s2);
+  ignore @@ Unix.kill awa_pid 15;
+  ignore @@ Unix.close_process_full ossh
+
 let run_test test =
   let f = fst test in
   let name = snd test in
@@ -420,6 +439,7 @@ let all_tests = [
   (t_openssh_pub, "OpenSSH public key format");
   (t_signature, "signatures");
   (t_ignore_next_packet, "ignore next packet");
+  (t_openssh_client, "OpenSSH@awa_ssh echo server");
 ]
 
 let _ =
