@@ -64,6 +64,10 @@ let handle_event t fd = function
   | Server.Eof c -> printf "Got EOF\n%!"; exit 0
   | Server.Channel_data (c, data) -> send_msg t fd (Channel.data_msg c data)
   | Server.Exec_cmd (c, cmd) -> match cmd with
+    | "ping" ->
+      send_msg t fd (Channel.data_msg c "pong\n") >>= fun t ->
+      printf "sent pong\n%!";
+      exit 0
     | "echo" -> send_msg t fd (Channel.data_msg c "executing echo...\n")
     | unknown ->
       let m = sprintf "Unknown command %s\n%!" cmd in
