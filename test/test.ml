@@ -403,9 +403,10 @@ let t_openssh_client () =
   let s1 = "Georg Wilhelm Friedrich Hegel" in
   let s2 = "Karl Marx" in
   let ossh_cmd = "ssh -p 18022 awa@127.0.0.1 -i test/awa_test_rsa echo" in
-  let awa_cmd = "./unix_server.native" in
+  let awa_cmd = "./_build/test/unix_server.native" in
   let awa_args = Array.of_list [] in
   let null = Unix.openfile "/dev/null" [ Unix.O_RDWR ] 0o666 in
+  ignore @@ Unix.system "pkill unix_server.native";
   let awa_pid = Unix.create_process awa_cmd awa_args null null null in
   let ossh = Unix.open_process_full ossh_cmd (Unix.environment ()) in
   let ossh_out, ossh_in = match ossh with o, i, e -> o, i in
@@ -416,7 +417,8 @@ let t_openssh_client () =
   flush ossh_in;
   assert (input_line ossh_out = s2);
   ignore @@ Unix.kill awa_pid 15;
-  ignore @@ Unix.close_process_full ossh
+  ignore @@ Unix.close_process_full ossh;
+  ignore @@ Unix.close null
 
 let run_test test =
   let f = fst test in
