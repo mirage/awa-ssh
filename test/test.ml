@@ -415,10 +415,12 @@ let t_openssh_client () =
   let awa_pid = Unix.create_process awa_cmd awa_args null null null in
   let ossh = Unix.open_process_full ossh_cmd (Unix.environment ()) in
   let ossh_out, ossh_in = match ossh with o, i, e -> o, i in
-  output_string ossh_in (s1 ^ "\n");
+  output_string ossh_in s1;
+  output_char ossh_in '\n';
   flush ossh_in;
   assert (input_line ossh_out = s1);
-  output_string ossh_in (s2 ^ "\n");
+  output_string ossh_in s2;
+  output_char ossh_in '\n';
   flush ossh_in;
   assert (input_line ossh_out = s2);
   ignore @@ Unix.kill awa_pid Sys.sigterm;
