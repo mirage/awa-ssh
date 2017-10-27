@@ -59,6 +59,11 @@ let assert_false x = assert (not x)
 
 let get_some = function None -> failwith "Expected Some" | Some x -> x
 
+let timeout s =
+  let left = Unix.alarm s in
+  if s <> 0 && left <> 0 then
+    failwith "Timeout already pending"
+
 let t_banner () =
   let good_strings = [
     "SSH-2.0-foobar lalal\r\n";
@@ -416,15 +421,15 @@ let t_openssh_client () =
   output_string ossh_in (s2 ^ "\n");
   flush ossh_in;
   assert (input_line ossh_out = s2);
-  ignore @@ Unix.kill awa_pid 15;
+  ignore @@ Unix.kill awa_pid Sys.sigterm;
   ignore @@ Unix.close_process_full ossh;
   ignore @@ Unix.close null
 
 let run_test test =
-  let f = fst test in
+  let run () = timeout 5; (fst test) (); timeout 0 in
   let name = snd test in
   printf "%s %-40s%!" (blue "%s" "Test") (yellow "%s" name);
-  let () = try f () with
+  let () = try run () with
       exn -> printf "%s\n%!" (red "failed");
       raise exn
   in
@@ -446,4 +451,5 @@ let all_tests = [
 
 let _ =
   Nocrypto.Rng.reseed (Cstruct.of_string "180586");
+  Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> failwith "timeout"));
   List.iter run_test all_tests;
