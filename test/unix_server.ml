@@ -40,58 +40,35 @@ let write_cstruct fd buf =
   let n = Unix.write fd bytes 0 len in
   assert (n > 0)
 
-let send_msg t fd msg =
-  Server.output_msg t msg >>= fun (t, buf, event) ->
-  printf ">>> %s\n%!" (Ssh.message_to_string msg);
-  write_cstruct fd buf;
-  match event with
-  | None -> ok t
-  | Some Server.Disconnect ->
-    printf "We sent a disconnect\n%!";
-    exit 0
-
-let send_msgs t fd msgs =
-  ok (List.fold_left
-        (fun t msg ->
-           match send_msg t fd msg with
-           | Ok t -> t
-           | Error e ->
-             printf "Ssh error: %s\n%!" e;
-             exit 1)
-        t msgs)
-
-let handle_event t fd = function
-  | Server.Eof c -> printf "Got EOF\n%!"; exit 0
-  | Server.Channel_data (c, data) -> send_msg t fd (Channel.data_msg c data)
-  | Server.Exec_cmd (c, cmd) -> match cmd with
+let rec main_loop t fd =
+  let open Server in
+  Engine.poll t >>= fun (t, poll_result) ->
+  match poll_result with
+  | Engine.No_input ->
+    Engine.input_buf t (read_cstruct fd) >>= fun t ->
+    main_loop t fd
+  | Engine.Output buf ->
+    write_cstruct fd buf;
+    main_loop t fd
+  | Engine.Disconnected s -> ok (printf "Disconnected:%s\n%!" s)
+  | Engine.Eof c -> ok (printf "Got EOF\n%!")
+  | Engine.Channel_data (id, data) ->
+    (* XXX just send back, assume it is echo *)
+    Engine.data_msg t id data >>= fun (t, buf) ->
+    write_cstruct fd buf;
+    main_loop t fd
+  | Engine.Exec_cmd (id, cmd) -> match cmd with
+    | "suicide" -> exit 0
     | "ping" ->
-      send_msg t fd (Channel.data_msg c "pong\n") >>= fun t ->
-      printf "sent pong\n%!";
-      exit 0
-    | "echo" -> ok t
+      Engine.data_msg t id "pong\n" >>= fun (t, buf) ->
+      write_cstruct fd buf;
+      ok (printf "sent pong\n%!")
+    | "echo" -> main_loop t fd
     | unknown ->
       let m = sprintf "Unknown command %s\n%!" cmd in
-      send_msg t fd (Channel.data_msg c m) >>= fun _ ->
-      printf "%s\n%!" m;
-      exit 2
-
-let rec input_msg_loop t fd =
-  Server.pop_msg t >>= fun (t, msg) ->
-  match msg with
-  | None -> ok t
-  | Some msg ->
-    printf "<<< %s\n%!" (Ssh.message_to_string msg);
-    Server.input_msg t msg >>= fun (t, replies, event) ->
-    send_msgs t fd replies >>= fun t ->
-    match event with
-    | None -> input_msg_loop t fd
-    | Some e -> handle_event t fd e >>= fun t -> input_msg_loop t fd
-
-let rec main_loop t fd =
-  let buf = read_cstruct fd in
-  let t = Server.input_buf t buf in
-  input_msg_loop t fd >>= fun t ->
-  main_loop t fd
+      Engine.data_msg t id m >>= fun (t, buf) ->
+      write_cstruct fd buf;
+      ok (printf "%s\n%!" m)
 
 let user_db =
   (* User foo auths by passoword *)
@@ -104,18 +81,24 @@ let user_db =
   let awa = Auth.make_user "awa" [ key ] in
   [ foo; awa ]
 
+let rec wait_connection rsa listen_fd server_port =
+  printf "Awa server waiting connections on port %d\n%!" server_port;
+  let client_fd, _ = Unix.(accept listen_fd) in
+  printf "Client connected !\n%!";
+  let t = Server.make rsa user_db in
+  let () = match main_loop t client_fd with
+    | Ok _ -> printf "Client finished\n%!"
+    | Error e -> printf "error: %s\n%!" e
+  in
+  Unix.close client_fd;
+  wait_connection rsa listen_fd server_port
+
 let () =
   Nocrypto.Rng.reseed (Cstruct.of_string "180586");
+  let rsa = Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048) in
   let server_port = 18022 in
   let listen_fd = Unix.(socket PF_INET SOCK_STREAM 0) in
   Unix.(setsockopt listen_fd SO_REUSEADDR true);
   Unix.(bind listen_fd (ADDR_INET (inet_addr_any, server_port)));
   Unix.listen listen_fd 1;
-  printf "Awa server waiting connections on port %d\n%!" server_port;
-  let client_fd, _ = Unix.(accept listen_fd) in
-  printf "Client connected !\n%!";
-  let rsa = Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048) in
-  let t, greetings = Server.make rsa user_db in
-  match send_msgs t client_fd greetings >>= fun t -> main_loop t client_fd with
-  | Ok _ -> printf "ok"
-  | Error e -> printf "error: %s" e
+  wait_connection rsa listen_fd server_port

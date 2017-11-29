@@ -102,8 +102,6 @@ let remove ~id db = Channel_map.remove id db
 
 let lookup ~id db = Channel_map.find_opt id db
 
-(*
- * User API
- *)
+let id c = c.us.id
 
-let data_msg c data = Ssh.Msg_channel_data (c.them.id, data)
+let their_id c = c.them.id

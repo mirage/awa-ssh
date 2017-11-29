@@ -19,6 +19,13 @@ open Util
 
 let version_banner = "SSH-2.0-awa_ssh_0.1"
 
+type result =
+  | Reply of Ssh.message
+  | Exec_cmd of (int32 * string)
+  | Channel_data of (int32 * string)
+  | Eof of int32
+  | Disconnected of string
+
 type t = {
   client_version : string option;         (* Without crlf *)
   server_version : string;                (* Without crlf *)
@@ -31,6 +38,7 @@ type t = {
   keys_stoc      : Kex.keys;              (* Server to cleint (output) keys *)
   new_keys_ctos  : Kex.keys option;       (* Install when we receive NEWKEYS *)
   new_keys_stoc  : Kex.keys option;       (* Install after we send NEWKEYS *)
+  results        : result list;           (* Pending results used by Engine *)
   input_buffer   : Cstruct.t;             (* Unprocessed input *)
   expect         : Ssh.message_id option; (* Messages to expect, None if any *)
   auth_state     : Auth.state;            (* username * service in progress *)
@@ -55,25 +63,24 @@ let make host_key user_db =
   let banner_msg = Msg_version version_banner in
   let server_kexinit = Kex.make_kexinit () in
   let kex_msg = Msg_kexinit server_kexinit in
-  let t = { client_version = None;
-            server_version = version_banner;
-            server_kexinit;
-            client_kexinit = None;
-            neg_kex = None;
-            host_key;
-            session_id = None;
-            keys_ctos = Kex.plaintext_keys;
-            keys_stoc = Kex.plaintext_keys;
-            new_keys_ctos = None;
-            new_keys_stoc = None;
-            input_buffer = Cstruct.create 0;
-            expect = Some MSG_VERSION;
-            auth_state = Auth.Preauth;
-            user_db;
-            channels = Channel.empty_db;
-            ignore_next_packet = false }
-  in
-  t, [ banner_msg; kex_msg ]
+  { client_version = None;
+    server_version = version_banner;
+    server_kexinit;
+    client_kexinit = None;
+    neg_kex = None;
+    host_key;
+    session_id = None;
+    keys_ctos = Kex.plaintext_keys;
+    keys_stoc = Kex.plaintext_keys;
+    new_keys_ctos = None;
+    new_keys_stoc = None;
+    input_buffer = Cstruct.create 0;
+    results = [ Reply banner_msg; Reply kex_msg ];
+    expect = Some MSG_VERSION;
+    auth_state = Auth.Preauth;
+    user_db;
+    channels = Channel.empty_db;
+    ignore_next_packet = false }
 
 (* t with updated keys from new_keys_ctos *)
 let of_new_keys_ctos t =
@@ -94,9 +101,6 @@ let of_new_keys_stoc t =
   let new_mac_stoc = { new_keys_stoc.mac with seq = t.keys_stoc.mac.seq } in
   let new_keys_stoc = { new_keys_stoc with mac = new_mac_stoc } in
   ok { t with keys_stoc = new_keys_stoc; new_keys_stoc = None }
-
-let input_buf t buf =
-  { t with input_buffer = cs_join t.input_buffer buf }
 
 let pop_msg2 t buf =
   let version t buf =
@@ -122,31 +126,30 @@ let pop_msg2 t buf =
 
 let pop_msg t = pop_msg2 t t.input_buffer
 
-type input_event =
-  | Exec_cmd of (Channel.t * string)
-  | Channel_data of (Channel.t * string)
-  | Eof of (Channel.t)
-
-let make_noreply t = ok (t, [], None)
-let make_reply t m = ok (t, [ m ], None)
-let make_replies t m = ok (t, m, None)
-let make_event t e = ok (t, [], Some e)
+let make_noreply t = ok (t, [])
+let make_reply t msg = ok (t, [ Reply msg ])
+let make_replies t msgs = ok (t, List.map (fun msg -> Reply msg) msgs)
+let make_event t e = ok (t, [ e ])
+let make_reply_with_event t msg e = ok (t, [ Reply msg; e ])
+let make_disconnect t code s =
+  ok (t, [ Reply (Ssh.disconnect_msg code s); Disconnected s ])
 
 let rec input_userauth_request t username service auth_method =
   let open Ssh in
   let open Auth in
-  let failure_msg t msg =
-    (match t.auth_state with
-     | Preauth | Done -> error "Unexpected auth_state"
-     | Inprogress (u, s, nfailed) -> Ok (Inprogress (u, s, succ nfailed)))
-    >>= fun auth_state ->
-    make_reply { t with auth_state } msg
+  let inc_nfailed t =
+    match t.auth_state with
+    | Preauth | Done -> error "Unexpected auth_state"
+    | Inprogress (u, s, nfailed) ->
+      ok ({ t with auth_state = Inprogress (u, s, succ nfailed) })
   in
   let disconnect t code s =
-    failure_msg t (disconnect_msg code s)
+    inc_nfailed t >>= fun t ->
+    make_disconnect t code s
   in
   let failure t =
-    failure_msg t (Msg_userauth_failure ([ "publickey"; "password" ], false))
+    inc_nfailed t >>= fun t ->
+    make_reply t (Msg_userauth_failure ([ "publickey"; "password" ], false))
   in
   let discard t = make_noreply t in
   let success t =
@@ -242,22 +245,31 @@ let input_channel_open t send_channel init_win_size max_pkt_size data =
 
 let input_channel_request t recp_channel want_reply data =
   let open Ssh in
-  let fail_msg =
-    if want_reply then [ Msg_channel_failure recp_channel ] else []
+  let fail t =
+    if want_reply then
+      make_reply t (Msg_channel_failure recp_channel)
+    else
+      make_noreply t
   in
-  let succ_msg =
-    if want_reply then [ Msg_channel_success recp_channel ] else []
+  let success t =
+    if want_reply then
+      make_reply t (Msg_channel_success recp_channel)
+    else
+      make_noreply t
   in
-  let fail t = ok (t, fail_msg, None) in
-  let success t = ok (t, succ_msg, None) in
-  let success_with_event t event = ok (t, succ_msg, Some event) in
+  let event t event =
+    if want_reply then
+      make_reply_with_event t (Msg_channel_success recp_channel) event
+    else
+      make_event t event
+  in
   let handle t c data =
     match data with
     | Pty_req _ -> success t
     | X11_req _ -> fail t
     | Env (key, value) -> success t  (* TODO implement me *)
     | Shell -> fail t
-    | Exec cmd -> success_with_event t (Exec_cmd (c, cmd))
+    | Exec cmd -> event t (Exec_cmd (c, cmd))
     | Subsystem _ -> fail t
     | Window_change _ -> fail t
     | Xon_xoff _ -> fail t
@@ -269,7 +281,7 @@ let input_channel_request t recp_channel want_reply data =
   (* Lookup the channel *)
   match Channel.lookup recp_channel t.channels with
   | None -> fail t
-  | Some c -> handle t c data
+  | Some c -> handle t (Channel.id c) data
 
 let input_msg t msg =
   let open Ssh in
@@ -325,8 +337,8 @@ let input_msg t msg =
       make_reply { t with expect = Some MSG_USERAUTH_REQUEST }
         (Msg_service_accept service)
     else
-      make_reply t (disconnect_msg DISCONNECT_SERVICE_NOT_AVAILABLE
-                      (sprintf "service %s not available" service))
+      make_disconnect t DISCONNECT_SERVICE_NOT_AVAILABLE
+        (sprintf "service %s not available" service)
   | Msg_userauth_request (username, service, auth_method) ->
     input_userauth_request t username service auth_method
   | Msg_channel_open (send_channel, init_win_size, max_pkt_size, data) ->
@@ -345,18 +357,15 @@ let input_msg t msg =
   | Msg_channel_data (recp_channel, data) ->
     (match Channel.lookup recp_channel t.channels with
      | None -> error "no such channel" (* XXX temporary for testing *)
-     | Some c -> make_event t (Channel_data (c, data)))
+     | Some c -> make_event t (Channel_data (Channel.id c, data)))
   | Msg_channel_eof recp_channel ->
     (match Channel.lookup recp_channel t.channels with
      | None -> error "no such channel" (* XXX temporary for testing *)
-     | Some c -> make_event t (Eof c))
+     | Some c -> make_event t (Eof (Channel.id c)))
   (* | Msg_disconnect (code, s, _) -> ok (Disconnect (code, s)) *)
   | Msg_version v -> make_noreply { t with client_version = Some v;
                                            expect = Some MSG_KEXINIT }
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))
-
-type output_event =
-  | Disconnect
 
 let output_msg t msg =
   let t, buf =
@@ -369,6 +378,56 @@ let output_msg t msg =
   in
   (* Do state transitions *)
   match msg with
-  | Ssh.Msg_newkeys -> of_new_keys_stoc t >>= fun t -> ok (t, buf, None)
-  | Ssh.Msg_disconnect _ -> ok (t, buf, Some Disconnect)
-  | _ -> ok (t, buf, None)
+  | Ssh.Msg_newkeys -> of_new_keys_stoc t >>= fun t -> ok (t, buf)
+  | _ -> ok (t, buf)
+
+module Engine = struct
+
+  type poll_result =
+    | No_input
+    | Output of Cstruct.t
+    | Exec_cmd of (int32 * string)
+    | Channel_data of (int32 * string)
+    | Eof of int32
+    | Disconnected of string
+
+  let input_buf t buf =
+    if t.results <> [] then
+      error ("Can't add input white there are results pending." ^
+             "Did you forget to call Server.poll until No_input ?")
+    else
+      ok { t with input_buffer = cs_join t.input_buffer buf }
+
+  let result_to_poll t = function
+    | Reply msg ->
+      output_msg t msg >>= fun (t, msg_buf) ->
+      Printf.printf ">>> %s\n%!" (Ssh.message_to_string msg);
+      ok (t, Output msg_buf)
+    | Exec_cmd x -> ok (t, Exec_cmd x)
+    | Channel_data x -> ok (t, Channel_data x)
+    | Eof x -> ok (t, Eof x)
+    | Disconnected x -> ok (t, Disconnected x)
+
+  let rec poll t =
+    match t.results with
+    | r :: results ->
+      let t = { t with results } in
+      result_to_poll t r >>= fun (t, pr) ->
+      ok (t, pr)
+    | [] ->
+      pop_msg t >>= fun (t, msg) ->
+      match msg with
+      | None -> ok (t, No_input)
+      | Some msg ->
+        input_msg t msg >>= fun (t, results) ->
+        assert (t.results = []);
+        poll { t with results }
+
+  let data_msg t id data =
+    match Channel.lookup id t.channels with
+    | None -> error "No such channel"
+    | Some c ->
+      let msg = Ssh.Msg_channel_data (Channel.their_id c, data) in
+      output_msg t msg >>= fun (t, buf) ->
+      ok (t, buf)
+end

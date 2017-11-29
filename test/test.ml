@@ -307,7 +307,7 @@ let t_mpint () =
   assert (e = "Negative mpint")
 
 let t_version () =
-  let t, _ = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) [] in
+  let t = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) [] in
   let client_version = "SSH-2.0-OpenSSH_6.9\r\n" in
   match Server.pop_msg2 t (Cstruct.of_string client_version) with
   | Error e -> failwith e
@@ -315,7 +315,7 @@ let t_version () =
     match get_some msg with
     | Ssh.Msg_version v ->
       assert (v = "SSH-2.0-OpenSSH_6.9");
-      let t, _, _ = get_ok (Server.input_msg t (Ssh.Msg_version v)) in
+      let t, _ = get_ok (Server.input_msg t (Ssh.Msg_version v)) in
       assert (t.Server.client_version = (Some "SSH-2.0-OpenSSH_6.9"))
     | _ -> failwith "Expected Ssh_version"
 
@@ -377,7 +377,7 @@ let t_signature () =
   done
 
 let t_ignore_next_packet () =
-  let t, _ = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) [] in
+  let t = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) [] in
   let t = Server.{ t with client_version = Some "SSH-2.0-client";
                           expect = Some(Ssh.MSG_KEXINIT) }
   in
@@ -390,7 +390,7 @@ let t_ignore_next_packet () =
   let buf = encrypt_plain message in
   let t, message = get_ok (Server.pop_msg2 t buf) in
   let message = get_some message in
-  let t, _, _ = get_ok (Server.input_msg t message) in
+  let t, _ = get_ok (Server.input_msg t message) in
   assert (t.Server.ignore_next_packet = true);
   (* Should ignore the next packet since ignore_next_packet is true *)
   let message = Ssh.Msg_debug(true, "woop", "Look at me") in
@@ -411,8 +411,9 @@ let t_openssh_client () =
   let awa_cmd = "./_build/test/unix_server.native" in
   let awa_args = Array.of_list [] in
   let null = Unix.openfile "/dev/null" [ Unix.O_RDWR ] 0o666 in
-  ignore @@ Unix.system "pkill unix_server.native";
+  ignore @@ Unix.system "pkill unix_server";
   let awa_pid = Unix.create_process awa_cmd awa_args null null null in
+  Unix.sleepf 0.1;
   let ossh = Unix.open_process_full ossh_cmd (Unix.environment ()) in
   let ossh_out, ossh_in = match ossh with o, i, e -> o, i in
   output_string ossh_in s1;
