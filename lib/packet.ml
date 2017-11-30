@@ -35,12 +35,12 @@ let hmac keys buf =
   in
   let digest = match hmac with
     | Plaintext -> Cstruct.create 0
-    | Md5 -> MD5.hmacv ~key [ seqbuf; buf ]
-    | Md5_96 -> MD5.hmacv ~key [ seqbuf; buf ] |> take_96
-    | Sha1 -> SHA1.hmacv ~key [ seqbuf; buf ]
-    | Sha1_96 -> SHA1.hmacv ~key [ seqbuf; buf ] |> take_96
-    | Sha2_256 -> SHA256.hmacv ~key [ seqbuf; buf ]
-    | Sha2_512 -> SHA512.hmacv ~key [ seqbuf; buf ]
+    | Md5 -> MD5.hmaci ~key (fun f -> List.iter f [ seqbuf; buf ])
+    | Md5_96 -> MD5.hmaci ~key (fun f -> List.iter f [ seqbuf; buf ]) |> take_96
+    | Sha1 -> SHA1.hmaci ~key (fun f -> List.iter f [ seqbuf; buf ])
+    | Sha1_96 -> SHA1.hmaci ~key (fun f -> List.iter f [ seqbuf; buf ]) |> take_96
+    | Sha2_256 -> SHA256.hmaci ~key (fun f -> List.iter f [ seqbuf; buf ])
+    | Sha2_512 -> SHA512.hmaci ~key (fun f -> List.iter f [ seqbuf; buf ])
   in
   let keys = { keys with mac = { keys.mac with seq = Int32.succ seq } } in
   digest, keys

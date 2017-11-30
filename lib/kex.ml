@@ -184,7 +184,7 @@ let plaintext_keys = {
                seq = Int32.zero }
 }
 
-let derive_keys digestv k h session_id neg =
+let derive_keys digesti k h session_id neg =
   let cipher_ctos = neg.encryption_alg_ctos in
   let cipher_stoc = neg.encryption_alg_stoc in
   let mac_ctos = neg.mac_alg_ctos in
@@ -195,12 +195,12 @@ let derive_keys digestv k h session_id neg =
       if (Cstruct.len kn) >= need then
         kn
       else
-        let kn' = digestv [k; h; kn] in
+        let kn' = digesti (fun f -> List.iter f [k; h; kn]) in
         expand (Cstruct.append kn kn')
     in
     let x = Cstruct.create 1 in
     Cstruct.set_char x 0 ch;
-    let k1 = digestv [k; h; x; session_id] in
+    let k1 = digesti (fun f -> List.iter f [k; h; x; session_id]) in
     Cstruct.set_len (expand k1) need
   in
   let key_of cipher secret =
@@ -233,7 +233,7 @@ let derive_keys digestv k h session_id neg =
 
 module Dh = struct
 
-  let derive_keys = derive_keys Hash.SHA1.digestv
+  let derive_keys = derive_keys Hash.SHA1.digesti
 
   let compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
     let open Wire in
