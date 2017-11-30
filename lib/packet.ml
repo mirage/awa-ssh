@@ -27,21 +27,7 @@ let hmac keys buf =
   let seq = keys.mac.seq in
   let seqbuf = Cstruct.create 4 in
   Cstruct.BE.set_uint32 seqbuf 0 seq;
-  let take_96 buf =
-    if (Cstruct.len buf) < 12 then
-      failwith "digest is too short."
-    else
-      Cstruct.set_len buf 12
-  in
-  let digest = match hmac with
-    | Plaintext -> Cstruct.create 0
-    | Md5 -> MD5.hmaci ~key (fun f -> List.iter f [ seqbuf; buf ])
-    | Md5_96 -> MD5.hmaci ~key (fun f -> List.iter f [ seqbuf; buf ]) |> take_96
-    | Sha1 -> SHA1.hmaci ~key (fun f -> List.iter f [ seqbuf; buf ])
-    | Sha1_96 -> SHA1.hmaci ~key (fun f -> List.iter f [ seqbuf; buf ]) |> take_96
-    | Sha2_256 -> SHA256.hmaci ~key (fun f -> List.iter f [ seqbuf; buf ])
-    | Sha2_512 -> SHA512.hmaci ~key (fun f -> List.iter f [ seqbuf; buf ])
-  in
+  let digest = Hmac.hmacv hmac ~key [ seqbuf; buf ] in
   let keys = { keys with mac = { keys.mac with seq = Int32.succ seq } } in
   digest, keys
 

@@ -73,3 +73,19 @@ let known s = is_ok (of_string s)
 
 let preferred = [ Md5; Sha1; Sha2_256;
                   Sha2_512; Sha1_96; Md5_96 ]
+
+let hmacv hmac ~key data =
+  let take_96 buf =
+    if (Cstruct.len buf) < 12 then
+      failwith "digest is too short."
+    else
+      Cstruct.set_len buf 12
+  in
+  match hmac with
+  | Plaintext -> Cstruct.create 0
+  | Md5 -> MD5.hmaci ~key (fun f -> List.iter f data)
+  | Md5_96 -> MD5.hmaci ~key (fun f -> List.iter f data) |> take_96
+  | Sha1 -> SHA1.hmaci ~key (fun f -> List.iter f data)
+  | Sha1_96 -> SHA1.hmaci ~key (fun f -> List.iter f data) |> take_96
+  | Sha2_256 -> SHA256.hmaci ~key (fun f -> List.iter f data)
+  | Sha2_512 -> SHA512.hmaci ~key (fun f -> List.iter f data)
