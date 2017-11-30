@@ -393,7 +393,7 @@ module Engine = struct
 
   let input_buf t buf =
     if t.results <> [] then
-      error ("Can't add input white there are results pending." ^
+      error ("Can't add input while there are results pending." ^
              "Did you forget to call Server.poll until No_input ?")
     else
       ok { t with input_buffer = cs_join t.input_buffer buf }
