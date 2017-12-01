@@ -362,7 +362,7 @@ let input_msg t msg =
     (match Channel.lookup recp_channel t.channels with
      | None -> error "no such channel" (* XXX temporary for testing *)
      | Some c -> make_event t (Channel_eof (Channel.id c)))
-  (* | Msg_disconnect (code, s, _) -> ok (Disconnect (code, s)) *)
+  | Msg_disconnect (code, s, _) -> make_event t (Disconnected s)
   | Msg_version v -> make_noreply { t with client_version = Some v;
                                            expect = Some MSG_KEXINIT }
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))
