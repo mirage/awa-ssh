@@ -51,13 +51,13 @@ let rec main_loop t fd =
     write_cstruct fd buf;
     main_loop t fd
   | Engine.Disconnected s -> ok (printf "Disconnected:%s\n%!" s)
-  | Engine.Eof c -> ok (printf "Got EOF\n%!")
+  | Engine.Channel_eof c -> ok (printf "Got EOF\n%!")
   | Engine.Channel_data (id, data) ->
     (* XXX just send back, assume it is echo *)
     Engine.data_msg t id data >>= fun (t, buf) ->
     write_cstruct fd buf;
     main_loop t fd
-  | Engine.Exec_cmd (id, cmd) -> match cmd with
+  | Engine.Channel_exec (id, cmd) -> match cmd with
     | "suicide" -> exit 0
     | "ping" ->
       Engine.data_msg t id "pong\n" >>= fun (t, buf) ->

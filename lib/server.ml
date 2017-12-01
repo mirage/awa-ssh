@@ -21,9 +21,9 @@ let version_banner = "SSH-2.0-awa_ssh_0.1"
 
 type result =
   | Send_msg of Ssh.message
-  | Exec_cmd of (int32 * string)
+  | Channel_exec of (int32 * string)
   | Channel_data of (int32 * string)
-  | Eof of int32
+  | Channel_eof of int32
   | Disconnected of string
 
 type t = {
@@ -269,7 +269,7 @@ let input_channel_request t recp_channel want_reply data =
     | X11_req _ -> fail t
     | Env (key, value) -> success t  (* TODO implement me *)
     | Shell -> fail t
-    | Exec cmd -> event t (Exec_cmd (c, cmd))
+    | Exec cmd -> event t (Channel_exec (c, cmd))
     | Subsystem _ -> fail t
     | Window_change _ -> fail t
     | Xon_xoff _ -> fail t
@@ -361,7 +361,7 @@ let input_msg t msg =
   | Msg_channel_eof recp_channel ->
     (match Channel.lookup recp_channel t.channels with
      | None -> error "no such channel" (* XXX temporary for testing *)
-     | Some c -> make_event t (Eof (Channel.id c)))
+     | Some c -> make_event t (Channel_eof (Channel.id c)))
   (* | Msg_disconnect (code, s, _) -> ok (Disconnect (code, s)) *)
   | Msg_version v -> make_noreply { t with client_version = Some v;
                                            expect = Some MSG_KEXINIT }
@@ -386,9 +386,9 @@ module Engine = struct
   type poll_result =
     | No_input
     | Output of Cstruct.t
-    | Exec_cmd of (int32 * string)
+    | Channel_exec of (int32 * string)
     | Channel_data of (int32 * string)
-    | Eof of int32
+    | Channel_eof of int32
     | Disconnected of string
 
   let input_buf t buf =
@@ -403,9 +403,9 @@ module Engine = struct
       output_msg t msg >>= fun (t, msg_buf) ->
       Printf.printf ">>> %s\n%!" (Ssh.message_to_string msg);
       ok (t, Output msg_buf)
-    | Exec_cmd x -> ok (t, Exec_cmd x)
+    | Channel_exec x -> ok (t, Channel_exec x)
     | Channel_data x -> ok (t, Channel_data x)
-    | Eof x -> ok (t, Eof x)
+    | Channel_eof x -> ok (t, Channel_eof x)
     | Disconnected x -> ok (t, Disconnected x)
 
   let rec poll t =
