@@ -28,15 +28,21 @@ let green fmt  = colored_or_not ("\027[32m"^^fmt^^"\027[m") fmt
 let yellow fmt = colored_or_not ("\027[33m"^^fmt^^"\027[m") fmt
 let blue fmt   = colored_or_not ("\027[36m"^^fmt^^"\027[m") fmt
 
-let cipher_key_of cipher key =
+let cipher_key_of cipher key iv =
   let open Nocrypto.Cipher_block.AES in
   let open Cipher in
   match cipher with
-  | Plaintext -> { cipher = Plaintext; cipher_key = Plaintext_key }
+  | Plaintext -> { cipher = Plaintext;
+                   cipher_key = Plaintext_key;
+                   cipher_iv = iv}
   | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
-    { cipher; cipher_key = Aes_ctr_key (CTR.of_secret key) }
+    { cipher;
+      cipher_key = Aes_ctr_key (CTR.of_secret key);
+      cipher_iv = iv}
   | Aes128_cbc | Aes192_cbc | Aes256_cbc ->
-    { cipher; cipher_key = Aes_cbc_key (CBC.of_secret key) }
+    { cipher;
+      cipher_key = Aes_cbc_key (CBC.of_secret key);
+      cipher_iv = iv}
 
 let hmac_key_of hmac key = Hmac.{ hmac; key; seq = Int32.zero }
 
@@ -344,9 +350,9 @@ let t_crypto () =
     let open Cipher in
     let secret = Cstruct.of_string "Pyotr Alexeyevich Kropotkin 1842" in
     let iv = Cstruct.set_len secret 16 in
-    let cipher = cipher_key_of cipher secret in
+    let cipher = cipher_key_of cipher secret iv in
     let mac = hmac_key_of hmac secret in
-    Kex.{ iv; cipher; mac; tx_rx = Int64.zero }
+    Kex.{ cipher; mac; tx_rx = Int64.zero }
   in
   List.iter (fun cipher ->
       List.iter (fun hmac ->

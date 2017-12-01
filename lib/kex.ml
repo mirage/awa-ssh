@@ -171,15 +171,15 @@ let negotiate ~s ~c =
       (* ignore language_ctos and language_stoc *)
 
 type keys = {
-  iv       : Cstruct.t;  (* Initial IV *)
   cipher   : Cipher.key; (* Encryption key *)
   mac      : Hmac.key;   (* Integrity key *)
   tx_rx    : int64;      (* Transmitted or Received bytes with this key *)
 }
 
 let plaintext_keys = {
-  iv = Cstruct.create 0;
-  cipher = Cipher.{ cipher = Plaintext; cipher_key = Plaintext_key };
+  cipher = Cipher.{ cipher = Plaintext;
+                    cipher_key = Plaintext_key;
+                    cipher_iv = Cstruct.create 0 };
   mac = Hmac.{ hmac = Plaintext;
                key = Cstruct.create 0;
                seq = Int32.zero };
@@ -205,35 +205,37 @@ let derive_keys digesti k h session_id neg =
     let k1 = digesti (fun f -> List.iter f [k; h; x; session_id]) in
     Cstruct.set_len (expand k1) need
   in
-  let key_of cipher secret =
+  let key_of cipher iv secret =
     let open Cipher_block in
     let open Cipher in
     match cipher with
     | Plaintext -> failwith "Deriving plaintext"
     | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
       { cipher;
-        cipher_key = Aes_ctr_key (AES.CTR.of_secret secret) }
+        cipher_key = Aes_ctr_key (AES.CTR.of_secret secret);
+        cipher_iv = iv }
     | Aes128_cbc | Aes192_cbc | Aes256_cbc ->
       { cipher;
-        cipher_key = Aes_cbc_key (AES.CBC.of_secret secret) }
+        cipher_key = Aes_cbc_key (AES.CBC.of_secret secret);
+        cipher_iv = iv }
   in
-  let ctos = {
-    iv     = hash 'A' (Cipher.iv_len cipher_ctos);
-    cipher = hash 'C' (Cipher.key_len cipher_ctos) |> key_of cipher_ctos;
-    mac    = Hmac.{ hmac = mac_ctos;
-                    key = hash 'E' (key_len mac_ctos);
-                    seq = Int32.zero };
-    tx_rx = Int64.zero
-  }
+  (* Build new keys_ctos keys *)
+  let ctos_iv = hash 'A' (Cipher.iv_len cipher_ctos) in
+  let ctos = { cipher = hash 'C' (Cipher.key_len cipher_ctos) |>
+                        key_of cipher_ctos ctos_iv;
+               mac = Hmac.{ hmac = mac_ctos;
+                            key = hash 'E' (key_len mac_ctos);
+                            seq = Int32.zero };
+               tx_rx = Int64.zero }
   in
-  let stoc = {
-    iv     = hash 'B' (Cipher.iv_len cipher_stoc);
-    cipher = hash 'D' (Cipher.key_len cipher_stoc) |> key_of cipher_stoc;
-    mac    = Hmac.{ hmac = mac_stoc;
-                    key = hash 'F' (key_len mac_stoc);
-                    seq = Int32.zero };
-    tx_rx  = Int64.zero
-  }
+  (* Build new stoc keys *)
+  let stoc_iv = hash 'B' (Cipher.iv_len cipher_stoc) in
+  let stoc = { cipher = hash 'D' (Cipher.key_len cipher_stoc) |>
+                        key_of cipher_stoc stoc_iv;
+               mac = Hmac.{ hmac = mac_stoc;
+                            key = hash 'F' (key_len mac_stoc);
+                            seq = Int32.zero };
+               tx_rx = Int64.zero }
   in
   (ctos, stoc)
 

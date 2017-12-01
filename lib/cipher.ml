@@ -34,6 +34,7 @@ type cipher_key =
 type key = {
   cipher     : t;
   cipher_key : cipher_key;
+  cipher_iv  : Cstruct.t;
 }
 
 let to_string = function
