@@ -36,7 +36,7 @@ let cipher_enc_dec enc keys buf =
   let open Nocrypto.Cipher_block in
   let key = keys.Kex.cipher in
   let iv = keys.Kex.iv in
-  match (snd key) with
+  match key.Cipher.cipher_key with
   | Cipher.Plaintext_key -> buf, keys
   | Cipher.Aes_ctr_key key ->
     let f = if enc then AES.CTR.encrypt else AES.CTR.decrypt in
@@ -61,7 +61,8 @@ let peek_len keys block_len buf =
   let open Nocrypto.Cipher_block in
   assert (block_len <= (Cstruct.len buf));
   let buf = Cstruct.set_len buf block_len in
-  let hdr = match (snd (keys.Kex.cipher)) with
+  let cipher = keys.Kex.cipher in
+  let hdr = match cipher.Cipher.cipher_key with
     | Cipher.Plaintext_key -> buf
     | Cipher.Aes_ctr_key key -> AES.CTR.decrypt ~key ~ctr:keys.Kex.iv buf
     | Cipher.Aes_cbc_key key -> AES.CBC.decrypt ~key ~iv:keys.Kex.iv buf
@@ -80,7 +81,8 @@ let to_msg pkt =
 let decrypt keys buf =
   let open Ssh in
   let open Kex in
-  let block_len = max 8 (Cipher.block_len (fst keys.cipher)) in
+  let cipher = keys.cipher.Cipher.cipher in
+  let block_len = max 8 (Cipher.block_len cipher) in
   let digest_len = Hmac.(digest_len keys.mac.hmac) in
   if (Cstruct.len buf) < (sizeof_pkt_hdr + digest_len + block_len) then
     partial buf
@@ -106,7 +108,7 @@ let decrypt keys buf =
 
 let encrypt keys msg =
   let open Kex in
-  let cipher = fst keys.cipher in
+  let cipher = keys.cipher.Cipher.cipher in
   let block_len = max 8 (Cipher.block_len cipher) in
   (* packet_length + padding_length + payload - sequence_length *)
   let buf = Dbuf.reserve Ssh.sizeof_pkt_hdr (Dbuf.create ()) |> Wire.put_message msg in

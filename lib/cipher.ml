@@ -31,7 +31,10 @@ type cipher_key =
   | Aes_ctr_key of CTR.key
   | Aes_cbc_key of CBC.key
 
-type key = t * cipher_key
+type key = {
+  cipher     : t;
+  cipher_key : cipher_key;
+}
 
 let to_string = function
   | Plaintext   -> "none"

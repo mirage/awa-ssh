@@ -32,11 +32,11 @@ let cipher_key_of cipher key =
   let open Nocrypto.Cipher_block.AES in
   let open Cipher in
   match cipher with
-  | Plaintext -> Plaintext, Plaintext_key
-  | Aes128_ctr | Aes192_ctr | Aes256_ctr as c ->
-    (c, Aes_ctr_key (CTR.of_secret key))
-  | Aes128_cbc | Aes192_cbc | Aes256_cbc as c ->
-    (c, Aes_cbc_key (CBC.of_secret key))
+  | Plaintext -> { cipher = Plaintext; cipher_key = Plaintext_key }
+  | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
+    { cipher; cipher_key = Aes_ctr_key (CTR.of_secret key) }
+  | Aes128_cbc | Aes192_cbc | Aes256_cbc ->
+    { cipher; cipher_key = Aes_cbc_key (CBC.of_secret key) }
 
 let hmac_key_of hmac key = Hmac.{ hmac; key; seq = Int32.zero }
 

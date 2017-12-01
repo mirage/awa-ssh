@@ -179,7 +179,7 @@ type keys = {
 
 let plaintext_keys = {
   iv = Cstruct.create 0;
-  cipher = Cipher.(Plaintext, Plaintext_key);
+  cipher = Cipher.{ cipher = Plaintext; cipher_key = Plaintext_key };
   mac = Hmac.{ hmac = Plaintext;
                key = Cstruct.create 0;
                seq = Int32.zero };
@@ -211,9 +211,11 @@ let derive_keys digesti k h session_id neg =
     match cipher with
     | Plaintext -> failwith "Deriving plaintext"
     | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
-      cipher, Aes_ctr_key (AES.CTR.of_secret secret)
+      { cipher;
+        cipher_key = Aes_ctr_key (AES.CTR.of_secret secret) }
     | Aes128_cbc | Aes192_cbc | Aes256_cbc ->
-      cipher, Aes_cbc_key (AES.CBC.of_secret secret)
+      { cipher;
+        cipher_key = Aes_cbc_key (AES.CBC.of_secret secret) }
   in
   let ctos = {
     iv     = hash 'A' (Cipher.iv_len cipher_ctos);
