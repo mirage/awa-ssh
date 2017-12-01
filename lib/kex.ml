@@ -186,6 +186,16 @@ let plaintext_keys = {
   tx_rx = Int64.zero
 }
 
+let one_GB = Int64.(mul (of_int 1024) (of_int 100))
+
+let should_rekey keys =
+  (* If we overflow signed 64bit, something is really wrong *)
+  assert (keys.tx_rx >= Int64.zero);
+  (* NOTYET keys.tx_rx >= one_GB *)
+  false
+
+let reset_rekey keys = { keys with tx_rx = Int64.zero }
+
 let derive_keys digesti k h session_id neg =
   let cipher_ctos = neg.encryption_alg_ctos in
   let cipher_stoc = neg.encryption_alg_stoc in

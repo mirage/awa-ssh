@@ -38,6 +38,7 @@ type t = {
   keys_stoc      : Kex.keys;              (* Server to cleint (output) keys *)
   new_keys_ctos  : Kex.keys option;       (* Install when we receive NEWKEYS *)
   new_keys_stoc  : Kex.keys option;       (* Install after we send NEWKEYS *)
+  keying         : bool;                  (* keying = sent KEXINIT *)
   results        : result list;           (* Pending results used by Engine *)
   input_buffer   : Cstruct.t;             (* Unprocessed input *)
   expect         : Ssh.message_id option; (* Messages to expect, None if any *)
@@ -74,6 +75,7 @@ let make host_key user_db =
     keys_stoc = Kex.plaintext_keys;
     new_keys_ctos = None;
     new_keys_stoc = None;
+    keying = true;
     input_buffer = Cstruct.create 0;
     results = [ Send_msg banner_msg; Send_msg kex_msg ];
     expect = Some MSG_VERSION;
@@ -100,7 +102,14 @@ let of_new_keys_stoc t =
   guard (new_keys_stoc <> plaintext_keys) "Plaintext new keys" >>= fun () ->
   let new_mac_stoc = { new_keys_stoc.mac with seq = t.keys_stoc.mac.seq } in
   let new_keys_stoc = { new_keys_stoc with mac = new_mac_stoc } in
-  ok { t with keys_stoc = new_keys_stoc; new_keys_stoc = None }
+  ok { t with keys_stoc = new_keys_stoc; new_keys_stoc = None; keying = false }
+
+let rekey t =
+  guard (t.keying = false) "already keying" >>= fun () ->
+  let keys_stoc = Kex.reset_rekey t.keys_stoc in
+  let server_kexinit = Kex.make_kexinit () in
+  let t = { t with keys_stoc; server_kexinit; keying = true } in
+  ok (t, server_kexinit)
 
 let pop_msg2 t buf =
   let version t buf =
@@ -295,10 +304,17 @@ let input_msg t msg =
       kex.first_kex_packet_follows &&
       not (Kex.guessed_right ~s:t.server_kexinit ~c:kex)
     in
-    make_noreply { t with client_kexinit = Some kex;
-                          neg_kex = Some neg;
-                          expect = Some MSG_KEXDH_INIT;
-                          ignore_next_packet }
+    let t = { t with client_kexinit = Some kex;
+                     neg_kex = Some neg;
+                     expect = Some MSG_KEXDH_INIT;
+                     ignore_next_packet }
+    in
+    (* if keying, we already sent KEXINIT, nothing to do *)
+    if t.keying then
+      make_noreply t
+    else (* Other side initiated rekeying, we have to kexinit again *)
+      rekey t >>= fun (t, kexinit) ->
+      make_reply t (Msg_kexinit kexinit)
   | Msg_kexdh_init e ->
     guard_some t.neg_kex "No negotiated kex" >>= fun neg ->
     guard_some t.client_version "No client version" >>= fun client_version ->
@@ -404,9 +420,16 @@ module Engine = struct
   let send_msg t msg =
     ok { t with results = List.append t.results [ Send_msg msg ] }
 
+  let maybe_rekey t =
+    if not (Kex.should_rekey t.keys_stoc) || t.keying then
+      ok t
+    else
+      rekey t >>= fun (t, kexinit) -> send_msg t (Ssh.Msg_kexinit kexinit)
+
   let result_to_poll t = function
     | Send_msg msg ->
       output_msg t msg >>= fun (t, msg_buf) ->
+      maybe_rekey t >>= fun t ->
       Printf.printf ">>> %s\n%!" (Ssh.message_to_string msg);
       ok (t, Output msg_buf)
     | Channel_exec x -> ok (t, Channel_exec x)
