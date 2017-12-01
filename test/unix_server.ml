@@ -45,11 +45,8 @@ let rec main_loop t fd =
   Engine.poll t >>= fun (t, poll_result) ->
   match poll_result with
   | Engine.No_input ->
-    Engine.input_buf t (read_cstruct fd) >>= fun t ->
-    main_loop t fd
-  | Engine.Output buf ->
-    write_cstruct fd buf;
-    main_loop t fd
+    Engine.input_buf t (read_cstruct fd) >>= fun t -> main_loop t fd
+  | Engine.Output buf -> write_cstruct fd buf; main_loop t fd
   | Engine.Disconnected s -> ok (printf "Disconnected: %s\n%!" s)
   | Engine.Channel_eof c -> ok (printf "Got EOF\n%!")
   | Engine.Channel_data (id, data) ->
@@ -66,7 +63,8 @@ let rec main_loop t fd =
     | unknown ->
       let m = sprintf "Unknown command %s\n%!" cmd in
       Engine.send_channel_data t id m >>= fun t ->
-      ok (printf "%s\n%!" m)
+      printf "%s\n%!" m;
+      Engine.disconnect t >>= fun t -> main_loop t fd
 
 let user_db =
   (* User foo auths by passoword *)
