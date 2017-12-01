@@ -346,7 +346,7 @@ let t_crypto () =
     let iv = Cstruct.set_len secret 16 in
     let cipher = cipher_key_of cipher secret in
     let mac = hmac_key_of hmac secret in
-    Kex.{ iv; cipher; mac }
+    Kex.{ iv; cipher; mac; tx_rx = Int64.zero }
   in
   List.iter (fun cipher ->
       List.iter (fun hmac ->
