@@ -398,6 +398,12 @@ module Engine = struct
     else
       ok { t with input_buffer = cs_join t.input_buffer buf }
 
+  let send_event t e =
+    ok { t with results = List.append t.results [ e ] }
+
+  let send_msg t msg =
+    ok { t with results = List.append t.results [ Send_msg msg ] }
+
   let result_to_poll t = function
     | Send_msg msg ->
       output_msg t msg >>= fun (t, msg_buf) ->
@@ -423,11 +429,14 @@ module Engine = struct
         assert (t.results = []);
         poll { t with results }
 
-  let data_msg t id data =
+  let send_channel_data t id data =
     match Channel.lookup id t.channels with
     | None -> error "No such channel"
-    | Some c ->
-      let msg = Ssh.Msg_channel_data (Channel.their_id c, data) in
-      output_msg t msg >>= fun (t, buf) ->
-      ok (t, buf)
+    | Some c -> send_msg t (Ssh.Msg_channel_data (Channel.their_id c, data))
+
+  let disconnect t =
+    send_msg t (Ssh.disconnect_msg Ssh.DISCONNECT_BY_APPLICATION
+                  "user disconnected")
+    >>= fun t ->
+    send_event t (Disconnected "you disconnected")
 end

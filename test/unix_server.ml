@@ -50,24 +50,23 @@ let rec main_loop t fd =
   | Engine.Output buf ->
     write_cstruct fd buf;
     main_loop t fd
-  | Engine.Disconnected s -> ok (printf "Disconnected:%s\n%!" s)
+  | Engine.Disconnected s -> ok (printf "Disconnected: %s\n%!" s)
   | Engine.Channel_eof c -> ok (printf "Got EOF\n%!")
   | Engine.Channel_data (id, data) ->
     (* XXX just send back, assume it is echo *)
-    Engine.data_msg t id data >>= fun (t, buf) ->
-    write_cstruct fd buf;
+    Engine.send_channel_data t id data >>= fun t ->
     main_loop t fd
   | Engine.Channel_exec (id, cmd) -> match cmd with
-    | "suicide" -> exit 0
+    | "suicide" -> Engine.disconnect t >>= fun t -> main_loop t fd
     | "ping" ->
-      Engine.data_msg t id "pong\n" >>= fun (t, buf) ->
-      write_cstruct fd buf;
-      ok (printf "sent pong\n%!")
+      Engine.send_channel_data t id "pong\n" >>= fun t ->
+      Engine.disconnect t >>= fun t ->
+      printf "sent pong\n%!";
+      main_loop t fd
     | "echo" -> main_loop t fd
     | unknown ->
       let m = sprintf "Unknown command %s\n%!" cmd in
-      Engine.data_msg t id m >>= fun (t, buf) ->
-      write_cstruct fd buf;
+      Engine.send_channel_data t id m >>= fun t ->
       ok (printf "%s\n%!" m)
 
 let user_db =
