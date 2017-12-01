@@ -20,7 +20,7 @@ open Util
 let version_banner = "SSH-2.0-awa_ssh_0.1"
 
 type result =
-  | Reply of Ssh.message
+  | Send_msg of Ssh.message
   | Exec_cmd of (int32 * string)
   | Channel_data of (int32 * string)
   | Eof of int32
@@ -75,7 +75,7 @@ let make host_key user_db =
     new_keys_ctos = None;
     new_keys_stoc = None;
     input_buffer = Cstruct.create 0;
-    results = [ Reply banner_msg; Reply kex_msg ];
+    results = [ Send_msg banner_msg; Send_msg kex_msg ];
     expect = Some MSG_VERSION;
     auth_state = Auth.Preauth;
     user_db;
@@ -127,12 +127,12 @@ let pop_msg2 t buf =
 let pop_msg t = pop_msg2 t t.input_buffer
 
 let make_noreply t = ok (t, [])
-let make_reply t msg = ok (t, [ Reply msg ])
-let make_replies t msgs = ok (t, List.map (fun msg -> Reply msg) msgs)
+let make_reply t msg = ok (t, [ Send_msg msg ])
+let make_replies t msgs = ok (t, List.map (fun msg -> Send_msg msg) msgs)
 let make_event t e = ok (t, [ e ])
-let make_reply_with_event t msg e = ok (t, [ Reply msg; e ])
+let make_reply_with_event t msg e = ok (t, [ Send_msg msg; e ])
 let make_disconnect t code s =
-  ok (t, [ Reply (Ssh.disconnect_msg code s); Disconnected s ])
+  ok (t, [ Send_msg (Ssh.disconnect_msg code s); Disconnected s ])
 
 let rec input_userauth_request t username service auth_method =
   let open Ssh in
@@ -392,14 +392,14 @@ module Engine = struct
     | Disconnected of string
 
   let input_buf t buf =
-    if t.results <> [] then
+    if (List.length t.results) > 0 then
       error ("Can't add input while there are results pending." ^
              "Did you forget to call Server.poll until No_input ?")
     else
       ok { t with input_buffer = cs_join t.input_buffer buf }
 
   let result_to_poll t = function
-    | Reply msg ->
+    | Send_msg msg ->
       output_msg t msg >>= fun (t, msg_buf) ->
       Printf.printf ">>> %s\n%!" (Ssh.message_to_string msg);
       ok (t, Output msg_buf)
