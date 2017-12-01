@@ -426,7 +426,7 @@ module Engine = struct
       | None -> ok (t, No_input)
       | Some msg ->
         input_msg t msg >>= fun (t, results) ->
-        assert (t.results = []);
+        assert ((List.length t.results) = 0);
         poll { t with results }
 
   let send_channel_data t id data =
