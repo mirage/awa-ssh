@@ -14,5 +14,5 @@ let () =
   Ok [
     Pkg.lib ~exts "lib/awa" ;
     Pkg.test "test/test";
-    Pkg.test ~run:false "test/unix_server"
+    Pkg.test ~run:false "test/awa_test_server"
   ]
