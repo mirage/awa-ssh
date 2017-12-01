@@ -54,8 +54,7 @@ let rec main_loop t fd =
   | Engine.Channel_eof c -> ok (printf "Got EOF\n%!")
   | Engine.Channel_data (id, data) ->
     (* XXX just send back, assume it is echo *)
-    Engine.send_channel_data t id data >>= fun t ->
-    main_loop t fd
+    Engine.send_channel_data t id data >>= fun t -> main_loop t fd
   | Engine.Channel_exec (id, cmd) -> match cmd with
     | "suicide" -> Engine.disconnect t >>= fun t -> main_loop t fd
     | "ping" ->
