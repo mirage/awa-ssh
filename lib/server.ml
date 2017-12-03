@@ -22,7 +22,7 @@ let version_banner = "SSH-2.0-awa_ssh_0.1"
 type result =
   | Send_msg of Ssh.message
   | Channel_exec of (int32 * string)
-  | Channel_data of (int32 * string)
+  | Channel_data of (int32 * Cstruct.t)
   | Channel_eof of int32
   | Disconnected of string
 
@@ -403,7 +403,7 @@ module Engine = struct
     | No_input
     | Output of Cstruct.t
     | Channel_exec of (int32 * string)
-    | Channel_data of (int32 * string)
+    | Channel_data of (int32 * Cstruct.t)
     | Channel_eof of int32
     | Disconnected of string
 

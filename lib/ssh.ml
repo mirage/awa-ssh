@@ -208,8 +208,8 @@ type message =
   | Msg_channel_open_confirmation of (int32 * int32 * int32 * int32 * Cstruct.t)
   | Msg_channel_open_failure of (int32 * int32 * string * string)
   | Msg_channel_window_adjust of (int32 * int32)
-  | Msg_channel_data of (int32 * string)
-  | Msg_channel_extended_data of (int32 * int32 * string)
+  | Msg_channel_data of (int32 * Cstruct.t)
+  | Msg_channel_extended_data of (int32 * int32 * Cstruct.t)
   | Msg_channel_eof of int32
   | Msg_channel_close of int32
   | Msg_channel_request of (int32 * bool * channel_request)

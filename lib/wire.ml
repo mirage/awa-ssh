@@ -425,12 +425,12 @@ let get_message buf =
     ok (Msg_channel_window_adjust (channel, n))
   | MSG_CHANNEL_DATA ->
     get_uint32 buf >>= fun (channel, buf) ->
-    get_string buf >>= fun (data, buf) ->
+    get_cstring buf >>= fun (data, buf) ->
     ok (Msg_channel_data (channel, data))
   | MSG_CHANNEL_EXTENDED_DATA ->
     get_uint32 buf >>= fun (channel, buf) ->
     get_uint32 buf >>= fun (data_type, buf) ->
-    get_string buf >>= fun (data, buf) ->
+    get_cstring buf >>= fun (data, buf) ->
     ok (Msg_channel_extended_data (channel, data_type, data))
   | MSG_CHANNEL_EOF ->
     get_uint32 buf >>= fun (channel, buf) ->
@@ -654,12 +654,12 @@ let put_message msg buf =
   | Msg_channel_data (channel, data) ->
     put_id MSG_CHANNEL_DATA buf |>
     put_uint32 channel |>
-    put_string data
+    put_cstring data
   | Msg_channel_extended_data (channel, data_type, data) ->
     put_id MSG_CHANNEL_EXTENDED_DATA buf |>
     put_uint32 channel |>
     put_uint32 data_type |>
-    put_string data
+    put_cstring data
   | Msg_channel_eof channel ->
     put_id MSG_CHANNEL_EOF buf |>
     put_uint32 channel

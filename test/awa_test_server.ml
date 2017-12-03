@@ -55,13 +55,14 @@ let rec serve t fd =
   | Engine.Channel_exec (id, cmd) -> match cmd with
     | "suicide" -> Engine.disconnect t >>= fun t -> serve t fd
     | "ping" ->
-      Engine.send_channel_data t id "pong\n" >>= fun t ->
+      Engine.send_channel_data t id (Cstruct.of_string "pong\n") >>= fun t ->
       Engine.disconnect t >>= fun t -> printf "sent pong\n%!";
       serve t fd
     | "echo" -> serve t fd
     | unknown ->
       let m = sprintf "Unknown command %s\n%!" cmd in
-      Engine.send_channel_data t id m >>= fun t -> printf "%s\n%!" m;
+      Engine.send_channel_data t id (Cstruct.of_string m) >>= fun t ->
+      printf "%s\n%!" m;
       Engine.disconnect t >>= fun t -> serve t fd
 
 let user_db =

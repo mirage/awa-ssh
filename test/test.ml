@@ -163,6 +163,15 @@ let t_parsing () =
       assert (a1 = b1);
       assert (a2 = b2);
       assert (Cstruct.equal a3 b3);
+    | Msg_channel_data (a1, a2),
+      Msg_channel_data (b1, b2) ->
+      assert (a1 = b1);
+      assert (Cstruct.equal a2 b2);
+    | Msg_channel_extended_data (a1, a2, a3),
+      Msg_channel_extended_data (b1, b2, b3) ->
+      assert (a1 = b1);
+      assert (a2 = b2);
+      assert (Cstruct.equal a3 b3);
     | msg, msg2 -> assert (msg = msg2)
   in
   let long = Int32.of_int 180586 in
@@ -219,8 +228,8 @@ let t_parsing () =
       Msg_channel_open_failure
         (long, long, "Because you stink", "enEN");
       Msg_channel_window_adjust (long, Int32.succ long);
-      Msg_channel_data (long, "DATADATA");
-      Msg_channel_extended_data (long, long, "DATADATA");
+      Msg_channel_data (long, Cstruct.of_string "DATADATA");
+      Msg_channel_extended_data (long, long, Cstruct.of_string "DATADATA");
       Msg_channel_eof long;
       Msg_channel_close long;
       Msg_channel_request (long, false, Pty_req ("a", long, long, long, long, "b"));
