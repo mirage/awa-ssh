@@ -52,6 +52,24 @@ let make ~us ~them = { us; them; state = Open }
 
 let to_string t = Sexplib.Sexp.to_string_hum (sexp_of_channel t)
 
+(* Returns new t, data normalized, and adjust window if <> zero *)
+let input_data t data =
+  (* Normalize data, discard if greater than window *)
+  let len = min (Cstruct.len data |> Int32.of_int) t.us.win in
+  let data = Cstruct.set_len data (Int32.to_int len) in
+  let new_win = Int32.sub t.us.win len in
+  Util.guard Int32.(new_win > zero) "window underflow" >>= fun () ->
+  let win, adjust =
+    if new_win < Ssh.channel_win_adj_threshold then
+      Ssh.channel_win_len, Int32.sub Ssh.channel_win_len new_win
+    else
+      new_win, Int32.zero
+  in
+  Util.guard (Int32.(adjust >= zero)) "adjust underflow" >>= fun () ->
+  assert Int32.(adjust >= zero);
+  let t = { t with us = { t.us with win } } in
+  ok (t, data, adjust)
+
 (*
  * Channel database
  *)
@@ -89,10 +107,7 @@ let add ~id ~win ~max_pkt db =
   | None -> error `No_channels_left
   | Some key ->
     let them = make_end id win max_pkt in
-    let us = make_end key
-        (Int32.of_int Ssh.channel_win_len)
-        (Int32.of_int Ssh.channel_max_pkt_len)
-    in
+    let us = make_end key Ssh.channel_win_len Ssh.channel_max_pkt_len in
     let c = make ~us ~them in
     ok (c, Channel_map.add key c db)
 

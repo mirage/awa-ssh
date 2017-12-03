@@ -26,8 +26,12 @@ type pkt_hdr = {
 
 let max_pkt_len = 512 * 1024          (* 512KB should be enough *)
 let max_len = 256 * 1024              (* 256KB for a field is enough *)
-let channel_win_len = 4 * 1024 * 1024 (* 4MB channel window *)
-let channel_max_pkt_len = 64 * 1024   (* Must be smaller than max_pkt_len *)
+let channel_win_len =                 (* 4MB channel window *)
+  Int32.of_int (4 * 1024 * 1000)
+let channel_win_adj_threshold =       (* Refresh window if below 2MB *)
+  Int32.of_int (2 * 1024 * 1000)
+let channel_max_pkt_len =             (* Must be smaller than max_pkt_len *)
+  Int32.of_int (64 * 1024)
 let max_channels = 1024               (* 1024 maximum channels per connection *)
 
 let guard_sshlen len =
