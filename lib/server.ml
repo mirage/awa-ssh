@@ -445,8 +445,7 @@ module Engine = struct
       result_to_poll t r now >>= fun (t, pr) ->
       ok (t, pr)
     | [] ->
-      pop_msg t >>= fun (t, msg) ->
-      match msg with
+      pop_msg t >>= fun (t, msg) -> match msg with
       | None -> ok (t, No_input)
       | Some msg ->
         input_msg t msg now >>= fun (t, results) ->
