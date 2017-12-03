@@ -42,7 +42,8 @@ let write_cstruct fd buf =
 
 let rec serve t fd =
   let open Server in
-  Engine.poll t >>= fun (t, poll_result) ->
+  (* XXX Replace with Mtime for monotonic uptime  *)
+  Engine.poll t Int64.one >>= fun (t, poll_result) ->
   match poll_result with
   | Engine.No_input ->
     Engine.input_buf t (read_cstruct fd) >>= fun t -> serve t fd
@@ -50,7 +51,6 @@ let rec serve t fd =
   | Engine.Disconnected s -> ok (printf "Disconnected: %s\n%!" s)
   | Engine.Channel_eof c -> ok (printf "Got EOF\n%!")
   | Engine.Channel_data (id, data) ->
-    (* XXX just send back, assume it is echo *)
     Engine.send_channel_data t id data >>= fun t -> serve t fd
   | Engine.Channel_exec (id, cmd) -> match cmd with
     | "suicide" -> Engine.disconnect t >>= fun t -> serve t fd

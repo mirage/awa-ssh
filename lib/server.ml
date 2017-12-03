@@ -104,9 +104,9 @@ let of_new_keys_stoc t =
   let new_keys_stoc = { new_keys_stoc with mac = new_mac_stoc } in
   ok { t with keys_stoc = new_keys_stoc; new_keys_stoc = None; keying = false }
 
-let rekey t =
+let rekey t now =
   guard (t.keying = false) "already keying" >>= fun () ->
-  let keys_stoc = Kex.reset_rekey t.keys_stoc in
+  let keys_stoc = Kex.reset_rekey t.keys_stoc now in
   let server_kexinit = Kex.make_kexinit () in
   let t = { t with keys_stoc; server_kexinit; keying = true } in
   ok (t, server_kexinit)
@@ -292,7 +292,7 @@ let input_channel_request t recp_channel want_reply data =
   | None -> fail t
   | Some c -> handle t (Channel.id c) data
 
-let input_msg t msg =
+let input_msg t msg now =
   let open Ssh in
   let open Nocrypto in
   guard_msg t msg >>= fun () ->
@@ -313,7 +313,7 @@ let input_msg t msg =
     if t.keying then
       make_noreply t
     else (* Other side initiated rekeying, we have to kexinit again *)
-      rekey t >>= fun (t, kexinit) ->
+      rekey t now >>= fun (t, kexinit) ->
       make_reply t (Msg_kexinit kexinit)
   | Msg_kexdh_init e ->
     guard_some t.neg_kex "No negotiated kex" >>= fun neg ->
@@ -333,7 +333,7 @@ let input_msg t msg =
     in
     let signature = Hostkey.sign t.host_key h in
     let session_id = match t.session_id with None -> h | Some x -> x in
-    let new_keys_ctos, new_keys_stoc = Kex.Dh.derive_keys k h session_id neg in
+    let new_keys_ctos, new_keys_stoc = Kex.Dh.derive_keys k h session_id neg now in
     make_replies { t with session_id = Some session_id;
                           new_keys_ctos = Some new_keys_ctos;
                           new_keys_stoc = Some new_keys_stoc;
@@ -420,16 +420,17 @@ module Engine = struct
   let send_msg t msg =
     ok { t with results = List.append t.results [ Send_msg msg ] }
 
-  let maybe_rekey t =
-    if not (Kex.should_rekey t.keys_stoc) || t.keying then
+  let maybe_rekey t now =
+    if not (Kex.should_rekey t.keys_stoc now) || t.keying then
       ok t
     else
-      rekey t >>= fun (t, kexinit) -> send_msg t (Ssh.Msg_kexinit kexinit)
+      rekey t now >>= fun (t, kexinit) -> send_msg t (Ssh.Msg_kexinit kexinit)
 
-  let result_to_poll t = function
+  let result_to_poll t r now =
+    match r with
     | Send_msg msg ->
       output_msg t msg >>= fun (t, msg_buf) ->
-      maybe_rekey t >>= fun t ->
+      maybe_rekey t now >>= fun t ->
       Printf.printf ">>> %s\n%!" (Ssh.message_to_string msg);
       ok (t, Output msg_buf)
     | Channel_exec x -> ok (t, Channel_exec x)
@@ -437,19 +438,19 @@ module Engine = struct
     | Channel_eof x -> ok (t, Channel_eof x)
     | Disconnected x -> ok (t, Disconnected x)
 
-  let rec poll t =
+  let rec poll t now =
     match t.results with
     | r :: results ->
       let t = { t with results } in
-      result_to_poll t r >>= fun (t, pr) ->
+      result_to_poll t r now >>= fun (t, pr) ->
       ok (t, pr)
     | [] ->
       pop_msg t >>= fun (t, msg) ->
       match msg with
       | None -> ok (t, No_input)
       | Some msg ->
-        input_msg t msg >>= fun (t, results) ->
-        poll { t with results }
+        input_msg t msg now >>= fun (t, results) ->
+        poll { t with results } now
 
   let send_channel_data t id data =
     match Channel.lookup id t.channels with

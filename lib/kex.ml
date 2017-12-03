@@ -174,6 +174,7 @@ type keys = {
   cipher   : Cipher.key; (* Encryption key *)
   mac      : Hmac.key;   (* Integrity key *)
   tx_rx    : int64;      (* Transmitted or Received bytes with this key *)
+  derived  : int64;      (* When were these keys derived in seconds *)
 }
 
 let plaintext_keys = {
@@ -183,20 +184,26 @@ let plaintext_keys = {
   mac = Hmac.{ hmac = Plaintext;
                key = Cstruct.create 0;
                seq = Int32.zero };
-  tx_rx = Int64.zero
+  tx_rx = Int64.zero;
+  derived = Int64.zero;
 }
 
+(* For how many bytes is this key good ? (in bytes) *)
 let one_GB = Int64.(mul (of_int 1024) (of_int 100))
+(* How long should we use the same key ? (in seconds) *)
+let keys_lifetime = Int64.(mul (of_int 60) (of_int 60))
 
-let should_rekey keys =
+let should_rekey keys (now : int64) =
   (* If we overflow signed 64bit, something is really wrong *)
   assert (keys.tx_rx >= Int64.zero);
-  (* NOTYET keys.tx_rx >= one_GB *)
-  false
+  keys.tx_rx >= one_GB ||
+  Int64.((sub keys.derived now) > keys_lifetime)
+  (* false *)
 
-let reset_rekey keys = { keys with tx_rx = Int64.zero }
+let reset_rekey keys now =
+  { keys with tx_rx = Int64.zero; derived = now }
 
-let derive_keys digesti k h session_id neg =
+let derive_keys digesti k h session_id neg now =
   let cipher_ctos = neg.encryption_alg_ctos in
   let cipher_stoc = neg.encryption_alg_stoc in
   let mac_ctos = neg.mac_alg_ctos in
@@ -236,7 +243,8 @@ let derive_keys digesti k h session_id neg =
                mac = Hmac.{ hmac = mac_ctos;
                             key = hash 'E' (key_len mac_ctos);
                             seq = Int32.zero };
-               tx_rx = Int64.zero }
+               tx_rx = Int64.zero;
+               derived = now }
   in
   (* Build new stoc keys *)
   let stoc_iv = hash 'B' (Cipher.iv_len cipher_stoc) in
@@ -245,7 +253,8 @@ let derive_keys digesti k h session_id neg =
                mac = Hmac.{ hmac = mac_stoc;
                             key = hash 'F' (key_len mac_stoc);
                             seq = Int32.zero };
-               tx_rx = Int64.zero }
+               tx_rx = Int64.zero;
+               derived = now }
   in
   (ctos, stoc)
 

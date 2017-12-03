@@ -93,6 +93,7 @@ let decrypt keys buf =
       let tx_rx = Int64.add keys.Kex.tx_rx
           (Cstruct.len pkt_enc |> Int64.of_int)
       in
+      let derived = keys.Kex.derived in
       let pkt_dec, cipher = cipher_decrypt cipher pkt_enc in
       let digest1 = Cstruct.shift buf (pkt_len + 4) in
       let digest1 = Cstruct.set_len digest1 digest_len in
@@ -103,7 +104,7 @@ let decrypt keys buf =
       guard (pad_len >= 4 && pad_len <= 255 && pad_len < pkt_len)
         "decrypt: Bogus pad len"  >>= fun () ->
       let buf = Cstruct.shift buf (4 + pkt_len + digest_len) in
-      let keys = Kex.{ cipher; mac; tx_rx } in
+      let keys = Kex.{ cipher; mac; tx_rx; derived } in
       ok (Some (pkt_dec, buf, keys))
 
 let encrypt keys msg =
@@ -128,5 +129,6 @@ let encrypt keys msg =
   let tx_rx = Int64.add keys.Kex.tx_rx
       (Cstruct.len packet |> Int64.of_int)
   in
-  let keys = Kex.{ cipher; mac; tx_rx } in
+  let derived = keys.Kex.derived in
+  let keys = Kex.{ cipher; mac; tx_rx; derived } in
   packet, keys
