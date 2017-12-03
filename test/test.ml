@@ -324,15 +324,16 @@ let t_mpint () =
   assert (e = "Negative mpint")
 
 let t_version () =
-  let t = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) [] in
+  let t, _ = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) [] in
   let client_version = "SSH-2.0-OpenSSH_6.9\r\n" in
   match Server.pop_msg2 t (Cstruct.of_string client_version) with
   | Error e -> failwith e
-  | Ok (t, msg) ->
+  | Ok (t, msg, input_buffer) ->
     match get_some msg with
     | Ssh.Msg_version v ->
+      assert ((Cstruct.len input_buffer) = 0);
       assert (v = "SSH-2.0-OpenSSH_6.9");
-      let t, _ = get_ok (Server.input_msg t (Ssh.Msg_version v) now) in
+      let t, _, _ = get_ok (Server.input_msg t (Ssh.Msg_version v) now) in
       assert (t.Server.client_version = (Some "SSH-2.0-OpenSSH_6.9"))
     | _ -> failwith "Expected Ssh_version"
 
@@ -394,7 +395,7 @@ let t_signature () =
   done
 
 let t_ignore_next_packet () =
-  let t = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) [] in
+  let t, _ = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) [] in
   let t = Server.{ t with client_version = Some "SSH-2.0-client";
                           expect = Some(Ssh.MSG_KEXINIT) }
   in
@@ -405,19 +406,19 @@ let t_ignore_next_packet () =
   (* Should set ignore_next_packet since the guess of the client is wrong *)
   let message = Ssh.Msg_kexinit kexinit in
   let buf = encrypt_plain message in
-  let t, message = get_ok (Server.pop_msg2 t buf) in
+  let t, message, _ = get_ok (Server.pop_msg2 t buf) in
   let message = get_some message in
-  let t, _ = get_ok (Server.input_msg t message now) in
+  let t, _, _ = get_ok (Server.input_msg t message now) in
   assert (t.Server.ignore_next_packet = true);
   (* Should ignore the next packet since ignore_next_packet is true *)
   let message = Ssh.Msg_debug(true, "woop", "Look at me") in
   let buf = encrypt_plain message in
-  let t, msg = get_ok (Server.pop_msg2 t buf) in
+  let t, msg, _ = get_ok (Server.pop_msg2 t buf) in
   assert (t.Server.ignore_next_packet = false);
   assert (msg = None);
   (* Should not ignore the packet which follows after *)
   let buf = encrypt_plain message in
-  let t, msg = get_ok (Server.pop_msg2 t buf) in
+  let t, msg, _ = get_ok (Server.pop_msg2 t buf) in
   assert (t.Server.ignore_next_packet = false);
   assert (msg = Some message)
 

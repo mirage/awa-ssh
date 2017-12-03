@@ -22,7 +22,8 @@ open Awa
 let printf = Printf.printf
 let sprintf = Printf.sprintf
 
-let read_cstruct fd =
+(* Driver callbacks  *)
+let read_cstruct fd () =
   let len = Ssh.max_pkt_len in
   let buf = Bytes.create len in
   let n = Unix.read fd buf 0 len in
@@ -43,27 +44,23 @@ let write_cstruct fd buf =
 let rec serve t fd =
   let open Server in
   (* XXX Replace with Mtime for monotonic uptime  *)
-  Engine.poll t Int64.one >>= fun (t, poll_result) ->
+  Driver.poll t Int64.one >>= fun (t, poll_result) ->
   match poll_result with
-  | Engine.No_input ->
-    Engine.input_buf t (read_cstruct fd) >>= fun t -> serve t fd
-  | Engine.Output buf -> write_cstruct fd buf; serve t fd
-  | Engine.Disconnected s -> ok (printf "Disconnected: %s\n%!" s)
-  | Engine.Channel_eof c -> ok (printf "Got EOF\n%!")
-  | Engine.Channel_data (id, data) ->
-    Engine.send_channel_data t id data >>= fun t -> serve t fd
-  | Engine.Channel_exec (id, cmd) -> match cmd with
-    | "suicide" -> Engine.disconnect t >>= fun t -> serve t fd
+  | Disconnected s -> ok (printf "Disconnected: %s\n%!" s)
+  | Channel_eof id -> ok (printf "Channel %ld EOF\n%!" id)
+  | Channel_data (id, data) ->
+    Driver.send_channel_data t id data >>= fun t -> serve t fd
+  | Channel_exec (id, cmd) -> match cmd with
+    | "suicide" -> Driver.disconnect t >>= fun _ -> ok ()
     | "ping" ->
-      Engine.send_channel_data t id (Cstruct.of_string "pong\n") >>= fun t ->
-      Engine.disconnect t >>= fun t -> printf "sent pong\n%!";
-      serve t fd
+      Driver.send_channel_data t id (Cstruct.of_string "pong\n") >>= fun t ->
+      Driver.disconnect t >>= fun _ -> ok (printf "sent pong\n%!")
     | "echo" -> serve t fd
     | unknown ->
       let m = sprintf "Unknown command %s\n%!" cmd in
-      Engine.send_channel_data t id (Cstruct.of_string m) >>= fun t ->
+      Driver.send_channel_data t id (Cstruct.of_string m) >>= fun t ->
       printf "%s\n%!" m;
-      Engine.disconnect t >>= fun t -> serve t fd
+      Driver.disconnect t >>= fun t -> serve t fd
 
 let user_db =
   (* User foo auths by passoword *)
@@ -80,7 +77,11 @@ let rec wait_connection rsa listen_fd server_port =
   printf "Awa server waiting connections on port %d\n%!" server_port;
   let client_fd, _ = Unix.(accept listen_fd) in
   printf "Client connected !\n%!";
-  let t = Server.make rsa user_db in
+  let server, msgs = Server.make rsa user_db in
+  Driver.of_server server msgs
+    (write_cstruct client_fd)
+    (read_cstruct client_fd)
+  >>= fun t ->
   let () = match serve t client_fd with
     | Ok _ -> printf "Client finished\n%!"
     | Error e -> printf "error: %s\n%!" e
@@ -96,4 +97,6 @@ let () =
   Unix.(setsockopt listen_fd SO_REUSEADDR true);
   Unix.(bind listen_fd (ADDR_INET (inet_addr_any, server_port)));
   Unix.listen listen_fd 1;
-  wait_connection rsa listen_fd server_port
+  match wait_connection rsa listen_fd server_port with
+  | Error e -> printf "error %s\n%!" e
+  | Ok _ -> printf "ok\n%!\n"

@@ -17,10 +17,10 @@
 open Rresult.R
 open Util
 
+(* XXX move to Ssh *)
 let version_banner = "SSH-2.0-awa_ssh_0.1"
 
-type result =
-  | Send_msg of Ssh.message
+type event =
   | Channel_exec of (int32 * string)
   | Channel_data of (int32 * Cstruct.t)
   | Channel_eof of int32
@@ -39,8 +39,6 @@ type t = {
   new_keys_ctos  : Kex.keys option;       (* Install when we receive NEWKEYS *)
   new_keys_stoc  : Kex.keys option;       (* Install after we send NEWKEYS *)
   keying         : bool;                  (* keying = sent KEXINIT *)
-  results        : result list;           (* Pending results used by Engine *)
-  input_buffer   : Cstruct.t;             (* Unprocessed input *)
   expect         : Ssh.message_id option; (* Messages to expect, None if any *)
   auth_state     : Auth.state;            (* username * service in progress *)
   user_db        : Auth.db;               (* username database *)
@@ -61,9 +59,9 @@ let guard_msg t msg =
 
 let make host_key user_db =
   let open Ssh in
-  let banner_msg = Msg_version version_banner in
   let server_kexinit = Kex.make_kexinit () in
-  let kex_msg = Msg_kexinit server_kexinit in
+  let banner_msg = Ssh.Msg_version version_banner in
+  let kex_msg = Ssh.Msg_kexinit server_kexinit in
   { client_version = None;
     server_version = version_banner;
     server_kexinit;
@@ -76,13 +74,12 @@ let make host_key user_db =
     new_keys_ctos = None;
     new_keys_stoc = None;
     keying = true;
-    input_buffer = Cstruct.create 0;
-    results = [ Send_msg banner_msg; Send_msg kex_msg ];
     expect = Some MSG_VERSION;
     auth_state = Auth.Preauth;
     user_db;
     channels = Channel.empty_db;
-    ignore_next_packet = false }
+    ignore_next_packet = false },
+  [ banner_msg; kex_msg ]
 
 (* t with updated keys from new_keys_ctos *)
 let of_new_keys_ctos t =
@@ -115,33 +112,32 @@ let pop_msg2 t buf =
   let version t buf =
     Wire.get_version buf >>= fun (client_version, input_buffer) ->
     match client_version with
-    | None -> ok (t, None)
+    | None -> ok (t, None, input_buffer)
     | Some v ->
       let msg = Ssh.Msg_version v in
-      ok ({ t with input_buffer }, Some msg)
+      ok (t, Some msg, input_buffer)
   in
   let decrypt t buf =
     Packet.decrypt t.keys_ctos buf >>= function
-    | None -> ok (t, None)
+    | None -> ok (t, None, buf)
     | Some (pkt, input_buffer, keys_ctos) ->
       let ignore_packet = t.ignore_next_packet in
       Packet.to_msg pkt >>= fun msg ->
-      ok ({ t with keys_ctos; ignore_next_packet = false; input_buffer },
-          if ignore_packet then None else Some msg)
+      ok ({ t with keys_ctos; ignore_next_packet = false },
+          (if ignore_packet then None else Some msg),
+          input_buffer)
   in
   match t.client_version with
   | None -> version t buf
   | Some _ -> decrypt t buf
 
-let pop_msg t = pop_msg2 t t.input_buffer
-
-let make_noreply t = ok (t, [])
-let make_reply t msg = ok (t, [ Send_msg msg ])
-let make_replies t msgs = ok (t, List.map (fun msg -> Send_msg msg) msgs)
-let make_event t e = ok (t, [ e ])
-let make_reply_with_event t msg e = ok (t, [ Send_msg msg; e ])
+let make_noreply t = ok (t, [], None)
+let make_reply t msg = ok (t, [ msg ], None)
+let make_replies t msgs = ok (t,  msgs, None)
+let make_event t e = ok (t, [], Some e)
+let make_reply_with_event t msg e = ok (t, [ msg ], Some e)
 let make_disconnect t code s =
-  ok (t, [ Send_msg (Ssh.disconnect_msg code s); Disconnected s ])
+  ok (t, [ Ssh.disconnect_msg code s ], Some (Disconnected s))
 
 let rec input_userauth_request t username service auth_method =
   let open Ssh in
@@ -405,69 +401,3 @@ let output_msg t msg =
   match msg with
   | Ssh.Msg_newkeys -> of_new_keys_stoc t >>= fun t -> ok (t, buf)
   | _ -> ok (t, buf)
-
-module Engine = struct
-
-  type poll_result =
-    | No_input
-    | Output of Cstruct.t
-    | Channel_exec of (int32 * string)
-    | Channel_data of (int32 * Cstruct.t)
-    | Channel_eof of int32
-    | Disconnected of string
-
-  let input_buf t buf =
-    if (List.length t.results) > 0 then
-      error ("Can't add input while there are results pending." ^
-             "Did you forget to call Server.poll until No_input ?")
-    else
-      ok { t with input_buffer = cs_join t.input_buffer buf }
-
-  let send_event t e =
-    ok { t with results = List.append t.results [ e ] }
-
-  let send_msg t msg =
-    ok { t with results = List.append t.results [ Send_msg msg ] }
-
-  let maybe_rekey t now =
-    if not (Kex.should_rekey t.keys_stoc now) || t.keying then
-      ok t
-    else
-      rekey t now >>= fun (t, kexinit) -> send_msg t (Ssh.Msg_kexinit kexinit)
-
-  let result_to_poll t r now =
-    match r with
-    | Send_msg msg ->
-      output_msg t msg >>= fun (t, msg_buf) ->
-      maybe_rekey t now >>= fun t ->
-      Printf.printf ">>> %s\n%!" (Ssh.message_to_string msg);
-      ok (t, Output msg_buf)
-    | Channel_exec x -> ok (t, Channel_exec x)
-    | Channel_data x -> ok (t, Channel_data x)
-    | Channel_eof x -> ok (t, Channel_eof x)
-    | Disconnected x -> ok (t, Disconnected x)
-
-  let rec poll t now =
-    match t.results with
-    | r :: results ->
-      let t = { t with results } in
-      result_to_poll t r now >>= fun (t, pr) ->
-      ok (t, pr)
-    | [] ->
-      pop_msg t >>= fun (t, msg) -> match msg with
-      | None -> ok (t, No_input)
-      | Some msg ->
-        input_msg t msg now >>= fun (t, results) ->
-        poll { t with results } now
-
-  let send_channel_data t id data =
-    match Channel.lookup id t.channels with
-    | None -> error "No such channel"
-    | Some c -> send_msg t (Ssh.Msg_channel_data (Channel.their_id c, data))
-
-  let disconnect t =
-    send_msg t (Ssh.disconnect_msg Ssh.DISCONNECT_BY_APPLICATION
-                  "user disconnected")
-    >>= fun t ->
-    send_event t (Disconnected "you disconnected")
-end
