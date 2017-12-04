@@ -41,7 +41,30 @@ let write_cstruct fd buf =
   let n = Unix.write fd bytes 0 len in
   assert (n > 0)
 
-let rec serve t fd =
+let echo t id data =
+  Driver.send_channel_data t id data
+
+let bc t id data =
+  let len = Cstruct.len data in
+  let line = (Cstruct.set_len data (len - 1)) |> Cstruct.to_string in
+  let args = String.split_on_char ' ' line in
+  let reply =
+    if List.length args <> 3 then
+      "Syntax error: A op B. Be nice\n"
+    else
+      let a = int_of_string (List.nth args 0) in
+      let op = List.nth args 1 in
+      let b = int_of_string (List.nth args 2) in
+      match op with
+      | "+" -> sprintf "%d\n" (a + b)
+      | "-" -> sprintf "%d\n" (a - b)
+      | "*" -> sprintf "%d\n" (a * b)
+      | "/" -> if b = 0 then "Don't be an ass !\n" else sprintf "%d\n" (a / b)
+      | op -> "Unknown operator\n"
+  in
+  Driver.send_channel_data t id (Cstruct.of_string reply)
+
+let rec serve t fd cmd =
   let open Server in
   (* XXX Replace with Mtime for monotonic uptime  *)
   Driver.poll t Int64.one >>= fun (t, poll_result) ->
@@ -49,18 +72,22 @@ let rec serve t fd =
   | Disconnected s -> ok (printf "Disconnected: %s\n%!" s)
   | Channel_eof id -> ok (printf "Channel %ld EOF\n%!" id)
   | Channel_data (id, data) ->
-    Driver.send_channel_data t id data >>= fun t -> serve t fd
-  | Channel_exec (id, cmd) -> match cmd with
+    (match cmd with
+     | None -> serve t fd cmd
+     | Some "echo" -> echo t id data >>= fun t -> serve t fd cmd
+     | Some "bc" -> bc t id data >>= fun t -> serve t fd cmd
+     | _ -> error "Unexpected cmd")
+  | Channel_exec (id, exec) -> match exec with
     | "suicide" -> Driver.disconnect t >>= fun _ -> ok ()
     | "ping" ->
       Driver.send_channel_data t id (Cstruct.of_string "pong\n") >>= fun t ->
       Driver.disconnect t >>= fun _ -> ok (printf "sent pong\n%!")
-    | "echo" -> serve t fd
+    | "echo" | "bc" as c -> serve t fd (Some c)
     | unknown ->
-      let m = sprintf "Unknown command %s\n%!" cmd in
+      let m = sprintf "Unknown command %s\n%!" exec in
       Driver.send_channel_data t id (Cstruct.of_string m) >>= fun t ->
       printf "%s\n%!" m;
-      Driver.disconnect t >>= fun t -> serve t fd
+      Driver.disconnect t >>= fun t -> serve t fd cmd
 
 let user_db =
   (* User foo auths by passoword *)
@@ -82,7 +109,7 @@ let rec wait_connection rsa listen_fd server_port =
     (write_cstruct client_fd)
     (read_cstruct client_fd)
   >>= fun t ->
-  let () = match serve t client_fd with
+  let () = match serve t client_fd None with
     | Ok _ -> printf "Client finished\n%!"
     | Error e -> printf "error: %s\n%!" e
   in
