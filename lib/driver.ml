@@ -22,10 +22,11 @@ open Util
  *)
 
 type t = {
-  server         : Server.t;            (* Underlying  *)
+  server         : Server.t;            (* Underlying server *)
   input_buffer   : Cstruct.t;           (* Unprocessed input *)
   write_cb       : Cstruct.t -> unit;   (* Blocking write callback *)
   read_cb        : unit -> Cstruct.t;   (* Blocking read callback *)
+  time_cb        : unit -> Int64.t;     (* Monotonic time in seconds *)
 }
 
 let send_msg t msg =
@@ -42,8 +43,13 @@ let send_msgs t msgs =
        | Error e -> error e)
     (ok t) msgs
 
-let of_server server msgs write_cb read_cb =
-  let t = { server; input_buffer = Cstruct.create 0; write_cb; read_cb } in
+let of_server server msgs write_cb read_cb time_cb =
+  let t = { server;
+            input_buffer = Cstruct.create 0;
+            write_cb;
+            read_cb;
+            time_cb }
+  in
   send_msgs t msgs
 
 let maybe_rekey t now =
@@ -56,20 +62,21 @@ let maybe_rekey t now =
     let t = { t with server = s } in
     send_msg t (Ssh.Msg_kexinit kexinit)
 
-let rec poll t now =
+let rec poll t =
+  let now = t.time_cb () in
   let server = t.server in
   Server.pop_msg2 server t.input_buffer >>= fun (server, msg, input_buffer) ->
   match msg with
   | None ->
     let input_buffer = cs_join input_buffer (t.read_cb ()) in
-    poll { t with server; input_buffer } now
+    poll { t with server; input_buffer }
   | Some msg ->
     Printf.printf "<<< %s\n%!" (Ssh.message_to_string msg);
     Server.input_msg server msg now >>= fun (server, replies, event) ->
     let t = { t with server; input_buffer } in
     send_msgs t replies >>= fun t ->
     (match event with
-      | None -> poll t now (* XXX now is WRONG HERE ! *)
+      | None -> poll t
       | Some event -> ok (t, event))
 
 let send_channel_data t id data =

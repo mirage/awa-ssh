@@ -41,6 +41,9 @@ let write_cstruct fd buf =
   let n = Unix.write fd bytes 0 len in
   assert (n > 0)
 
+let time64 () =
+  Int64.one                     (* XXX fixme *)
+
 let echo t id data =
   Driver.send_channel_data t id data
 
@@ -66,8 +69,7 @@ let bc t id data =
 
 let rec serve t fd cmd =
   let open Server in
-  (* XXX Replace with Mtime for monotonic uptime  *)
-  Driver.poll t Int64.one >>= fun (t, poll_result) ->
+  Driver.poll t >>= fun (t, poll_result) ->
   match poll_result with
   | Disconnected s -> ok (printf "Disconnected: %s\n%!" s)
   | Channel_eof id -> ok (printf "Channel %ld EOF\n%!" id)
@@ -108,6 +110,7 @@ let rec wait_connection rsa listen_fd server_port =
   Driver.of_server server msgs
     (write_cstruct client_fd)
     (read_cstruct client_fd)
+    time64
   >>= fun t ->
   let () = match serve t client_fd None with
     | Ok _ -> printf "Client finished\n%!"
