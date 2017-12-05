@@ -34,6 +34,7 @@ type channel = {
   us    : channel_end;
   them  : channel_end;
   state : state;
+  tosend: Cstruct.t;
 } [@@deriving sexp]
 
 let compare a b =
@@ -48,7 +49,7 @@ end
 
 let make_end id win max_pkt = { id; win; max_pkt }
 
-let make ~us ~them = { us; them; state = Open }
+let make ~us ~them = { us; them; state = Open; tosend = Cstruct.create 0 }
 
 let to_string t = Sexplib.Sexp.to_string_hum (sexp_of_channel t)
 
@@ -69,6 +70,32 @@ let input_data t data =
   assert Int32.(adjust >= zero);
   let t = { t with us = { t.us with win } } in
   ok (t, data, adjust)
+
+let output_data t data =
+  let fragment data =
+    let max_pkt = t.them.max_pkt |> Int32.to_int in
+    let i =
+      Cstruct.iter
+        (fun buf ->
+           if (Cstruct.len buf) = 0 then
+             None
+           else
+             Some (min (Cstruct.len buf) max_pkt))
+        (fun buf -> buf)
+        data
+    in
+    Cstruct.fold (fun frags frag ->
+        Ssh.Msg_channel_data (t.them.id, frag) :: frags)
+      i [] |> List.rev
+  in
+  let tosend = Util.cs_join t.tosend data in
+  let len = min (Cstruct.len tosend) (Int32.to_int t.them.win) in
+  let data = Cstruct.set_len tosend len in
+  let tosend = Cstruct.shift tosend len in
+  let win = Int32.sub t.them.win (Int32.of_int len) in
+  Util.guard Int32.(win > zero) "window underflow" >>= fun () ->
+  let t = { t with tosend; them = { t.them with win } } in
+  ok (t, fragment data)
 
 (*
  * Channel database

@@ -80,9 +80,8 @@ let rec poll t =
       | Some event -> ok (t, event))
 
 let send_channel_data t id data =
-  match Channel.lookup id t.server.Server.channels with
-  | None -> error "No such channel"
-  | Some c -> send_msg t (Ssh.Msg_channel_data (Channel.their_id c, data))
+  Server.output_channel_data t.server id data >>= fun (server, msgs) ->
+  send_msgs { t with server } msgs
 
 let disconnect t =
   send_msg t (Ssh.disconnect_msg Ssh.DISCONNECT_BY_APPLICATION
