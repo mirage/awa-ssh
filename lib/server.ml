@@ -364,22 +364,21 @@ let input_msg t msg now =
         | Open -> make_reply t (Msg_channel_close c.them.id)
         | Sent_close -> make_noreply t))
   | Msg_channel_data (recp_channel, data) ->
-    (match Channel.lookup recp_channel t.channels with
-     | None -> error "no such channel" (* XXX temporary for testing *)
-     | Some c ->
-       Channel.input_data c data >>= fun (c, data, adjust) ->
-       let channels = Channel.update c t.channels in
-       let t = { t with channels } in
-       let e = (Channel_data (Channel.id c, data)) in
-       if adjust = Int32.zero then
-         make_event t (Channel_data (Channel.id c, data))
-       else
-         let msg = Msg_channel_window_adjust ((Channel.their_id c), adjust) in
-         make_reply_with_event t msg e)
+    guard_some (Channel.lookup recp_channel t.channels) "no such channel"
+    >>= fun c ->
+    Channel.input_data c data >>= fun (c, data, adjust) ->
+    let channels = Channel.update c t.channels in
+    let t = { t with channels } in
+    let e = (Channel_data (Channel.id c, data)) in
+    if adjust = Int32.zero then
+      make_event t (Channel_data (Channel.id c, data))
+    else
+      let msg = Msg_channel_window_adjust ((Channel.their_id c), adjust) in
+      make_reply_with_event t msg e
   | Msg_channel_eof recp_channel ->
-    (match Channel.lookup recp_channel t.channels with
-     | None -> error "no such channel" (* XXX temporary for testing *)
-     | Some c -> make_event t (Channel_eof (Channel.id c)))
+    guard_some (Channel.lookup recp_channel t.channels) "no such channel"
+    >>= fun c ->
+    make_event t (Channel_eof (Channel.id c))
   | Msg_disconnect (code, s, _) -> make_event t (Disconnected s)
   | Msg_version v -> make_noreply { t with client_version = Some v;
                                            expect = Some MSG_KEXINIT }
