@@ -35,13 +35,9 @@ let send_msg t msg =
   t.write_cb msg_buf;
   ok { t with server }
 
-let send_msgs t msgs =
-  List.fold_left
-    (fun t msg ->
-       match t with
-       | Ok t -> send_msg t msg
-       | Error e -> error e)
-    (ok t) msgs
+let rec send_msgs t = function
+  | msg :: msgs -> send_msg t msg >>= fun t -> send_msgs t msgs
+  | [] -> ok t
 
 let of_server server msgs write_cb read_cb time_cb =
   let t = { server;
