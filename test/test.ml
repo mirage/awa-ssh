@@ -444,11 +444,25 @@ let t_channel_io () =
   let x = Channel.make_end Int32.zero Ssh.channel_win_len Ssh.channel_max_pkt_len in
   let c = Channel.make ~us:x ~them:x in
   let d = Cstruct.create (Ssh.channel_win_len |> Int32.to_int) in
-  let d32 = Cstruct.set_len d 32 in
-  Channel.input_data c d32 >>= fun (c, d32n, adj) ->
-  assert ((Cstruct.len d32n) = 32);
-  assert (Cstruct.equal d32 d32n);
-  assert (adj = Int32.zero);
+  (* Case 1, fast case, no adjustments, just window consumption *)
+  let d' = Cstruct.set_len d 32 in
+  Channel.input_data c d' >>= fun (c', dn', adj') ->
+  assert ((Cstruct.len d') = 32);
+  assert (Cstruct.equal d' dn');
+  assert (adj' = Int32.zero);
+  (* Make sure our window was drained by 32 bytes *)
+  assert Channel.(c'.us.win = (Int32.sub c.them.win
+                                 ((Cstruct.len d') |> Int32.of_int)));
+
+  (* Case 2, input 2/3 of the window, adjustment must match full window  *)
+  let len' = ((Cstruct.len d) / 4) * 3 in
+  let d' = Cstruct.set_len d len' in
+  Channel.input_data c d' >>= fun (c', dn', adj') ->
+  assert Channel.(c'.us.win = Ssh.channel_win_len);
+  assert ((Cstruct.len d') = len');
+  assert (Cstruct.equal d' dn');
+  assert (adj' <> Int32.zero);
+  assert (adj' = (Int32.of_int len'));
   test_ok
 
 let t_openssh_client () =
