@@ -17,9 +17,6 @@
 open Rresult.R
 open Util
 
-(* XXX move to Ssh *)
-let version_banner = "SSH-2.0-awa_ssh_0.1"
-
 type event =
   | Channel_exec of (int32 * string)
   | Channel_data of (int32 * Cstruct.t)
