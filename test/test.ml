@@ -449,7 +449,7 @@ let t_channel_io () =
   Channel.input_data c d' >>= fun (c', dn', adj') ->
   assert ((Cstruct.len d') = 32);
   assert (Cstruct.equal d' dn');
-  assert (adj' = Int32.zero);
+  assert (adj' = None);
   (* Make sure our window was drained by 32 bytes *)
   assert Channel.(c'.us.win = (Int32.sub c.them.win
                                  ((Cstruct.len d') |> Int32.of_int)));
@@ -461,8 +461,9 @@ let t_channel_io () =
   assert Channel.(c'.us.win = Ssh.channel_win_len);
   assert ((Cstruct.len d') = len');
   assert (Cstruct.equal d' dn');
-  assert (adj' <> Int32.zero);
-  assert (adj' = (Int32.of_int len'));
+  let adj'' = Some (Ssh.Msg_channel_window_adjust
+                      (Int32.zero, Int32.of_int len')) in
+  assert (adj' = adj'');
   test_ok
 
 let t_openssh_client () =

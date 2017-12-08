@@ -69,7 +69,12 @@ let input_data t data =
   Util.guard (Int32.(adjust >= zero)) "adjust underflow" >>= fun () ->
   assert Int32.(adjust >= zero);
   let t = { t with us = { t.us with win } } in
-  ok (t, data, adjust)
+  let msg = if adjust <> Int32.zero then
+      Some (Ssh.Msg_channel_window_adjust (t.them.id, adjust))
+    else
+      None
+  in
+  ok (t, data, msg)
 
 let output_data t data =
   let fragment data =

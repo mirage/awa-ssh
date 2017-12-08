@@ -370,11 +370,9 @@ let input_msg t msg now =
     let channels = Channel.update c t.channels in
     let t = { t with channels } in
     let e = (Channel_data (Channel.id c, data)) in
-    if adjust = Int32.zero then
-      make_event t (Channel_data (Channel.id c, data))
-    else
-      let msg = Msg_channel_window_adjust ((Channel.their_id c), adjust) in
-      make_reply_with_event t msg e
+    (match adjust with
+     | None -> make_event t (Channel_data (Channel.id c, data))
+     | Some adjust -> make_reply_with_event t adjust e)
   | Msg_channel_window_adjust (recp_channel, len) ->
     guard_some (Channel.lookup recp_channel t.channels) "no such channel"
     >>= fun c ->
