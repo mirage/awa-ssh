@@ -19,6 +19,7 @@ let () = Printexc.record_backtrace true
 open Rresult.R
 open Awa
 open Printf
+open Util
 
 let now = Int64.one
 
@@ -29,6 +30,14 @@ let red fmt    = colored_or_not ("\027[31m"^^fmt^^"\027[m") fmt
 let green fmt  = colored_or_not ("\027[32m"^^fmt^^"\027[m") fmt
 let yellow fmt = colored_or_not ("\027[33m"^^fmt^^"\027[m") fmt
 let blue fmt   = colored_or_not ("\027[36m"^^fmt^^"\027[m") fmt
+
+let test_ok = ok ()
+
+let trap_exn f =
+  try return (f ()) with exn ->
+    error (sprintf "Caught exception: %s\n%s\n%!"
+             (Printexc.to_string exn)
+             (Printexc.get_backtrace ()))
 
 let cipher_key_of cipher key iv =
   let open Nocrypto.Cipher_block.AES in
@@ -104,7 +113,8 @@ let t_banner () =
       | Ok (Some _, _) -> failwith "expected none or error"
       | Ok (None, _) -> ()
       | Error e -> ())
-    bad_strings
+    bad_strings;
+  test_ok
 
 let t_parsing () =
   let open Ssh in
@@ -113,11 +123,11 @@ let t_parsing () =
    *)
   let msg = Msg_ignore "a" in
   let buf = encrypt_plain msg in
-  let pkt, rbuf = get_some @@ get_ok @@ decrypt_plain buf in
-  let msg2 = get_ok @@ Packet.to_msg pkt in
-  assert (msg = msg2);
-  assert ((Cstruct.len rbuf) = 0);
-
+  decrypt_plain buf >>= fun r  ->
+  guard_some r "decrypt gave no packet" >>= fun (pkt, rbuf) ->
+  Packet.to_msg pkt >>= fun msg2 ->
+  guard (msg = msg2) "decrypted msg differs from encrypted" >>= fun () ->
+  guard ((Cstruct.len rbuf) = 0) "buffer is not fully parsed" >>= fun () ->
   (*
    * Case 2: 1 byte left
    *)
@@ -248,7 +258,8 @@ let t_parsing () =
       Msg_channel_success long;
       Msg_channel_failure long; ]
   in
-  List.iter (fun m -> id m) l
+  List.iter (fun m -> id m) l;
+  test_ok
 
 let t_key_exchange () =
   (* Read a pcap file and see if it makes sense. *)
@@ -263,13 +274,15 @@ let t_key_exchange () =
       ()
     | _ -> failwith "Expected Msg_kexinit"
   in
-  Unix.close fd
+  Unix.close fd;
+  test_ok
 
 let t_namelist () =
   let s = ["The";"Conquest";"Of";"Bread"] in
   let buf = Dbuf.to_cstruct @@ Wire.put_nl s (Dbuf.create ()) in
   assert (Cstruct.len buf = (4 + String.length (String.concat "," s)));
-  assert (s = fst (get_ok (Wire.get_nl buf)))
+  assert (s = fst (get_ok (Wire.get_nl buf)));
+  test_ok
 
 let t_mpint () =
   let assert_byte buf off v =
@@ -321,21 +334,22 @@ let t_mpint () =
    *)
   Cstruct.set_uint8 buf 4 0x80;
   let e = get_error (Wire.get_mpint buf) in
-  assert (e = "Negative mpint")
+  assert (e = "Negative mpint");
+  test_ok
 
 let t_version () =
   let t, _ = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) [] in
   let client_version = "SSH-2.0-OpenSSH_6.9\r\n" in
-  match Server.pop_msg2 t (Cstruct.of_string client_version) with
-  | Error e -> failwith e
-  | Ok (t, msg, input_buffer) ->
-    match get_some msg with
-    | Ssh.Msg_version v ->
-      assert ((Cstruct.len input_buffer) = 0);
-      assert (v = "SSH-2.0-OpenSSH_6.9");
-      let t, _, _ = get_ok (Server.input_msg t (Ssh.Msg_version v) now) in
-      assert (t.Server.client_version = (Some "SSH-2.0-OpenSSH_6.9"))
-    | _ -> failwith "Expected Ssh_version"
+  Server.pop_msg2 t (Cstruct.of_string client_version) >>=
+  fun (t, msg, input_buffer) ->
+  match get_some msg with
+  | Ssh.Msg_version v ->
+    assert ((Cstruct.len input_buffer) = 0);
+    assert (v = "SSH-2.0-OpenSSH_6.9");
+    let t, _, _ = get_ok (Server.input_msg t (Ssh.Msg_version v) now) in
+    assert (t.Server.client_version = (Some "SSH-2.0-OpenSSH_6.9"));
+    test_ok
+  | _ -> error "Expected Ssh_version"
 
 let t_crypto () =
   let test keys =
@@ -370,7 +384,8 @@ let t_crypto () =
       List.iter (fun hmac ->
           test (make cipher hmac))
         Hmac.preferred)
-    Cipher.preferred
+    Cipher.preferred;
+  test_ok
 
 let t_openssh_pub () =
   let fd = Unix.(openfile "test/awa_test_rsa.pub" [O_RDONLY] 0) in
@@ -378,7 +393,8 @@ let t_openssh_pub () =
   let key = get_ok (Wire.pubkey_of_openssh file_buf) in
   let buf = Wire.openssh_of_pubkey key in
   assert (Cstruct.equal file_buf buf);
-  Unix.close fd
+  Unix.close fd;
+  test_ok
 
 let t_signature () =
   let priv = Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048) in
@@ -392,7 +408,8 @@ let t_signature () =
     Cstruct.set_uint8 signed off (succ evilbyte);
     assert_false (Hostkey.verify pub ~signed ~unsigned);
     Cstruct.set_uint8 signed off evilbyte;
-  done
+  done;
+  test_ok
 
 let t_ignore_next_packet () =
   let t, _ = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) [] in
@@ -420,17 +437,19 @@ let t_ignore_next_packet () =
   let buf = encrypt_plain message in
   let t, msg, _ = get_ok (Server.pop_msg2 t buf) in
   assert (t.Server.ignore_next_packet = false);
-  assert (msg = Some message)
+  assert (msg = Some message);
+  test_ok
 
 let t_channel_io () =
   let x = Channel.make_end Int32.zero Ssh.channel_win_len Ssh.channel_max_pkt_len in
   let c = Channel.make ~us:x ~them:x in
   let d = Cstruct.create (Ssh.channel_win_len |> Int32.to_int) in
   let d32 = Cstruct.set_len d 32 in
-  let c, d32n, adj = get_ok @@ Channel.input_data c d32 in
+  Channel.input_data c d32 >>= fun (c, d32n, adj) ->
   assert ((Cstruct.len d32n) = 32);
   assert (Cstruct.equal d32 d32n);
-  assert (adj = Int32.zero)
+  assert (adj = Int32.zero);
+  test_ok
 
 let t_openssh_client () =
   let s1 = "Georg Wilhelm Friedrich Hegel" in
@@ -454,17 +473,21 @@ let t_openssh_client () =
   assert (input_line ossh_out = s2);
   ignore @@ Unix.kill awa_pid Sys.sigterm;
   ignore @@ Unix.close_process_full ossh;
-  ignore @@ Unix.close null
+  ignore @@ Unix.close null;
+  test_ok
 
 let run_test test =
-  let run () = timeout 5; (fst test) (); timeout 0 in
   let name = snd test in
-  printf "%s %-40s%!" (blue "%s" "Test") (yellow "%s" name);
-  let () = try run () with
-      exn -> printf "%s\n%!" (red "failed");
-      raise exn
+  let run () =
+    timeout 5;
+    let r = trap_exn (fst test) in
+    timeout 0;
+    r
   in
-  printf "%s\n%!" (green "ok")
+  printf "%s %-40s%!" (blue "%s" "Test") (yellow "%s" name);
+  match run () with
+  | Ok _ -> printf "%s\n%!" (green "ok")
+  | Error e -> printf "%s\n%s\n%!" (red "failed") e
 
 let all_tests = [
   (t_parsing, "basic parsing");
