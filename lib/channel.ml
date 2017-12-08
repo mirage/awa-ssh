@@ -97,6 +97,14 @@ let output_data t data =
   let t = { t with tosend; them = { t.them with win } } in
   ok (t, fragment data)
 
+let adjust_window t len =
+  let win = Int32.add t.them.win len in
+  (* XXX this does not handle up to 4GB correctly. *)
+  Util.guard Int32.(win > zero) "window overflow" >>= fun () ->
+  let data = t.tosend in
+  let t = { t with tosend = Cstruct.create 0; them = { t.them with win } } in
+  output_data t data
+
 (*
  * Channel database
  *)

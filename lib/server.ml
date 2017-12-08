@@ -375,6 +375,12 @@ let input_msg t msg now =
     else
       let msg = Msg_channel_window_adjust ((Channel.their_id c), adjust) in
       make_reply_with_event t msg e
+  | Msg_channel_window_adjust (recp_channel, len) ->
+    guard_some (Channel.lookup recp_channel t.channels) "no such channel"
+    >>= fun c ->
+    Channel.adjust_window c len >>= fun (c, msgs) ->
+    let channels = Channel.update c t.channels in
+    make_replies { t with channels } msgs
   | Msg_channel_eof recp_channel ->
     guard_some (Channel.lookup recp_channel t.channels) "no such channel"
     >>= fun c ->
