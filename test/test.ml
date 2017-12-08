@@ -422,6 +422,16 @@ let t_ignore_next_packet () =
   assert (t.Server.ignore_next_packet = false);
   assert (msg = Some message)
 
+let t_channel_io () =
+  let x = Channel.make_end Int32.zero Ssh.channel_win_len Ssh.channel_max_pkt_len in
+  let c = Channel.make ~us:x ~them:x in
+  let d = Cstruct.create (Ssh.channel_win_len |> Int32.to_int) in
+  let d32 = Cstruct.set_len d 32 in
+  let c, d32n, adj = get_ok @@ Channel.input_data c d32 in
+  assert ((Cstruct.len d32n) = 32);
+  assert (Cstruct.equal d32 d32n);
+  assert (adj = Int32.zero)
+
 let t_openssh_client () =
   let s1 = "Georg Wilhelm Friedrich Hegel" in
   let s2 = "Karl Marx" in
@@ -467,6 +477,7 @@ let all_tests = [
   (t_openssh_pub, "OpenSSH public key format");
   (t_signature, "signatures");
   (t_ignore_next_packet, "ignore next packet");
+  (t_channel_io, "channel data io");
   (t_openssh_client, "OpenSSH@awa_ssh echo server");
 ]
 
