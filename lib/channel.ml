@@ -59,7 +59,7 @@ let input_data t data =
   let len = min (Cstruct.len data |> Int32.of_int) t.us.win in
   let data = Cstruct.set_len data (Int32.to_int len) in
   let new_win = Int32.sub t.us.win len in
-  Util.guard Int32.(new_win > zero) "window underflow" >>= fun () ->
+  Util.guard Int32.(new_win >= zero) "window underflow" >>= fun () ->
   let win, adjust =
     if new_win < Ssh.channel_win_adj_threshold then
       Ssh.channel_win_len, Int32.sub Ssh.channel_win_len new_win
