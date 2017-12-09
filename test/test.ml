@@ -440,10 +440,12 @@ let t_ignore_next_packet () =
   assert (msg = Some message);
   test_ok
 
-let t_channel_io () =
+let t_channel_input () =
   let x = Channel.make_end Int32.zero Ssh.channel_win_len Ssh.channel_max_pkt_len in
   let c = Channel.make ~us:x ~them:x in
-  let d = Cstruct.create Int32.(add Ssh.channel_win_len Int32.one |> Int32.to_int) in
+  let d = Nocrypto.Rng.generate
+      Int32.(add Ssh.channel_win_len Int32.one |> Int32.to_int)
+  in
   (* Case 1: No adjustments, just window consumption *)
   let d' = Cstruct.set_len d 32 in
   Channel.input_data c d' >>= fun (c', dn', adj') ->
@@ -467,6 +469,82 @@ let t_channel_io () =
   Channel.input_data c d >>= fun (c', dn', adj') ->
   assert (not (Cstruct.equal d dn'));
   assert ((Cstruct.len d) = ((Cstruct.len dn') + 1));
+  test_ok
+
+let t_channel_output () =
+  let x = Channel.make_end Int32.zero Ssh.channel_win_len Ssh.channel_max_pkt_len in
+  let c = Channel.make ~us:x ~them:x in
+  let d = Nocrypto.Rng.generate
+      Int32.(add Ssh.channel_win_len Int32.one |> Int32.to_int)
+  in
+  (* Case 1: Small output, single message *)
+  let d' = Cstruct.set_len d 32 in
+  Channel.output_data c d' >>= fun (c', msgs') ->
+  assert ((List.length msgs') = 1);
+  let msg' = List.hd msgs' in
+  (match msg' with
+   | Ssh.Msg_channel_data (id, buf) ->
+     assert (id = Int32.zero);
+     assert (Cstruct.equal buf d');
+     ok ()
+   | _ -> error "Unexpected msg'")
+  >>= fun () ->
+  (* Add data len back, see if we have the full window available *)
+  assert (Channel.(Int32.add c'.them.win (Int32.of_int (Cstruct.len d'))) =
+          Ssh.channel_win_len);
+
+  (* Case 2: Enough output for 2 messages, first is 64, second 32 *)
+  (* Make sure we didn't change defaults *)
+  assert ((Int32.to_int Channel.(c.them.max_pkt)) = (64 * 1024));
+  let d' = Cstruct.set_len d (96 * 1024) in
+  Channel.output_data c d' >>= fun (c', msgs') ->
+  assert ((List.length msgs') = 2);
+  let msg1' = List.nth msgs' 0 in
+  let msg2' = List.nth msgs' 1 in
+  (match msg1' with
+   | Ssh.Msg_channel_data (id, buf) ->
+     assert (id = Int32.zero);
+     assert (Cstruct.equal buf (Cstruct.set_len d (64 * 1024)));
+     ok ()
+   | _ -> error "unexpected msg1'")
+  >>= fun () ->
+  (match msg2' with
+   | Ssh.Msg_channel_data (id, buf) ->
+     assert (id = Int32.zero);
+     let d'' = Cstruct.shift d (64 * 1024) in
+     let d'' = Cstruct.set_len d'' (32 * 1024) in
+     assert (Cstruct.equal buf d'');
+     ok ()
+   | _ -> error "unexpected msg2'")
+  >>= fun () ->
+  (* Case 3: See if peer window is respected, one byte will be outside the window *)
+  Channel.output_data c d >>= fun (c', msgs') ->
+  let exp_nmsgs' = 1 + (Cstruct.len d) /
+                       (Int32.to_int Ssh.channel_max_pkt_len)
+  in
+  (* printf "exp_nmsgs = %d (%d/%d) l=%d\n%!"
+   *   exp_nmsgs'
+   *   (Cstruct.len d)
+   *   (Int32.to_int Ssh.channel_max_pkt_len)
+   *   (List.length msgs'); *)
+  assert (exp_nmsgs' = (List.length msgs'));
+  let bufs' = List.map (function
+      | Ssh.Msg_channel_data (id, buf) -> buf
+      | _ -> invalid_arg "unexpected buf")
+      msgs'
+  in
+  let rebuild' =
+    List.fold_left (fun a buf -> Cstruct.append a buf)
+      (Cstruct.create 0) bufs'
+  in
+  (* dwin is all of d that fit the window, one byte was out *)
+  let dwin' = Cstruct.set_len d ((Cstruct.len d) - 1) in
+  assert (Cstruct.equal rebuild' dwin');
+  (* Now check if the byte outside of the window is there, and makes sense *)
+  assert ((Cstruct.len Channel.(c'.tosend)) = 1);
+  assert (Channel.(c'.them.win) = Int32.zero);
+  let d'' = Cstruct.shift d ((Cstruct.len d) - 1) in
+  assert (Cstruct.equal d'' Channel.(c'.tosend));
   test_ok
 
 let t_openssh_client () =
@@ -518,7 +596,8 @@ let all_tests = [
   (t_openssh_pub, "OpenSSH public key format");
   (t_signature, "signatures");
   (t_ignore_next_packet, "ignore next packet");
-  (t_channel_io, "channel data io");
+  (t_channel_input, "channel data input");
+  (t_channel_output, "channel data output");
   (t_openssh_client, "OpenSSH@awa_ssh echo server");
 ]
 
