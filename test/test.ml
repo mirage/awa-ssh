@@ -443,8 +443,8 @@ let t_ignore_next_packet () =
 let t_channel_io () =
   let x = Channel.make_end Int32.zero Ssh.channel_win_len Ssh.channel_max_pkt_len in
   let c = Channel.make ~us:x ~them:x in
-  let d = Cstruct.create (Ssh.channel_win_len |> Int32.to_int) in
-  (* Case 1, fast case, no adjustments, just window consumption *)
+  let d = Cstruct.create Int32.(add Ssh.channel_win_len Int32.one |> Int32.to_int) in
+  (* Case 1: No adjustments, just window consumption *)
   let d' = Cstruct.set_len d 32 in
   Channel.input_data c d' >>= fun (c', dn', adj') ->
   assert ((Cstruct.len d') = 32);
@@ -453,8 +453,7 @@ let t_channel_io () =
   (* Make sure our window was drained by 32 bytes *)
   assert Channel.(c'.us.win = (Int32.sub c.them.win
                                  ((Cstruct.len d') |> Int32.of_int)));
-
-  (* Case 2, input 2/3 of the window, adjustment must match full window  *)
+  (* Case 2, Input 2/3 of the window, adjustment must match full window  *)
   let len' = ((Cstruct.len d) / 4) * 3 in
   let d' = Cstruct.set_len d len' in
   Channel.input_data c d' >>= fun (c', dn', adj') ->
@@ -464,6 +463,10 @@ let t_channel_io () =
   let adj'' = Some (Ssh.Msg_channel_window_adjust
                       (Int32.zero, Int32.of_int len')) in
   assert (adj' = adj'');
+  (* Case 3, Make sure we discard data above our window *)
+  Channel.input_data c d >>= fun (c', dn', adj') ->
+  assert (not (Cstruct.equal d dn'));
+  assert ((Cstruct.len d) = ((Cstruct.len dn') + 1));
   test_ok
 
 let t_openssh_client () =
