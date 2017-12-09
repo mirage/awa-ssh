@@ -492,7 +492,6 @@ let t_channel_output () =
   (* Add data len back, see if we have the full window available *)
   assert (Channel.(Int32.add c'.them.win (Int32.of_int (Cstruct.len d'))) =
           Ssh.channel_win_len);
-
   (* Case 2: Enough output for 2 messages, first is 64, second 32 *)
   (* Make sure we didn't change defaults *)
   assert ((Int32.to_int Channel.(c.them.max_pkt)) = (64 * 1024));
