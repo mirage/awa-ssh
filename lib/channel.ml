@@ -98,7 +98,7 @@ let output_data t data =
   let data = Cstruct.set_len tosend len in
   let tosend = Cstruct.shift tosend len in
   let win = Int32.sub t.them.win (Int32.of_int len) in
-  Util.guard Int32.(win > zero) "window underflow" >>= fun () ->
+  Util.guard Int32.(win >= zero) "window underflow" >>= fun () ->
   let t = { t with tosend; them = { t.them with win } } in
   ok (t, fragment data)
 
