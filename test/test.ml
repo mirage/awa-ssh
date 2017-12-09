@@ -34,7 +34,7 @@ let blue fmt   = colored_or_not ("\027[36m"^^fmt^^"\027[m") fmt
 let test_ok = ok ()
 
 let trap_exn f =
-  try return (f ()) with exn ->
+  try (f ()) with exn ->
     error (sprintf "Caught exception: %s\n%s\n%!"
              (Printexc.to_string exn)
              (Printexc.get_backtrace ()))
