@@ -544,6 +544,11 @@ let t_channel_output () =
   assert (Channel.(c'.them.win) = Int32.zero);
   let d'' = Cstruct.shift d ((Cstruct.len d) - 1) in
   assert (Cstruct.equal d'' Channel.(c'.tosend));
+  (* Case 4: Widen the window, see if we get our byte back *)
+  Channel.adjust_window c' (Int32.of_int 100) >>= fun (c'', msgs') ->
+  assert ((List.length msgs') = 1);
+  assert (Cstruct.len c''.Channel.tosend = 0);
+  assert (Channel.(c''.them.win) = (Int32.of_int 99));
   test_ok
 
 let t_openssh_client () =
