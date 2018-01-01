@@ -31,14 +31,7 @@ let peek_len cipher block_len buf =
   let open Nocrypto.Cipher_block in
   assert (block_len <= (Cstruct.len buf));
   let buf = Cstruct.set_len buf block_len in
-  let hdr = match cipher.Cipher.cipher_key with
-    | Cipher.Plaintext_key -> buf
-    | Cipher.Aes_ctr_key key ->
-      let iv = Counters.C128be.of_cstruct cipher.Cipher.cipher_iv in
-      AES.CTR.decrypt ~key ~ctr:iv buf
-    | Cipher.Aes_cbc_key key ->
-      AES.CBC.decrypt ~key ~iv:cipher.Cipher.cipher_iv buf
-  in
+  let hdr, _ = Cipher.decrypt cipher buf in
   Ssh.get_pkt_hdr_pkt_len hdr |> Int32.to_int
 
 let partial buf =
