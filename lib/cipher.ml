@@ -77,5 +77,28 @@ let block_len = function
 
 let known s = is_ok (of_string s)
 
+(* For some reason Nocrypto CTR modifies ctr in place, CBC returns next *)
+let enc_dec enc cipher buf =
+  let open Nocrypto.Cipher_block in
+  match cipher.cipher_key with
+  | Plaintext_key -> buf, cipher
+  | Aes_ctr_key key ->
+    let iv = cipher.cipher_iv |> Counters.C128be.of_cstruct in
+    let f = if enc then AES.CTR.encrypt else AES.CTR.decrypt in
+    let buf = f ~key ~ctr:iv buf in
+    let next_iv = AES.CTR.next_ctr ~ctr:iv buf |> Counters.C128be.to_cstruct in
+    let key = { cipher with cipher_iv = next_iv } in
+    buf, key
+  | Aes_cbc_key key ->
+    let iv = cipher.cipher_iv in
+    let f = if enc then AES.CBC.encrypt else AES.CBC.decrypt in
+    let buf = f ~key ~iv buf in
+    let next_iv = AES.CBC.next_iv ~iv buf in
+    let cipher = { cipher with cipher_iv = next_iv } in
+    buf, cipher
+
+let encrypt = enc_dec true
+let decrypt = enc_dec false
+
 let preferred = [ Aes128_ctr; Aes192_ctr; Aes256_ctr;
                   Aes128_cbc; Aes192_cbc; Aes256_cbc; ]

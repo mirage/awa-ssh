@@ -27,29 +27,6 @@ let hmac mac buf =
   let digest = Hmac.hmacv hmac ~key [ seqbuf; buf ] in
   digest, Hmac.{ mac with seq = Int32.succ seq }
 
-(* For some reason Nocrypto CTR modifies ctr in place, CBC returns next *)
-let cipher_enc_dec enc cipher buf =
-  let open Nocrypto.Cipher_block in
-  match cipher.Cipher.cipher_key with
-  | Cipher.Plaintext_key -> buf, cipher
-  | Cipher.Aes_ctr_key key ->
-    let iv = cipher.Cipher.cipher_iv |> Counters.C128be.of_cstruct in
-    let f = if enc then AES.CTR.encrypt else AES.CTR.decrypt in
-    let buf = f ~key ~ctr:iv buf in
-    let next_iv = AES.CTR.next_ctr ~ctr:iv buf |> Counters.C128be.to_cstruct in
-    let key = Cipher.{ cipher with cipher_iv = next_iv } in
-    buf, key
-  | Cipher.Aes_cbc_key key ->
-    let iv = cipher.Cipher.cipher_iv in
-    let f = if enc then AES.CBC.encrypt else AES.CBC.decrypt in
-    let buf = f ~key ~iv buf in
-    let next_iv = AES.CBC.next_iv ~iv buf in
-    let cipher = Cipher.{ cipher with cipher_iv = next_iv } in
-    buf, cipher
-
-let cipher_encrypt = cipher_enc_dec true
-let cipher_decrypt = cipher_enc_dec false
-
 let peek_len cipher block_len buf =
   let open Nocrypto.Cipher_block in
   assert (block_len <= (Cstruct.len buf));
@@ -93,7 +70,7 @@ let decrypt keys buf =
           (Cstruct.len pkt_enc |> Int64.of_int)
       in
       let derived = keys.Kex.derived in
-      let pkt_dec, cipher = cipher_decrypt cipher pkt_enc in
+      let pkt_dec, cipher = Cipher.decrypt cipher pkt_enc in
       let digest1 = Cstruct.shift buf (pkt_len + 4) in
       let digest1 = Cstruct.set_len digest1 digest_len in
       let digest2, mac = hmac mac pkt_dec in
@@ -123,7 +100,7 @@ let encrypt keys msg =
   Ssh.set_pkt_hdr_pkt_len pkt (Int32.of_int ((Cstruct.len pkt) - 4));
   Ssh.set_pkt_hdr_pad_len pkt padlen;
   let digest, mac = hmac mac pkt in
-  let enc, cipher = cipher_encrypt cipher pkt in
+  let enc, cipher = Cipher.encrypt cipher pkt in
   let packet = Cstruct.append enc digest in
   let tx_rx = Int64.add keys.Kex.tx_rx
       (Cstruct.len packet |> Int64.of_int)
