@@ -30,21 +30,17 @@ let hmac mac buf =
 (* For some reason Nocrypto CTR modifies ctr in place, CBC returns next *)
 let cipher_enc_dec enc cipher buf =
   let open Nocrypto.Cipher_block in
-  let iv = cipher.Cipher.cipher_iv in
   match cipher.Cipher.cipher_key with
   | Cipher.Plaintext_key -> buf, cipher
   | Cipher.Aes_ctr_key key ->
+    let iv = cipher.Cipher.cipher_iv |> Counters.C128be.of_cstruct in
     let f = if enc then AES.CTR.encrypt else AES.CTR.decrypt in
     let buf = f ~key ~ctr:iv buf in
-    let blocks = (Cstruct.len buf) / AES.CTR.block_size |> Int64.of_int in
-    let iv_len = Cstruct.len iv in
-    let next_iv = Cstruct.create iv_len in
-    Cstruct.blit iv 0 next_iv 0 iv_len;
-    (* Update ctr with number of blocks *)
-    Counter.add16 next_iv 0 blocks;
+    let next_iv = AES.CTR.next_ctr ~ctr:iv buf |> Counters.C128be.to_cstruct in
     let key = Cipher.{ cipher with cipher_iv = next_iv } in
     buf, key
   | Cipher.Aes_cbc_key key ->
+    let iv = cipher.Cipher.cipher_iv in
     let f = if enc then AES.CBC.encrypt else AES.CBC.decrypt in
     let buf = f ~key ~iv buf in
     let next_iv = AES.CBC.next_iv ~iv buf in
@@ -60,8 +56,11 @@ let peek_len cipher block_len buf =
   let buf = Cstruct.set_len buf block_len in
   let hdr = match cipher.Cipher.cipher_key with
     | Cipher.Plaintext_key -> buf
-    | Cipher.Aes_ctr_key key -> AES.CTR.decrypt ~key ~ctr:cipher.Cipher.cipher_iv buf
-    | Cipher.Aes_cbc_key key -> AES.CBC.decrypt ~key ~iv:cipher.Cipher.cipher_iv buf
+    | Cipher.Aes_ctr_key key ->
+      let iv = Counters.C128be.of_cstruct cipher.Cipher.cipher_iv in
+      AES.CTR.decrypt ~key ~ctr:iv buf
+    | Cipher.Aes_cbc_key key ->
+      AES.CBC.decrypt ~key ~iv:cipher.Cipher.cipher_iv buf
   in
   Ssh.get_pkt_hdr_pkt_len hdr |> Int32.to_int
 
