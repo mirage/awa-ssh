@@ -28,13 +28,12 @@ type t =
 
 type cipher_key =
   | Plaintext_key
-  | Aes_ctr_key of CTR.key
-  | Aes_cbc_key of CBC.key
+  | Aes_ctr_key of (CTR.key * Cstruct.t)
+  | Aes_cbc_key of (CBC.key * Cstruct.t)
 
 type key = {
   cipher     : t;
   cipher_key : cipher_key;
-  cipher_iv  : Cstruct.t;
 }
 
 let to_string = function
@@ -82,19 +81,20 @@ let enc_dec enc cipher buf =
   let open Nocrypto.Cipher_block in
   match cipher.cipher_key with
   | Plaintext_key -> buf, cipher
-  | Aes_ctr_key key ->
-    let iv = cipher.cipher_iv |> Counters.C128be.of_cstruct in
+  | Aes_ctr_key (key, iv) ->
+    let iv = iv |> Counters.C128be.of_cstruct in
     let f = if enc then AES.CTR.encrypt else AES.CTR.decrypt in
     let buf = f ~key ~ctr:iv buf in
     let next_iv = AES.CTR.next_ctr ~ctr:iv buf |> Counters.C128be.to_cstruct in
-    let key = { cipher with cipher_iv = next_iv } in
+    let cipher_key = Aes_ctr_key (key, next_iv) in
+    let key = { cipher with cipher_key } in
     buf, key
-  | Aes_cbc_key key ->
-    let iv = cipher.cipher_iv in
+  | Aes_cbc_key (key, iv) ->
     let f = if enc then AES.CBC.encrypt else AES.CBC.decrypt in
     let buf = f ~key ~iv buf in
     let next_iv = AES.CBC.next_iv ~iv buf in
-    let cipher = { cipher with cipher_iv = next_iv } in
+    let cipher_key = Aes_cbc_key (key, next_iv) in
+    let cipher = { cipher with cipher_key } in
     buf, cipher
 
 let encrypt = enc_dec true
