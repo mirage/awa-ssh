@@ -46,6 +46,7 @@ let cipher_key_of cipher key iv =
   | Plaintext -> { cipher = Plaintext;
                    cipher_key = Plaintext_key }
   | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
+    let iv = Nocrypto.Cipher_block.Counters.C128be.of_cstruct iv in
     { cipher;
       cipher_key = Aes_ctr_key ((CTR.of_secret key), iv) }
   | Aes128_cbc | Aes192_cbc | Aes256_cbc ->

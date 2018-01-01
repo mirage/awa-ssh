@@ -28,7 +28,7 @@ type t =
 
 type cipher_key =
   | Plaintext_key
-  | Aes_ctr_key of (CTR.key * Cstruct.t)
+  | Aes_ctr_key of (CTR.key * Nocrypto.Cipher_block.Counters.C128be.t)
   | Aes_cbc_key of (CBC.key * Cstruct.t)
 
 type key = {
@@ -82,10 +82,9 @@ let enc_dec enc cipher buf =
   match cipher.cipher_key with
   | Plaintext_key -> buf, cipher
   | Aes_ctr_key (key, iv) ->
-    let iv = iv |> Counters.C128be.of_cstruct in
     let f = if enc then AES.CTR.encrypt else AES.CTR.decrypt in
     let buf = f ~key ~ctr:iv buf in
-    let next_iv = AES.CTR.next_ctr ~ctr:iv buf |> Counters.C128be.to_cstruct in
+    let next_iv = AES.CTR.next_ctr ~ctr:iv buf in
     let cipher_key = Aes_ctr_key (key, next_iv) in
     let key = { cipher with cipher_key } in
     buf, key
