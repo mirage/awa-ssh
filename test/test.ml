@@ -606,4 +606,5 @@ let all_tests = [
 let _ =
   Nocrypto.Rng.reseed (Cstruct.of_string "180586");
   Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> failwith "timeout"));
+  Unix.chmod "test/awa_test_rsa" 0o600;
   List.iter run_test all_tests;
