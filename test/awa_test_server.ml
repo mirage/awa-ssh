@@ -76,7 +76,11 @@ let rec serve t cmd =
   | Channel_data (id, data) ->
     (match cmd with
      | None -> serve t cmd
-     | Some "echo" -> echo t id data >>= fun t -> serve t cmd
+     | Some "echo" ->
+       if (Cstruct.to_string data) = "rekey\n" then
+         Driver.rekey t >>= fun t -> serve t cmd
+       else
+         echo t id data >>= fun t -> serve t cmd
      | Some "bc" -> bc t id data >>= fun t -> serve t cmd
      | _ -> error "Unexpected cmd")
   | Channel_exec (id, exec) -> match exec with

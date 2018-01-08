@@ -48,15 +48,17 @@ let of_server server msgs write_cb read_cb time_cb =
   in
   send_msgs t msgs
 
+let rekey t =
+  Server.rekey t.server (t.time_cb ()) >>= fun (server, kexinit) ->
+  send_msg { t with server } (Ssh.Msg_kexinit kexinit)
+
 let maybe_rekey t now =
   let s = t.server in
   if not (Kex.should_rekey s.Server.keys_stoc now) ||
      s.Server.keying then
     ok t
   else
-    Server.rekey s now >>= fun (s, kexinit) ->
-    let t = { t with server = s } in
-    send_msg t (Ssh.Msg_kexinit kexinit)
+    rekey t
 
 let rec poll t =
   let now = t.time_cb () in
