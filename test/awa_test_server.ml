@@ -67,7 +67,7 @@ let bc t id data =
   in
   Driver.send_channel_data t id (Cstruct.of_string reply)
 
-let rec serve t fd cmd =
+let rec serve t cmd =
   let open Server in
   Driver.poll t >>= fun (t, poll_result) ->
   match poll_result with
@@ -75,21 +75,21 @@ let rec serve t fd cmd =
   | Channel_eof id -> ok (printf "Channel %ld EOF\n%!" id)
   | Channel_data (id, data) ->
     (match cmd with
-     | None -> serve t fd cmd
-     | Some "echo" -> echo t id data >>= fun t -> serve t fd cmd
-     | Some "bc" -> bc t id data >>= fun t -> serve t fd cmd
+     | None -> serve t cmd
+     | Some "echo" -> echo t id data >>= fun t -> serve t cmd
+     | Some "bc" -> bc t id data >>= fun t -> serve t cmd
      | _ -> error "Unexpected cmd")
   | Channel_exec (id, exec) -> match exec with
     | "suicide" -> Driver.disconnect t >>= fun _ -> ok ()
     | "ping" ->
       Driver.send_channel_data t id (Cstruct.of_string "pong\n") >>= fun t ->
       Driver.disconnect t >>= fun _ -> ok (printf "sent pong\n%!")
-    | "echo" | "bc" as c -> serve t fd (Some c)
+    | "echo" | "bc" as c -> serve t (Some c)
     | unknown ->
       let m = sprintf "Unknown command %s\n%!" exec in
       Driver.send_channel_data t id (Cstruct.of_string m) >>= fun t ->
       printf "%s\n%!" m;
-      Driver.disconnect t >>= fun t -> serve t fd cmd
+      Driver.disconnect t >>= fun t -> serve t cmd
 
 let user_db =
   (* User foo auths by passoword *)
@@ -112,7 +112,7 @@ let rec wait_connection rsa listen_fd server_port =
     (read_cstruct client_fd)
     time64
   >>= fun t ->
-  let () = match serve t client_fd None with
+  let () = match serve t None with
     | Ok _ -> printf "Client finished\n%!"
     | Error e -> printf "error: %s\n%!" e
   in
