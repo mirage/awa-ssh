@@ -53,12 +53,7 @@ let rekey t =
   send_msg { t with server } (Ssh.Msg_kexinit kexinit)
 
 let maybe_rekey t now =
-  let s = t.server in
-  if not (Kex.should_rekey s.Server.keys_stoc now) ||
-     s.Server.keying then
-    ok t
-  else
-    rekey t
+  if Server.should_rekey t.server now then rekey t else ok t
 
 let rec poll t =
   let now = t.time_cb () in

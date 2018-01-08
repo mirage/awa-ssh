@@ -105,6 +105,8 @@ let rekey t now =
   let t = { t with keys_stoc; server_kexinit; keying = true } in
   ok (t, server_kexinit)
 
+let should_rekey t now = not t.keying && Kex.should_rekey t.keys_stoc now
+
 let pop_msg2 t buf =
   let version t buf =
     Wire.get_version buf >>= fun (client_version, input_buffer) ->
