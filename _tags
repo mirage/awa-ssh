@@ -4,3 +4,7 @@ true: package(ipaddr zarith x509)
 <lib> : include
 <test/*>: package(cstruct-unix io-page.unix)
 <lib/*.cm{x,o}> and not <lib/awa.*>: for-pack(Awa)
+
+<lwt>: include
+<lwt/*>: package(lwt lwt.unix)
+<test/*>: package(lwt lwt.unix)

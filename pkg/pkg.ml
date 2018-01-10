@@ -14,5 +14,9 @@ let () =
   Ok [
     Pkg.lib ~exts "lib/awa" ;
     Pkg.test "test/test";
-    Pkg.test ~run:false "test/awa_test_server"
+    Pkg.test ~run:false "test/awa_test_server";
+
+    (* Lwt bindings *)
+    Pkg.lib ~exts "lwt/awa_lwt";
+    Pkg.test ~run:false "test/awa_lwt_server"
   ]
