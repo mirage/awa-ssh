@@ -36,6 +36,7 @@ type t = {
   new_keys_ctos  : Kex.keys option;       (* Install when we receive NEWKEYS *)
   new_keys_stoc  : Kex.keys option;       (* Install after we send NEWKEYS *)
   keying         : bool;                  (* keying = sent KEXINIT *)
+  key_eol        : Mtime.t option;        (* Keys end of life, in ns *)
   expect         : Ssh.message_id option; (* Messages to expect, None if any *)
   auth_state     : Auth.state;            (* username * service in progress *)
   user_db        : Auth.db;               (* username database *)
@@ -71,6 +72,7 @@ let make host_key user_db =
     new_keys_ctos = None;
     new_keys_stoc = None;
     keying = true;
+    key_eol = None;
     expect = Some MSG_VERSION;
     auth_state = Auth.Preauth;
     user_db;
@@ -98,15 +100,22 @@ let of_new_keys_stoc t =
   let new_keys_stoc = { new_keys_stoc with mac = new_mac_stoc } in
   ok { t with keys_stoc = new_keys_stoc; new_keys_stoc = None; keying = false }
 
-let rekey t now =
-  guard (t.keying = false) "already keying" >>= fun () ->
-  guard (Kex.is_keyed t.keys_stoc) "rekey without being keyed" >>= fun () ->
-  let keys_stoc = Kex.reset_rekey t.keys_stoc now in
-  let server_kexinit = Kex.make_kexinit () in
-  let t = { t with keys_stoc; server_kexinit; keying = true } in
-  ok (t, server_kexinit)
+let rekey t =
+  match t.keying, (Kex.is_keyed t.keys_stoc) with
+  | false, true ->              (* can't be keying and must be keyed *)
+    let server_kexinit = Kex.make_kexinit () in
+    let t = { t with server_kexinit; keying = true } in
+    Some (t, Ssh.Msg_kexinit server_kexinit)
+  | _ -> None
 
-let should_rekey t now = not t.keying && Kex.should_rekey t.keys_stoc now
+let should_rekey t now =
+  match t.key_eol with
+  | None -> false
+  | Some eol ->
+    not t.keying &&
+    Kex.should_rekey t.keys_stoc.Kex.tx_rx eol now
+
+let maybe_rekey t now = if should_rekey t now then rekey t else None
 
 let pop_msg2 t buf =
   let version t buf =
@@ -302,12 +311,9 @@ let input_msg t msg now =
                      expect = Some MSG_KEXDH_INIT;
                      ignore_next_packet }
     in
-    (* if keying, we already sent KEXINIT, nothing to do *)
-    if t.keying then
-      make_noreply t
-    else (* Other side initiated rekeying, we have to kexinit again *)
-      rekey t now >>= fun (t, kexinit) ->
-      make_reply t (Msg_kexinit kexinit)
+    (match rekey t with
+     | None -> make_noreply t   (* either already rekeying or not keyed *)
+     | Some (t, kexinit) -> make_reply t kexinit)
   | Msg_kexdh_init e ->
     guard_some t.neg_kex "No negotiated kex" >>= fun neg ->
     guard_some t.client_version "No client version" >>= fun client_version ->
@@ -326,10 +332,12 @@ let input_msg t msg now =
     in
     let signature = Hostkey.sign t.host_key h in
     let session_id = match t.session_id with None -> h | Some x -> x in
-    let new_keys_ctos, new_keys_stoc = Kex.Dh.derive_keys k h session_id neg now in
+    Kex.Dh.derive_keys k h session_id neg now
+    >>= fun (new_keys_ctos, new_keys_stoc, key_eol) ->
     make_replies { t with session_id = Some session_id;
                           new_keys_ctos = Some new_keys_ctos;
                           new_keys_stoc = Some new_keys_stoc;
+                          key_eol = Some key_eol;
                           expect = Some MSG_NEWKEYS }
       [ Msg_kexdh_reply (pub_host_key, f, signature); Msg_newkeys ]
   | Msg_newkeys ->

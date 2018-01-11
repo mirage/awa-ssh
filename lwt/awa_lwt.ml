@@ -17,6 +17,7 @@
 open Lwt.Infix
 
 type nexus_msg =
+  | Rekey
   | Net_eof
   | Net_io of Cstruct.t
   | Sshout of (int32 * Cstruct.t)
@@ -75,7 +76,6 @@ let rec send_msgs fd server = function
 let net_read fd =
   let lwtbuf = Bytes.create 4096 in (* XXX revise *)
   Lwt_unix.read fd lwtbuf 0 4096 >>= fun n ->
-  Lwt_io.printf "read %d\n%!" n >>= fun () ->
   assert (n >= 0); (* handle exception ! ! *)
   if n = 0 then
     Lwt.return Net_eof
@@ -89,14 +89,26 @@ let sshin_eof c =
   Lwt_mvar.put c.sshin_mbox `Eof
 
 let rec nexus t fd server input_buffer =
-  let now = Int64.one (* XXX *) in
   wrapr (Awa.Server.pop_msg2 server input_buffer)
   >>= fun (server, msg, input_buffer) ->
   match msg with
   | None -> (* No SSH msg *)
-    Lwt.pick [ Lwt_mvar.take t.nexus_mbox; net_read fd ]
+    Lwt.catch
+      (fun () ->
+         Lwt.pick [ Lwt_mvar.take t.nexus_mbox;
+                    net_read fd;
+                    Lwt_unix.timeout (float_of_int 2) ])
+      (function Lwt_unix.Timeout -> Lwt.return Rekey | exn -> Lwt.fail exn)
     >>= fun nexus_msg ->
     (match nexus_msg with
+     | Rekey ->
+       (match Awa.Server.maybe_rekey server (Mtime_clock.now ()) with
+        | None -> nexus t fd server input_buffer
+        | Some (server, kexinit) ->
+          Lwt_io.printf "Rekeying\n%!" >>= fun () ->
+          send_msg fd server kexinit
+          >>= fun server ->
+          nexus t fd server input_buffer)
      | Net_eof ->
        Lwt_io.printf "Got Net_eof\n%!" >>= fun () ->
        Lwt.return t
@@ -109,7 +121,7 @@ let rec nexus t fd server input_buffer =
   | Some msg -> (* SSH msg *)
     Lwt_io.printf "<<< %s\n%!" (Awa.Ssh.message_to_string msg)
     >>= fun () ->
-    wrapr (Awa.Server.input_msg server msg now)
+    wrapr (Awa.Server.input_msg server msg (Mtime_clock.now ()))
     >>= fun (server, replies, event) ->
     send_msgs fd server replies
     >>= fun server ->

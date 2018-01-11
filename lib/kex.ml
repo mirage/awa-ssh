@@ -175,7 +175,6 @@ type keys = {
   cipher   : Cipher.key; (* Encryption key *)
   mac      : Hmac.key;   (* Integrity key *)
   tx_rx    : int64;      (* Transmitted or Received bytes with this key *)
-  derived  : int64;      (* When were these keys derived in seconds *)
 }
 
 let make_plaintext () =
@@ -184,8 +183,7 @@ let make_plaintext () =
     mac = Hmac.{ hmac = Plaintext;
                  key = Cstruct.create 0;
                  seq = Int32.zero };
-    tx_rx = Int64.zero;
-    derived = Int64.zero }
+    tx_rx = Int64.zero }
 
 let is_plaintext keys =
   let cipher = keys.cipher.Cipher.cipher in
@@ -199,20 +197,17 @@ let is_plaintext keys =
 let is_keyed keys = not (is_plaintext keys)
 
 (* For how many bytes is this key good ? (in bytes) *)
-let one_GB = Int64.(mul (of_int 1024) (of_int 100))
-(* How long should we use the same key ? (in seconds) *)
-let keys_lifetime = Int64.(mul (of_int 60) (of_int 60))
+let one_GB = 1000000000L
+let one_minute_ns = 60000000000L
 
-let should_rekey keys now =
+(* How long should we use the same key ? (in ns) *)
+let keys_lifespan = Int64.mul 60L one_minute_ns |> Mtime.Span.of_uint64_ns
+
+let should_rekey tx eol now =
   (* If we overflow signed 64bit, something is really wrong *)
-  assert (keys.tx_rx >= Int64.zero);
-  is_keyed keys &&              (* always false if we are prior to first kex *)
-  (keys.tx_rx >= one_GB ||
-   ((now > keys.derived) &&
-    Int64.((sub now keys.derived) > keys_lifetime)))
-
-let reset_rekey keys now =
-  { keys with tx_rx = Int64.zero; derived = now }
+  assert (tx >= Int64.zero);
+  let expired = Mtime.is_later now ~than:eol in
+  (tx >= one_GB || expired)
 
 let derive_keys digesti k h session_id neg now =
   let cipher_ctos = neg.encryption_alg_ctos in
@@ -253,8 +248,7 @@ let derive_keys digesti k h session_id neg now =
                mac = Hmac.{ hmac = mac_ctos;
                             key = hash 'E' (key_len mac_ctos);
                             seq = Int32.zero };
-               tx_rx = Int64.zero;
-               derived = now }
+               tx_rx = Int64.zero }
   in
   (* Build new stoc keys *)
   let stoc_iv = hash 'B' (Cipher.iv_len cipher_stoc) in
@@ -263,10 +257,11 @@ let derive_keys digesti k h session_id neg now =
                mac = Hmac.{ hmac = mac_stoc;
                             key = hash 'F' (key_len mac_stoc);
                             seq = Int32.zero };
-               tx_rx = Int64.zero;
-               derived = now }
+               tx_rx = Int64.zero }
   in
-  (ctos, stoc)
+  guard_some (Mtime.add_span now keys_lifespan) "key eol overflow"
+  >>= fun eol ->
+  ok (ctos, stoc, eol)
 
 module Dh = struct
 

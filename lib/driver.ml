@@ -26,7 +26,7 @@ type t = {
   input_buffer   : Cstruct.t;           (* Unprocessed input *)
   write_cb       : Cstruct.t -> unit;   (* Blocking write callback *)
   read_cb        : unit -> Cstruct.t;   (* Blocking read callback *)
-  time_cb        : unit -> Int64.t;     (* Monotonic time in seconds *)
+  time_cb        : unit -> Mtime.t;     (* Monotonic time in ns *)
 }
 
 let send_msg t msg =
@@ -49,11 +49,9 @@ let of_server server msgs write_cb read_cb time_cb =
   send_msgs t msgs
 
 let rekey t =
-  Server.rekey t.server (t.time_cb ()) >>= fun (server, kexinit) ->
-  send_msg { t with server } (Ssh.Msg_kexinit kexinit)
-
-let maybe_rekey t now =
-  if Server.should_rekey t.server now then rekey t else ok t
+  match Server.rekey t.server with
+  | None -> ok t
+  | Some (server, kexinit) -> send_msg { t with server } kexinit
 
 let rec poll t =
   let now = t.time_cb () in

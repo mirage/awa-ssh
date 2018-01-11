@@ -21,7 +21,7 @@ open Awa
 open Printf
 open Util
 
-let now = Int64.one
+let now = Mtime_clock.now ()
 
 let tty_out = Unix.isatty Unix.stdout && Unix.getenv "TERM" <> "dumb"
 let colored_or_not cfmt fmt =
@@ -374,7 +374,7 @@ let t_crypto () =
     let iv = Cstruct.set_len secret 16 in
     let cipher = cipher_key_of cipher secret iv in
     let mac = hmac_key_of hmac secret in
-    Kex.{ cipher; mac; tx_rx = Int64.zero; derived = now }
+    Kex.{ cipher; mac; tx_rx = Int64.zero }
   in
   List.iter (fun cipher ->
       List.iter (fun hmac ->
