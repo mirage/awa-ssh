@@ -56,10 +56,10 @@ let cipher_key_of cipher key iv =
 let hmac_key_of hmac key = Hmac.{ hmac; key; seq = Int32.zero }
 
 let encrypt_plain msg =
-  fst (Packet.encrypt Kex.plaintext_keys msg)
+  fst (Packet.encrypt (Kex.make_plaintext ()) msg)
 
 let decrypt_plain buf =
-  match Packet.decrypt Kex.plaintext_keys buf with
+  match Packet.decrypt (Kex.make_plaintext ()) buf with
   | Ok (Some (pkt, buf, _)) -> ok (Some (pkt, buf))
   | Ok None -> ok None
   | Error e -> error e
@@ -130,7 +130,7 @@ let t_parsing () =
    * Case 2: 1 byte left
    *)
   let msg = Msg_ignore "a" in
-  let buf, _ = Packet.encrypt Kex.plaintext_keys msg in
+  let buf, _ = Packet.encrypt (Kex.make_plaintext ()) msg in
   let buf = Cstruct.append buf (Cstruct.of_string "b") in
   let pkt, rbuf = get_some @@ get_ok @@ decrypt_plain buf in
   let msg2 = get_ok @@ Packet.to_msg pkt in

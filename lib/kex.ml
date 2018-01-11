@@ -160,6 +160,7 @@ let negotiate ~s ~c =
     ~c:c.compression_algs_stoc
     "Can't agree on compression algorithm server to client"
   >>= fun compression_alg_stoc ->
+  (* XXX make sure it's not plaintext here *)
   ok { kex_alg;
        server_host_key_alg;
        encryption_alg_ctos;
@@ -177,27 +178,38 @@ type keys = {
   derived  : int64;      (* When were these keys derived in seconds *)
 }
 
-let plaintext_keys = {
-  cipher = Cipher.{ cipher = Plaintext;
-                    cipher_key = Plaintext_key };
-  mac = Hmac.{ hmac = Plaintext;
-               key = Cstruct.create 0;
-               seq = Int32.zero };
-  tx_rx = Int64.zero;
-  derived = Int64.zero;
-}
+let make_plaintext () =
+  { cipher = Cipher.{ cipher = Plaintext;
+                      cipher_key = Plaintext_key };
+    mac = Hmac.{ hmac = Plaintext;
+                 key = Cstruct.create 0;
+                 seq = Int32.zero };
+    tx_rx = Int64.zero;
+    derived = Int64.zero }
+
+let is_plaintext keys =
+  let cipher = keys.cipher.Cipher.cipher in
+  let hmac = keys.mac.Hmac.hmac in
+  match cipher, hmac with
+  | Cipher.Plaintext, Hmac.Plaintext -> true
+  | Cipher.Plaintext, _ | _, Hmac.Plaintext ->
+    invalid_arg "Cipher or Hmac is plaintext, abort at all costs !"
+  | _, _ -> false
+
+let is_keyed keys = not (is_plaintext keys)
 
 (* For how many bytes is this key good ? (in bytes) *)
 let one_GB = Int64.(mul (of_int 1024) (of_int 100))
 (* How long should we use the same key ? (in seconds) *)
 let keys_lifetime = Int64.(mul (of_int 60) (of_int 60))
 
-let should_rekey keys (now : int64) =
+let should_rekey keys now =
   (* If we overflow signed 64bit, something is really wrong *)
   assert (keys.tx_rx >= Int64.zero);
-  keys.tx_rx >= one_GB ||
-  Int64.((sub keys.derived now) > keys_lifetime)
-  (* false *)
+  is_keyed keys &&              (* always false if we are prior to first kex *)
+  (keys.tx_rx >= one_GB ||
+   ((now > keys.derived) &&
+    Int64.((sub now keys.derived) > keys_lifetime)))
 
 let reset_rekey keys now =
   { keys with tx_rx = Int64.zero; derived = now }
@@ -225,7 +237,7 @@ let derive_keys digesti k h session_id neg now =
     let open Cipher_block in
     let open Cipher in
     match cipher with
-    | Plaintext -> failwith "Deriving plaintext"
+    | Plaintext -> invalid_arg "Deriving plaintext, abort at all costs"
     | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
       let iv = Counters.C128be.of_cstruct iv in
       { cipher;

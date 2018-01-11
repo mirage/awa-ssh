@@ -66,8 +66,8 @@ let make host_key user_db =
     neg_kex = None;
     host_key;
     session_id = None;
-    keys_ctos = Kex.plaintext_keys;
-    keys_stoc = Kex.plaintext_keys;
+    keys_ctos = Kex.make_plaintext ();
+    keys_stoc = Kex.make_plaintext ();
     new_keys_ctos = None;
     new_keys_stoc = None;
     keying = true;
@@ -83,7 +83,7 @@ let of_new_keys_ctos t =
   let open Kex in
   let open Hmac in
   guard_some t.new_keys_ctos "No new_keys_ctos" >>= fun new_keys_ctos ->
-  guard (new_keys_ctos <> plaintext_keys) "Plaintext new keys" >>= fun () ->
+  guard (is_keyed new_keys_ctos) "Plaintext new keys" >>= fun () ->
   let new_mac_ctos = { new_keys_ctos.mac with seq = t.keys_ctos.mac.seq } in
   let new_keys_ctos = { new_keys_ctos with mac = new_mac_ctos } in
   ok { t with keys_ctos = new_keys_ctos; new_keys_ctos = None }
@@ -93,13 +93,14 @@ let of_new_keys_stoc t =
   let open Kex in
   let open Hmac in
   guard_some t.new_keys_stoc "No new_keys_stoc" >>= fun new_keys_stoc ->
-  guard (new_keys_stoc <> plaintext_keys) "Plaintext new keys" >>= fun () ->
+  guard (is_keyed new_keys_stoc) "Plaintext new keys" >>= fun () ->
   let new_mac_stoc = { new_keys_stoc.mac with seq = t.keys_stoc.mac.seq } in
   let new_keys_stoc = { new_keys_stoc with mac = new_mac_stoc } in
   ok { t with keys_stoc = new_keys_stoc; new_keys_stoc = None; keying = false }
 
 let rekey t now =
   guard (t.keying = false) "already keying" >>= fun () ->
+  guard (Kex.is_keyed t.keys_stoc) "rekey without being keyed" >>= fun () ->
   let keys_stoc = Kex.reset_rekey t.keys_stoc now in
   let server_kexinit = Kex.make_kexinit () in
   let t = { t with keys_stoc; server_kexinit; keying = true } in
@@ -333,7 +334,7 @@ let input_msg t msg now =
       [ Msg_kexdh_reply (pub_host_key, f, signature); Msg_newkeys ]
   | Msg_newkeys ->
     (* If this is the first time we keyed, we must take a service request *)
-    let expect = if t.keys_ctos = Kex.plaintext_keys then
+    let expect = if not (Kex.is_keyed t.keys_ctos)  then
         Some MSG_SERVICE_REQUEST
       else
         None
