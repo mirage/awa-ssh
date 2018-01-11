@@ -269,9 +269,11 @@ let get_message buf =
     get_string buf >>= fun (lang, buf) ->
     ok (Msg_debug (always_display, message, lang))
   | MSG_SERVICE_REQUEST ->
-    get_string buf >>= fun (x, buf) -> ok (Msg_service_request x)
+    get_string buf >>= fun (x, buf) ->
+    ok (Msg_service_request x)
   | MSG_SERVICE_ACCEPT ->
-    get_string buf >>= fun (x, buf) -> ok (Msg_service_accept x)
+    get_string buf >>= fun (x, buf) ->
+    ok (Msg_service_accept x)
   | MSG_KEXINIT ->
     let cookiebegin = buf in
     (* Jump over cookie *)
@@ -301,8 +303,10 @@ let get_message buf =
             languages_stoc;
             first_kex_packet_follows;
             rawkex = msgbuf })
-  | MSG_NEWKEYS -> ok Msg_newkeys
-  | MSG_KEXDH_INIT -> get_mpint buf >>= fun (e, buf) ->
+  | MSG_NEWKEYS ->
+    ok Msg_newkeys
+  | MSG_KEXDH_INIT ->
+    get_mpint buf >>= fun (e, buf) ->
     ok (Msg_kexdh_init e)
   | MSG_KEXDH_REPLY ->
     get_pubkey_any buf >>= fun (k_s, buf) ->
@@ -410,9 +414,10 @@ let get_message buf =
      * give the caller a good type for channel open and must return Raw_data.
      * We must provide the caller a function to make the conversion.
      *)
-    ok (Msg_channel_open_confirmation (recp_channel, send_channel,
-                                       init_win, max_pkt,
-                                       buf))
+    ok (Msg_channel_open_confirmation
+          (recp_channel, send_channel,
+           init_win, max_pkt,
+           buf))
   | MSG_CHANNEL_OPEN_FAILURE ->
     get_uint32 buf >>= fun (recp_channel, buf) ->
     get_uint32 buf >>= fun (reason, buf) ->
