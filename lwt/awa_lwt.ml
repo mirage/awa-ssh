@@ -22,9 +22,10 @@ type nexus_msg =
   | Sshout of (int32 * Cstruct.t)
   | Ssherr of (int32 * Cstruct.t)
 
-type sshin_msg =
-  [ `Data of Cstruct.t
-  | `Eof ]
+type sshin_msg = [
+  | `Data of Cstruct.t
+  | `Eof
+]
 
 type channel = {
   cmd         : string;
