@@ -27,7 +27,7 @@ let user_db =
   let awa = Awa.Auth.make_user "awa" [ key ] in
   [ foo; awa ]
 
-let exec cmd sshin sshout ssherror =
+let exec cmd sshin sshout _ssherror =
   let rec loop ()  =
     sshin () >>= fun r -> match r with
     | `Eof -> Lwt.return_unit

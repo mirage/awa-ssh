@@ -14,7 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Sexplib.Conv
 open Rresult.R
 open Util
 
@@ -28,7 +27,6 @@ let hmac mac buf =
   digest, Hmac.{ mac with seq = Int32.succ seq }
 
 let peek_len cipher block_len buf =
-  let open Nocrypto.Cipher_block in
   assert (block_len <= (Cstruct.len buf));
   let buf = Cstruct.set_len buf block_len in
   let hdr, _ = Cipher.decrypt cipher buf in

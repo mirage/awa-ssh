@@ -16,8 +16,6 @@
 
 open Nocrypto
 open Sexplib.Conv
-open Rresult.R
-open Util
 
 type priv =
   | Rsa_priv of Rsa.priv
@@ -33,7 +31,7 @@ let sexp_of_pub = function
   | Rsa_pub pub -> Nocrypto.Rsa.sexp_of_pub pub
   | Unknown -> sexp_of_string "Unknown"
 
-let pub_of_sexp sexp = failwith "Hostkey.pub_of_sexp: TODO"
+let pub_of_sexp _ = failwith "Hostkey.pub_of_sexp: TODO"
 
 (*
  * id-sha1 OBJECT IDENTIFIER ::= { iso(1) identified-organization(3)
@@ -58,13 +56,13 @@ let sign priv blob =
   match priv with
   | Rsa_priv priv ->
     let digest = Hash.SHA1.digest blob in
-    Rsa.PKCS1.sig_encode priv (Cstruct.append rsa_sha1_oid digest)
+    Rsa.PKCS1.sig_encode ~key:priv (Cstruct.append rsa_sha1_oid digest)
 
 let verify pub ~unsigned ~signed =
   match pub with
   | Unknown -> false
   | Rsa_pub pub ->
-    match Rsa.PKCS1.sig_decode pub signed with
+    match Rsa.PKCS1.sig_decode ~key:pub signed with
     | None -> false
     | Some them ->
       let us = Cstruct.append rsa_sha1_oid (Hash.SHA1.digest unsigned) in

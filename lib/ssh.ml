@@ -15,7 +15,6 @@
  *)
 
 open Sexplib.Conv
-open Rresult.R
 open Util
 
 [%%cstruct

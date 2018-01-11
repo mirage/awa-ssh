@@ -92,7 +92,7 @@ let t_banner () =
   in
   List.iter (fun s ->
       match Wire.get_version (Cstruct.of_string s) with
-      | Ok (Some s, _) -> ()
+      | Ok (Some _, _) -> ()
       | Ok (None, _) -> failwith "expected some"
       | Error e -> failwith e)
     good_strings;
@@ -110,7 +110,7 @@ let t_banner () =
       match Wire.get_version (Cstruct.of_string s) with
       | Ok (Some _, _) -> failwith "expected none or error"
       | Ok (None, _) -> ()
-      | Error e -> ())
+      | Error _ -> ())
     bad_strings;
   test_ok
 
@@ -264,10 +264,10 @@ let t_key_exchange () =
   let file = "test/kex.packet" in
   let fd = Unix.(openfile file [O_RDONLY] 0) in
   let buf = Unix_cstruct.of_fd fd in
-  let pkt, rbuf = get_some @@ get_ok @@ decrypt_plain buf in
+  let pkt, _ = get_some @@ get_ok @@ decrypt_plain buf in
   let msg = get_ok @@ Packet.to_msg pkt in
   let () = match msg with
-    | Ssh.Msg_kexinit kex ->
+    | Ssh.Msg_kexinit _ ->
       (* printf "%s\n%!" (Sexplib.Sexp.to_string_hum (Ssh.sexp_of_kex_pkt kex)); *)
       ()
     | _ -> failwith "Expected Msg_kexinit"
@@ -351,11 +351,10 @@ let t_version () =
 
 let t_crypto () =
   let test keys =
-    let open Kex in
     let txt = "abcdefghijklmnopqrstuvxz" in
     let msg = Ssh.Msg_ignore txt in
-    let buf_enc, keys_next = Packet.encrypt keys msg in
-    let pkt, buf, keys_next2 =
+    let buf_enc, _ = Packet.encrypt keys msg in
+    let pkt, buf, _ =
       get_some @@ get_ok @@ Packet.decrypt keys buf_enc
     in
     let msg = get_ok @@ Packet.to_msg pkt in
@@ -371,7 +370,6 @@ let t_crypto () =
     (* assert (Cstruct.equal keys.Kex.iv keys_next2.Kex.iv) *)
   in
   let make cipher hmac =
-    let open Cipher in
     let secret = Cstruct.of_string "Pyotr Alexeyevich Kropotkin 1842" in
     let iv = Cstruct.set_len secret 16 in
     let cipher = cipher_key_of cipher secret iv in
@@ -464,7 +462,7 @@ let t_channel_input () =
                       (Int32.zero, Int32.of_int len')) in
   assert (adj' = adj'');
   (* Case 3, Make sure we discard data above our window *)
-  Channel.input_data c d >>= fun (c', dn', adj') ->
+  Channel.input_data c d >>= fun (_c', dn', _adj') ->
   assert (not (Cstruct.equal d dn'));
   assert ((Cstruct.len d) = ((Cstruct.len dn') + 1));
   test_ok
@@ -494,7 +492,7 @@ let t_channel_output () =
   (* Make sure we didn't change defaults *)
   assert ((Int32.to_int Channel.(c.them.max_pkt)) = (64 * 1024));
   let d' = Cstruct.set_len d (96 * 1024) in
-  Channel.output_data c d' >>= fun (c', msgs') ->
+  Channel.output_data c d' >>= fun (_c', msgs') ->
   assert ((List.length msgs') = 2);
   let msg1' = List.nth msgs' 0 in
   let msg2' = List.nth msgs' 1 in
@@ -526,7 +524,7 @@ let t_channel_output () =
    *   (List.length msgs'); *)
   assert (exp_nmsgs' = (List.length msgs'));
   let bufs' = List.map (function
-      | Ssh.Msg_channel_data (id, buf) -> buf
+      | Ssh.Msg_channel_data (_, buf) -> buf
       | _ -> invalid_arg "unexpected buf")
       msgs'
   in
@@ -560,7 +558,7 @@ let t_openssh_client () =
   let awa_pid = Unix.create_process awa_cmd awa_args null null null in
   Unix.sleepf 0.1;
   let ossh = Unix.open_process_full ossh_cmd (Unix.environment ()) in
-  let ossh_out, ossh_in = match ossh with o, i, e -> o, i in
+  let ossh_out, ossh_in = match ossh with o, i, _e -> o, i in
   output_string ossh_in s1;
   output_char ossh_in '\n';
   flush ossh_in;

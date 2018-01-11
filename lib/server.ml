@@ -271,7 +271,7 @@ let input_channel_request t recp_channel want_reply data =
     match data with
     | Pty_req _ -> success t
     | X11_req _ -> fail t
-    | Env (key, value) -> success t  (* TODO implement me *)
+    | Env (_key, _value) -> success t  (* TODO implement me *)
     | Shell -> fail t
     | Exec cmd -> event t (Channel_exec (c, cmd))
     | Subsystem _ -> fail t
@@ -289,7 +289,6 @@ let input_channel_request t recp_channel want_reply data =
 
 let input_msg t msg now =
   let open Ssh in
-  let open Nocrypto in
   guard_msg t msg >>= fun () ->
   match msg with
   | Msg_kexinit kex ->
@@ -385,7 +384,7 @@ let input_msg t msg now =
     guard_some (Channel.lookup recp_channel t.channels) "no such channel"
     >>= fun c ->
     make_event t (Channel_eof (Channel.id c))
-  | Msg_disconnect (code, s, _) -> make_event t (Disconnected s)
+  | Msg_disconnect (_, s, _) -> make_event t (Disconnected s)
   | Msg_version v -> make_noreply { t with client_version = Some v;
                                            expect = Some MSG_KEXINIT }
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))

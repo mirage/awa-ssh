@@ -136,7 +136,7 @@ let pubkey_of_blob blob =
     get_mpint blob >>= fun (n, _) ->
     let pub = Nocrypto.Rsa.{e; n} in
     ok (Hostkey.Rsa_pub pub)
-  | key_alg -> ok Hostkey.Unknown
+  | _ -> ok Hostkey.Unknown
 
 (* Prefer using get_pubkey_alg always *)
 let get_pubkey_any buf =
@@ -206,7 +206,7 @@ let blob_of_kexinit kex =
   put_kexinit kex |> Dbuf.to_cstruct
 
 let get_signature_nocheck buf =
-  get_cstring buf >>= fun (blob, buf) ->
+  get_cstring buf >>= fun (blob, _) ->
   get_string blob >>= fun (key_alg, blob) ->
   get_cstring blob >>= fun (key_sig, _) ->
   ok (key_alg, key_sig)
@@ -255,24 +255,24 @@ let get_message buf =
   | MSG_DISCONNECT ->
     get_uint32 buf >>= fun (code, buf) ->
     get_string buf >>= fun (desc, buf) ->
-    get_string buf >>= fun (lang, buf) ->
+    get_string buf >>= fun (lang, _) ->
     ok (Msg_disconnect (int_to_disconnect_code code, desc, lang))
   | MSG_IGNORE ->
-    get_string buf >>= fun (x, buf) ->
+    get_string buf >>= fun (x, _) ->
     ok (Msg_ignore x)
   | MSG_UNIMPLEMENTED ->
-    get_uint32 buf >>= fun (x, buf) ->
+    get_uint32 buf >>= fun (x, _) ->
     ok (Msg_unimplemented x)
   | MSG_DEBUG ->
     get_bool buf >>= fun (always_display, buf) ->
     get_string buf >>= fun (message, buf) ->
-    get_string buf >>= fun (lang, buf) ->
+    get_string buf >>= fun (lang, _) ->
     ok (Msg_debug (always_display, message, lang))
   | MSG_SERVICE_REQUEST ->
-    get_string buf >>= fun (x, buf) ->
+    get_string buf >>= fun (x, _) ->
     ok (Msg_service_request x)
   | MSG_SERVICE_ACCEPT ->
-    get_string buf >>= fun (x, buf) ->
+    get_string buf >>= fun (x, _) ->
     ok (Msg_service_accept x)
   | MSG_KEXINIT ->
     let cookiebegin = buf in
@@ -288,7 +288,7 @@ let get_message buf =
     get_nl buf >>= fun (compression_algs_stoc, buf) ->
     get_nl buf >>= fun (languages_ctos, buf) ->
     get_nl buf >>= fun (languages_stoc, buf) ->
-    get_bool buf >>= fun (first_kex_packet_follows, buf) ->
+    get_bool buf >>= fun (first_kex_packet_follows, _) ->
     ok (Msg_kexinit
           { cookie = Cstruct.set_len cookiebegin 16;
             kex_algs;
@@ -306,12 +306,12 @@ let get_message buf =
   | MSG_NEWKEYS ->
     ok Msg_newkeys
   | MSG_KEXDH_INIT ->
-    get_mpint buf >>= fun (e, buf) ->
+    get_mpint buf >>= fun (e, _) ->
     ok (Msg_kexdh_init e)
   | MSG_KEXDH_REPLY ->
     get_pubkey_any buf >>= fun (k_s, buf) ->
     get_mpint buf >>= fun (f, buf) ->
-    get_signature k_s buf >>= fun (key_alg, key_sig) ->
+    get_signature k_s buf >>= fun (_, key_sig) ->
     ok (Msg_kexdh_reply (k_s, f, key_sig))
   | MSG_USERAUTH_REQUEST ->
     get_string buf >>= fun (user, buf) ->
@@ -323,7 +323,7 @@ let get_message buf =
        get_string buf >>= fun (key_alg, buf) ->
        get_pubkey key_alg buf >>= fun (pubkey, buf) ->
        if has_sig then
-         get_signature pubkey buf >>= fun (key_alg, key_sig) ->
+         get_signature pubkey buf >>= fun (_, key_sig) ->
          ok (Pubkey (pubkey, Some key_sig), buf)
        else
          ok (Pubkey (pubkey, None), buf)
@@ -345,20 +345,20 @@ let get_message buf =
        ok (Hostbased (key_alg, key_blob, hostname, hostuser, hostsig), buf)
      | "none" -> ok (Authnone, buf)
      | _ -> error ("Unknown method " ^ auth_method))
-    >>= fun (auth_method, buf) ->
+    >>= fun (auth_method, _) ->
     ok (Msg_userauth_request (user, service, auth_method))
   | MSG_USERAUTH_FAILURE ->
     get_nl buf >>= fun (nl, buf) ->
-    get_bool buf >>= fun (psucc, buf) ->
+    get_bool buf >>= fun (psucc, _) ->
     ok (Msg_userauth_failure (nl, psucc))
   | MSG_USERAUTH_SUCCESS -> ok Msg_userauth_success
   | MSG_USERAUTH_PK_OK ->
     get_string buf >>= fun (key_alg, buf) ->
-    get_pubkey key_alg buf >>= fun (pubkey, buf) ->
+    get_pubkey key_alg buf >>= fun (pubkey, _) ->
     ok (Msg_userauth_pk_ok pubkey)
   | MSG_USERAUTH_BANNER ->
     get_string buf >>= fun (s1, buf) ->
-    get_string buf >>= fun (s2, buf) ->
+    get_string buf >>= fun (s2, _) ->
     ok (Msg_userauth_banner (s1, s2))
   | MSG_GLOBAL_REQUEST ->
     get_string buf >>= fun (request, buf) ->
@@ -373,7 +373,7 @@ let get_message buf =
        get_uint32 buf >>= fun (port, buf) ->
        ok (Cancel_tcpip_forward (address, port), buf)
      | _ -> error ("Unknown request " ^ request))
-    >>= fun (global_request, buf) ->
+    >>= fun (global_request, _) ->
     ok (Msg_global_request (request, want_reply, global_request))
   | MSG_REQUEST_SUCCESS ->
     let req_data = if Cstruct.len buf > 0 then Some buf else None in
@@ -390,7 +390,7 @@ let get_message buf =
              (send_channel, init_win, max_pkt, Session))
      | "x11" ->
        get_string buf >>= fun (address, buf) ->
-       get_uint32 buf >>= fun (port, buf) ->
+       get_uint32 buf >>= fun (port, _) ->
        ok (Msg_channel_open
              (send_channel, init_win, max_pkt,
               (X11 (address, port))))
@@ -398,7 +398,7 @@ let get_message buf =
        get_string buf >>= fun (con_address, buf) ->
        get_uint32 buf >>= fun (con_port, buf) ->
        get_string buf >>= fun (origin_address, buf) ->
-       get_uint32 buf >>= fun (origin_port, buf) ->
+       get_uint32 buf >>= fun (origin_port, _) ->
        ok (Msg_channel_open
              (send_channel, init_win, max_pkt,
               Forwarded_tcpip (con_address, con_port, origin_address,
@@ -422,26 +422,26 @@ let get_message buf =
     get_uint32 buf >>= fun (recp_channel, buf) ->
     get_uint32 buf >>= fun (reason, buf) ->
     get_string buf >>= fun (desc, buf) ->
-    get_string buf >>= fun (lang, buf) ->
+    get_string buf >>= fun (lang, _) ->
     ok (Msg_channel_open_failure (recp_channel, reason, desc, lang))
   | MSG_CHANNEL_WINDOW_ADJUST ->
     get_uint32 buf >>= fun (channel, buf) ->
-    get_uint32 buf >>= fun (n, buf) ->
+    get_uint32 buf >>= fun (n, _) ->
     ok (Msg_channel_window_adjust (channel, n))
   | MSG_CHANNEL_DATA ->
     get_uint32 buf >>= fun (channel, buf) ->
-    get_cstring buf >>= fun (data, buf) ->
+    get_cstring buf >>= fun (data, _) ->
     ok (Msg_channel_data (channel, data))
   | MSG_CHANNEL_EXTENDED_DATA ->
     get_uint32 buf >>= fun (channel, buf) ->
     get_uint32 buf >>= fun (data_type, buf) ->
-    get_cstring buf >>= fun (data, buf) ->
+    get_cstring buf >>= fun (data, _) ->
     ok (Msg_channel_extended_data (channel, data_type, data))
   | MSG_CHANNEL_EOF ->
-    get_uint32 buf >>= fun (channel, buf) ->
+    get_uint32 buf >>= fun (channel, _) ->
     ok (Msg_channel_eof channel)
   | MSG_CHANNEL_CLOSE ->
-    get_uint32 buf >>= fun (channel, buf) ->
+    get_uint32 buf >>= fun (channel, _) ->
     ok (Msg_channel_close channel)
   | MSG_CHANNEL_REQUEST ->
     get_uint32 buf >>= fun (channel, buf) ->
@@ -454,7 +454,7 @@ let get_message buf =
        get_uint32 buf >>= fun (height_row, buf) ->
        get_uint32 buf >>= fun (width_px, buf) ->
        get_uint32 buf >>= fun (height_px, buf) ->
-       get_string buf >>= fun (term_modes, buf) ->
+       get_string buf >>= fun (term_modes, _) ->
        ok (Msg_channel_request (channel, want_reply,
                                 Pty_req (term_env, width_char, height_row,
                                          width_px, height_px, term_modes)))
@@ -462,57 +462,57 @@ let get_message buf =
        get_bool buf >>= fun (single_con, buf) ->
        get_string buf >>= fun (x11_auth_proto, buf) ->
        get_string buf >>= fun (x11_auth_cookie, buf) ->
-       get_uint32 buf >>= fun (x11_screen_nr, buf) ->
+       get_uint32 buf >>= fun (x11_screen_nr, _) ->
        ok (Msg_channel_request (channel, want_reply,
                                 X11_req (single_con, x11_auth_proto,
                                          x11_auth_cookie, x11_screen_nr)))
      | "env" ->
        get_string buf >>= fun (name, buf) ->
-       get_string buf >>= fun (value, buf) ->
+       get_string buf >>= fun (value, _) ->
        ok (Msg_channel_request (channel, want_reply,
                                 Env (name, value)))
      | "exec" ->
-       get_string buf >>= fun (command, buf) ->
+       get_string buf >>= fun (command, _) ->
        ok (Msg_channel_request (channel, want_reply,
                                 Exec (command)))
      | "shell" -> ok (Msg_channel_request (channel, want_reply, Shell))
      | "subsystem" ->
-       get_string buf >>= fun (name, buf) ->
+       get_string buf >>= fun (name, _) ->
        ok (Msg_channel_request (channel, want_reply,
                                 Subsystem (name)))
      | "window-change" ->
        get_uint32 buf >>= fun (width_char, buf) ->
        get_uint32 buf >>= fun (height_row, buf) ->
        get_uint32 buf >>= fun (width_px, buf) ->
-       get_uint32 buf >>= fun (height_px, buf) ->
+       get_uint32 buf >>= fun (height_px, _) ->
        ok (Msg_channel_request (channel, want_reply,
                                 Window_change (width_char, height_row,
                                                width_px, height_px)))
      | "xon-xoff" ->
-       get_bool buf >>= fun (client_can_do, buf) ->
+       get_bool buf >>= fun (client_can_do, _) ->
        ok (Msg_channel_request (channel, want_reply,
                                 Xon_xoff (client_can_do)))
      | "signal" ->
-       get_string buf >>= fun (name, buf) ->
+       get_string buf >>= fun (name, _) ->
        ok (Msg_channel_request (channel, want_reply,
                                 Signal (name)))
      | "exit-status" ->
-       get_uint32 buf >>= fun (status, buf) ->
+       get_uint32 buf >>= fun (status, _) ->
        ok (Msg_channel_request (channel, want_reply,
                                 Exit_status (status)))
      | "exit-signal" ->
        get_string buf >>= fun (name, buf) ->
        get_bool buf >>= fun (core_dumped, buf) ->
        get_string buf >>= fun (message, buf) ->
-       get_string buf >>= fun (lang, buf) ->
+       get_string buf >>= fun (lang, _) ->
        ok (Msg_channel_request (channel, want_reply,
                                 Exit_signal (name, core_dumped, message, lang)))
      | _ -> error ("Unknown request " ^ request))
   | MSG_CHANNEL_SUCCESS ->
-    get_uint32 buf >>= fun (channel, buf) ->
+    get_uint32 buf >>= fun (channel, _) ->
     ok (Msg_channel_success channel)
   | MSG_CHANNEL_FAILURE ->
-    get_uint32 buf >>= fun (channel, buf) ->
+    get_uint32 buf >>= fun (channel, _) ->
     ok (Msg_channel_failure channel)
   | MSG_VERSION ->
     error "got MSG_VERSION"

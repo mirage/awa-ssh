@@ -63,7 +63,7 @@ let bc t id data =
       | "-" -> sprintf "%d\n" (a - b)
       | "*" -> sprintf "%d\n" (a * b)
       | "/" -> if b = 0 then "Don't be an ass !\n" else sprintf "%d\n" (a / b)
-      | op -> "Unknown operator\n"
+      | op -> sprintf "Unknown operator %s\n" op
   in
   Driver.send_channel_data t id (Cstruct.of_string reply)
 
@@ -89,7 +89,7 @@ let rec serve t cmd =
       Driver.send_channel_data t id (Cstruct.of_string "pong\n") >>= fun t ->
       Driver.disconnect t >>= fun _ -> ok (printf "sent pong\n%!")
     | "echo" | "bc" as c -> serve t (Some c)
-    | unknown ->
+    | _ ->
       let m = sprintf "Unknown command %s\n%!" exec in
       Driver.send_channel_data t id (Cstruct.of_string m) >>= fun t ->
       printf "%s\n%!" m;

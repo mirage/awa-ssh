@@ -153,9 +153,9 @@ let add ~id ~win ~max_pkt db =
 
 let update c db = Channel_map.add c.us.id c db
 
-let remove ~id db = Channel_map.remove id db
+let remove id db = Channel_map.remove id db
 
-let lookup ~id db = Channel_map.find_opt id db
+let lookup id db = Channel_map.find_opt id db
 
 let id c = c.us.id
 
