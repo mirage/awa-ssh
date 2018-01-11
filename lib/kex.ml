@@ -280,8 +280,7 @@ module Dh = struct
       (Dh.shared g secret (Numeric.Z.to_cstruct_be peer_pub))
       "Can't compute shared secret"
     >>= fun shared ->
-    (* secret is y, my_pub is f or e, shared is k *)
-    (* XXX no need to return secret/y *)
-    ok Numeric.Z.(secret, of_cstruct_be my_pub, of_cstruct_be shared)
+    (* my_pub is f or e, shared is k *)
+    ok Numeric.Z.(of_cstruct_be my_pub, of_cstruct_be shared)
 
 end

@@ -315,7 +315,7 @@ let input_msg t msg now =
     guard_none t.new_keys_stoc "Already got new_keys_stoc" >>= fun () ->
     guard_none t.new_keys_ctos "Already got new_keys_ctos" >>= fun () ->
     guard_some t.client_kexinit "No client kex" >>= fun c ->
-    Kex.(Dh.generate neg.kex_alg e) >>= fun (y, f, k) ->
+    Kex.(Dh.generate neg.kex_alg e) >>= fun (f, k) ->
     let pub_host_key = Hostkey.pub_of_priv t.host_key in
     let h = Kex.Dh.compute_hash
         ~v_c:(Cstruct.of_string client_version)
