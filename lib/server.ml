@@ -208,15 +208,14 @@ let input_channel_open t send_channel init_win_size max_pkt_size data =
       (Msg_channel_open_failure
          (send_channel, channel_open_code_to_int code, s, ""))
   in
-  let known data = match data with
+  let known = function
     | Session -> true
     | X11 _ -> true
     | Forwarded_tcpip _ -> true
     | Direct_tcpip _ -> true
     | Raw_data _ -> false
   in
-  let allowed data =
-    match data with
+  let allowed = function
     | Session -> true
     | X11 _ -> false
     | Forwarded_tcpip _ -> false
@@ -267,8 +266,7 @@ let input_channel_request t recp_channel want_reply data =
     else
       make_event t event
   in
-  let handle t c data =
-    match data with
+  let handle t c = function
     | Pty_req _ -> success t
     | X11_req _ -> fail t
     | Env (_key, _value) -> success t  (* TODO implement me *)

@@ -29,7 +29,7 @@ let user_db =
 
 let exec cmd sshin sshout _ssherror =
   let rec loop ()  =
-    sshin () >>= fun r -> match r with
+    sshin () >>= function
     | `Eof -> Lwt.return_unit
     | `Data input -> sshout input >>= fun () -> loop ()
   in
