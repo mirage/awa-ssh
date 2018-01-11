@@ -9,7 +9,7 @@ let () =
         ~lint_deps_excluding:(Some ["ppx_tools" ; "ppx_sexp_conv"]) ]
   in
 
-  Pkg.describe ~opams "awa" @@ fun c ->
+  Pkg.describe ~opams "awa-ssh" @@ fun c ->
   let exts = Exts.(cmx @ library @ exts [".cmi" ; ".cmt" ]) in
   Ok [
     Pkg.lib ~exts "lib/awa" ;

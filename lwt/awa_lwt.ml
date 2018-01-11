@@ -100,7 +100,7 @@ let rec nexus t fd server input_buffer =
      | Net_eof ->
        Lwt_io.printf "Got Net_eof\n%!" >>= fun () ->
        Lwt.return t
-     | Net_io buf -> nexus t fd server (Util.cs_join input_buffer buf)
+     | Net_io buf -> nexus t fd server (Awa.Util.cs_join input_buffer buf)
      | Sshout (id, buf) | Ssherr (id, buf) ->
        wrapr (Awa.Server.output_channel_data server id buf)
        >>= fun (server, msgs) ->
