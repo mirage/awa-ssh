@@ -27,25 +27,33 @@ let user_db =
   let awa = Awa.Auth.make_user "awa" [ key ] in
   [ foo; awa ]
 
-let exec cmd sshin sshout _ssherror =
+let exec addr cmd sshin sshout _ssherror =
   let rec loop ()  =
     sshin () >>= function
     | `Eof -> Lwt.return_unit
     | `Data input -> sshout input >>= fun () -> loop ()
   in
-  Lwt_io.printf "Executing %s\n%!" cmd >>= fun () ->
+  Lwt_io.printf "[%s] executing `%s`\n%!" addr cmd >>= fun () ->
   loop () >>= fun () ->
-  Lwt_io.printf "Execution of %s finished\n%!" cmd
+  Lwt_io.printf "[%s] execution of `%s` finished\n%!" addr cmd
+
+let serve rsa fd addr =
+  Lwt_io.printf "[%s] connected\n%!" addr >>= fun () ->
+  let server, msgs = Awa.Server.make rsa user_db in
+  Awa_lwt.spawn_server server msgs fd (exec addr) >>= fun _t ->
+  Lwt_io.printf "[%s] finished\n%!" addr >>= fun () ->
+  Lwt_unix.close fd
 
 let rec wait_connection rsa listen_fd server_port =
   Lwt_io.printf "Awa server waiting connections on port %d\n%!" server_port
   >>= fun () ->
-  Lwt_unix.(accept listen_fd) >>= fun (client_fd, _) ->
-  Lwt_io.printf "Client connected !\n%!" >>= fun () ->
-  let server, msgs = Awa.Server.make rsa user_db in
-  Awa_lwt.spawn_server server msgs client_fd exec >>= fun _ ->
-  Lwt_io.printf "Server finished !\n%!" >>= fun () ->
-  Lwt_unix.close client_fd >>= fun () ->
+  Lwt_unix.(accept listen_fd) >>= fun (client_fd, saddr) ->
+  let client_addr = match saddr with
+    | Lwt_unix.ADDR_UNIX s -> s
+    | Lwt_unix.ADDR_INET (addr, port) ->
+      Printf.sprintf "%s:%d" (Unix.string_of_inet_addr addr) port
+  in
+  Lwt.ignore_result (serve rsa client_fd client_addr);
   wait_connection rsa listen_fd server_port
 
 let main =
