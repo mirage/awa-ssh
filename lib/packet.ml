@@ -53,13 +53,12 @@ let decrypt keys buf =
     let pkt_len = peek_len cipher block_len buf in
     guard (pkt_len > 0 && pkt_len < max_pkt_len) "decrypt: Bogus pkt len"
     >>= fun () ->
+    (* 4 is pkt_len field itself *)
     if (Cstruct.len buf) < (pkt_len + 4 + digest_len) then
       partial buf
     else
       let pkt_enc = Cstruct.set_len buf (pkt_len + 4) in
-      let tx_rx = Int64.add keys.Kex.tx_rx
-          (Cstruct.len pkt_enc |> Int64.of_int)
-      in
+      let tx_rx = Int64.(add keys.Kex.tx_rx (Cstruct.len pkt_enc |> of_int)) in
       let pkt_dec, cipher = Cipher.decrypt cipher pkt_enc in
       let digest1 = Cstruct.shift buf (pkt_len + 4) in
       let digest1 = Cstruct.set_len digest1 digest_len in
