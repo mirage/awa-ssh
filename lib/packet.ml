@@ -47,7 +47,7 @@ let decrypt keys buf =
   let mac = keys.Kex.mac in
   let block_len = max 8 (Cipher.block_len cipher.Cipher.cipher) in
   let digest_len = Hmac.(digest_len mac.hmac) in
-  if (Cstruct.len buf) < (sizeof_pkt_hdr + digest_len + block_len) then
+  if (Cstruct.len buf) < (max sizeof_pkt_hdr (digest_len + block_len)) then
     partial buf
   else
     let pkt_len = peek_len cipher block_len buf in
