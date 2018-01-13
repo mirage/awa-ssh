@@ -88,6 +88,12 @@ let net_read fd =
 let sshin_eof c =
   Lwt_mvar.put c.sshin_mbox `Eof
 
+let sshin_data c data =
+  Lwt_mvar.put c.sshin_mbox (`Data data)
+
+let lookup_channel t id =
+  List.find_opt (fun c -> id = c.id) t.channels
+
 let rec nexus t fd server input_buffer =
   wrapr (Awa.Server.pop_msg2 server input_buffer)
   >>= fun (server, msg, input_buffer) ->
@@ -133,12 +139,14 @@ let rec nexus t fd server input_buffer =
       >>= fun () ->
       Lwt.return t
     | Some Awa.Server.Channel_eof id ->
-      let c = List.find (fun c -> id = c.id) t.channels in (* XXX *)
-      sshin_eof c >>= fun () ->
-      Lwt.return t
+      (match lookup_channel t id with
+       | Some c -> sshin_eof c >>= fun () -> Lwt.return t
+       | None -> Lwt.return t)
     | Some Awa.Server.Channel_data (id, data) ->
-      let c = List.find (fun c -> id = c.id) t.channels in (* XXX *)
-      Lwt_mvar.put c.sshin_mbox (`Data data) >>= fun () ->
+      (match lookup_channel t id with
+       | Some c -> sshin_data c data
+       | None -> Lwt.return_unit)
+      >>= fun () ->
       nexus t fd server input_buffer
     | Some Awa.Server.Channel_exec (id, cmd) ->
       (* Create an input box *)

@@ -369,7 +369,8 @@ let input_msg t msg now =
      | Some c ->
        let t = { t with channels = remove recp_channel t.channels } in
        (match c.state with
-        | Open -> make_reply t (Msg_channel_close c.them.id)
+        | Open -> make_reply_with_event
+                    t (Msg_channel_close c.them.id) (Channel_eof recp_channel)
         | Sent_close -> make_noreply t))
   | Msg_channel_data (recp_channel, data) ->
     guard_some (Channel.lookup recp_channel t.channels) "no such channel"
