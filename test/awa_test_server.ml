@@ -32,6 +32,7 @@ let read_cstruct fd () =
   else
     let cbuf = Cstruct.create n in
     Cstruct.blit_from_bytes buf 0 cbuf 0 n;
+    Format.printf "read %d bytes\n%!" (Cstruct.len cbuf);
     cbuf
 
 let write_cstruct fd buf =
@@ -71,6 +72,7 @@ let rec serve t cmd =
   | Disconnected s -> ok (printf "Disconnected: %s\n%!" s)
   | Channel_eof id -> ok (printf "Channel %ld EOF\n%!" id)
   | Channel_data (id, data) ->
+    printf "channel data %d\n%!" (Cstruct.len data);
     (match cmd with
      | None -> serve t cmd
      | Some "echo" ->
@@ -80,7 +82,9 @@ let rec serve t cmd =
          echo t id data >>= fun t -> serve t cmd
      | Some "bc" -> bc t id data >>= fun t -> serve t cmd
      | _ -> error "Unexpected cmd")
-  | Channel_exec (id, exec) -> match exec with
+  | Channel_exec (id, exec) ->
+    printf "channel exec %s\n%!" exec;
+    match exec with
     | "suicide" -> Driver.disconnect t >>= fun _ -> ok ()
     | "ping" ->
       Driver.send_channel_data t id (Cstruct.of_string "pong\n") >>= fun t ->

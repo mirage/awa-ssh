@@ -331,6 +331,9 @@ let input_msg t msg now =
         ~e ~f ~k
     in
     let signature = Hostkey.sign t.host_key h in
+    Format.printf "shared is %a signature is %a (hash %a)\n%!"
+      Cstruct.hexdump_pp (Nocrypto.Numeric.Z.to_cstruct_be f)
+      Cstruct.hexdump_pp signature Cstruct.hexdump_pp h;
     let session_id = match t.session_id with None -> h | Some x -> x in
     Kex.Dh.derive_keys k h session_id neg now
     >>= fun (new_keys_ctos, new_keys_stoc, key_eol) ->
