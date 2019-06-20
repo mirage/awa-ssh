@@ -7,7 +7,7 @@ B _build/lwt/test
 PKG ppx_deriving
 PKG ppx_sexp_conv
 PKG cstruct
-PKG cstruct.ppx
+PKG ppx_cstruct
 PKG cstruct-unix
 PKG ipaddr
 PKG tcpip

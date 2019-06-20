@@ -56,7 +56,7 @@ let group_of_alg = function
   | Diffie_hellman_group14_sha1 -> Dh.Group.oakley_14
   | Diffie_hellman_group1_sha1  -> Dh.Group.oakley_2
 
-let preferred = [ Diffie_hellman_group14_sha1; Diffie_hellman_group1_sha1 ]
+let preferred = [ Diffie_hellman_group14_sha1 ]
 
 let make_kexinit () =
   let k =

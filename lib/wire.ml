@@ -757,17 +757,19 @@ let get_payload buf =
 let get_version buf =
   (* Fetches next line, returns maybe a string and the remainder of buf *)
   let fetchline buf =
-    if (Cstruct.len buf) < 2 then
+    if (Cstruct.len buf) < 1 then
       None
     else
       let s = Cstruct.to_string buf in
       let n = try String.index s '\n' with Not_found -> 0 in
-      if n = 0 || ((String.get s (pred n)) <> '\r')  then
+      if n = 0 then
         None
       else
-        let line = String.sub s 0 (pred n) in
+        let off = if String.get s (pred n) = '\r' then 1 else 0 in
+        let line = String.sub s 0 (n - off) in
         let line_len = String.length line in
-        Some (line, Cstruct.shift buf (line_len + 2))
+        let v = Cstruct.shift buf (line_len + 1 + off) in
+        Some (line, v)
   in
   (* Extract SSH version from line *)
   let processline line =

@@ -34,7 +34,7 @@ type channel = {
   us    : channel_end;
   them  : channel_end;
   state : state;
-  tosend: Cstruct.t;
+  tosend: Cstruct_sexp.t;
 } [@@deriving sexp]
 
 let compare a b =

@@ -1,8 +1,8 @@
 true : warn(+A-4-41-42-44-45)
 
 true: debug, bin_annot, strict_sequence, safe_string
-true: package(nocrypto rresult cstruct cstruct.ppx sexplib ppx_sexp_conv)
-true: package(ipaddr zarith x509 mtime)
+true: package(nocrypto rresult cstruct ppx_cstruct sexplib ppx_sexp_conv)
+true: package(ipaddr zarith x509 mtime cstruct-sexp)
 <lib> : include
 <test/*>: package(cstruct-unix io-page.unix)
 <lib/*.cm{x,o}> and not <lib/awa.*>: for-pack(Awa)

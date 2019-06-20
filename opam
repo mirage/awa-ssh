@@ -30,6 +30,7 @@ depends: [
   "x509"
   "cstruct"       {>= "1.9.0"}
   "cstruct-unix"
+  "cstruct-sexp"
   "sexplib"
   "ipaddr"        {>= "2.5.0"}
   "tcpip"         {>= "3.0.0"}
