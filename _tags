@@ -9,4 +9,4 @@ true: package(ipaddr zarith x509 mtime cstruct-sexp)
 
 <lwt>: include
 <lwt/*>: package(lwt lwt.unix mtime.clock.os)
-<test/*>: package(lwt lwt.unix mtime.clock.os)
+<test/*>: package(lwt lwt.unix mtime.clock.os nocrypto.unix)

@@ -119,22 +119,12 @@ let maybe_rekey t now = if should_rekey t now then rekey t else None
 
 let pop_msg2 t buf =
   let version t buf =
-    Wire.get_version buf >>= fun (client_version, input_buffer) ->
-    match client_version with
-    | None -> ok (t, None, input_buffer)
-    | Some v ->
-      let msg = Ssh.Msg_version v in
-      ok (t, Some msg, input_buffer)
+    Common.version buf >>| fun (v, i) ->
+    (t, v, i)
   in
   let decrypt t buf =
-    Packet.decrypt t.keys_ctos buf >>= function
-    | None -> ok (t, None, buf)
-    | Some (pkt, input_buffer, keys_ctos) ->
-      let ignore_packet = t.ignore_next_packet in
-      Packet.to_msg pkt >>= fun msg ->
-      ok ({ t with keys_ctos; ignore_next_packet = false },
-          (if ignore_packet then None else Some msg),
-          input_buffer)
+    Common.decrypt ~ignore_packet:t.ignore_next_packet t.keys_ctos buf >>| fun (keys_ctos, msg, buf) ->
+    { t with keys_ctos; ignore_next_packet = false }, msg, buf
   in
   match t.client_version with
   | None -> version t buf
@@ -401,14 +391,8 @@ let input_msg t msg now =
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))
 
 let output_msg t msg =
-  let t, buf =
-    match msg with
-    | Ssh.Msg_version v ->
-      t, Cstruct.of_string (v ^ "\r\n")
-    | msg ->
-      let enc, keys = Packet.encrypt t.keys_stoc msg in
-      { t with keys_stoc = keys }, enc
-  in
+  let buf, keys_stoc = Common.output_msg t.keys_stoc msg in
+  let t = { t with keys_stoc } in
   (* Do state transitions *)
   match msg with
   | Ssh.Msg_newkeys -> of_new_keys_stoc t >>= fun t -> ok (t, buf)

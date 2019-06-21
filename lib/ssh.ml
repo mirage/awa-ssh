@@ -130,6 +130,7 @@ let sexp_of_mpint mpint = sexp_of_string (Z.to_string mpint)
 type global_request =
   | Tcpip_forward of (string * int32)
   | Cancel_tcpip_forward of (string * int32)
+  | Unknown_request of string
 [@@deriving sexp]
 
 type channel_request =

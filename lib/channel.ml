@@ -120,6 +120,8 @@ type db = channel Channel_map.t
 
 let empty_db = Channel_map.empty
 
+let is_empty = Channel_map.is_empty
+
 (* Find the next available free channel *)
 let next_free db =
   let rec linear lkey = function

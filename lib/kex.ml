@@ -280,14 +280,22 @@ module Dh = struct
     Dbuf.to_cstruct |>
     Hash.SHA1.digest
 
-  let generate alg peer_pub =
+  let secret_pub alg =
+    let secret, pub = Dh.gen_key (group_of_alg alg) in
+    secret, Numeric.Z.of_cstruct_be pub
+
+  let shared alg secret recv =
     let g = group_of_alg alg in
-    let secret, my_pub = Dh.gen_key g in
     guard_some
-      (Dh.shared g secret (Numeric.Z.to_cstruct_be peer_pub))
+      (Dh.shared g secret (Numeric.Z.to_cstruct_be recv))
       "Can't compute shared secret"
     >>= fun shared ->
+    ok (Numeric.Z.of_cstruct_be shared)
+
+  let generate alg peer_pub =
+    let secret, my_pub = secret_pub alg in
+    shared alg secret peer_pub >>= fun shared ->
     (* my_pub is f or e, shared is k *)
-    ok Numeric.Z.(of_cstruct_be my_pub, of_cstruct_be shared)
+    ok (my_pub, shared)
 
 end

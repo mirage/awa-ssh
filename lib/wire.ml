@@ -372,7 +372,9 @@ let get_message buf =
        get_string buf >>= fun (address, buf) ->
        get_uint32 buf >>= fun (port, buf) ->
        ok (Cancel_tcpip_forward (address, port), buf)
-     | _ -> error ("Unknown request " ^ request))
+     | _ ->
+       get_string buf >>= fun (data, buf) ->
+       ok (Unknown_request data, buf))
     >>= fun (global_request, _) ->
     ok (Msg_global_request (request, want_reply, global_request))
   | MSG_REQUEST_SUCCESS ->
@@ -403,7 +405,7 @@ let get_message buf =
              (send_channel, init_win, max_pkt,
               Forwarded_tcpip (con_address, con_port, origin_address,
                                origin_port)))
-     | _ -> error ("Unknown request " ^ request))
+     | _ -> error ("Unknown channel open " ^ request))
   | MSG_CHANNEL_OPEN_CONFIRMATION ->
     get_uint32 buf >>= fun (recp_channel, buf) ->
     get_uint32 buf >>= fun (send_channel, buf) ->
@@ -507,7 +509,7 @@ let get_message buf =
        get_string buf >>= fun (lang, _) ->
        ok (Msg_channel_request (channel, want_reply,
                                 Exit_signal (name, core_dumped, message, lang)))
-     | _ -> error ("Unknown request " ^ request))
+     | _ -> error ("Unknown channel request " ^ request))
   | MSG_CHANNEL_SUCCESS ->
     get_uint32 buf >>= fun (channel, _) ->
     ok (Msg_channel_success channel)
@@ -616,7 +618,8 @@ let put_message msg buf =
        put_uint32 port
      | Cancel_tcpip_forward (address, port) ->
        put_string address buf |>
-       put_uint32 port)
+       put_uint32 port
+     | Unknown_request _ -> assert false)
   | Msg_request_success (req_data) ->
     let buf = put_id MSG_REQUEST_SUCCESS buf in
     (match req_data with
