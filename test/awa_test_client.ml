@@ -40,8 +40,10 @@ let key () =
   in
   let key = Nocrypto.Rsa.generate ~g 2048 in
   let public = Nocrypto.Rsa.pub_of_priv key in
-  let pem = X509.Encoding.Pem.Public_key.to_pem_cstruct1 (`RSA public) in
-  Printf.printf "public key %s" (Cstruct.to_string pem);
+(*  let pem = X509.Encoding.Pem.Public_key.to_pem_cstruct1 (`RSA public) in
+    Printf.printf "public key PEM\n%s\n%!" (Cstruct.to_string pem); *)
+  let pubkey = Wire.blob_of_pubkey (Hostkey.Rsa_pub public) in
+  Printf.printf "public key ssh-rsa %s\n%!" (Cstruct.to_string (Nocrypto.Base64.encode pubkey));
   Hostkey.Rsa_priv key
 
 let () =
