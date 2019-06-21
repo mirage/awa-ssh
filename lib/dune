@@ -1,0 +1,5 @@
+(library
+ (name awa)
+ (public_name awa)
+ (preprocess (pps ppx_cstruct ppx_sexp_conv))
+ (libraries cstruct cstruct-sexp nocrypto ipaddr zarith x509 mtime sexplib))

@@ -178,10 +178,8 @@ let openssh_of_pubkey key =
       Cstruct.of_string " awa-ssh\n" ]
 
 let privkey_of_pem buf =
-  trap_error (fun () ->
-      let open X509.Encoding.Pem in
-      match Private_key.of_pem_cstruct1 buf with
-        `RSA key -> Hostkey.Rsa_priv key)
+  X509.Private_key.decode_pem buf >>| fun (`RSA key) ->
+  Hostkey.Rsa_priv key
 
 let put_kexinit kex t =
   let open Ssh in

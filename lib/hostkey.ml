@@ -15,7 +15,6 @@
  *)
 
 open Nocrypto
-open Sexplib.Conv
 
 type priv =
   | Rsa_priv of Rsa.priv

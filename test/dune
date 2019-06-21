@@ -1,0 +1,32 @@
+(executable
+ (name test)
+ (public_name test)
+ (modules test)
+ (package awa)
+ (libraries awa mtime.clock.os cstruct-unix))
+
+(alias
+ (name runtest)
+ (deps (source_tree data) (:< test.exe))
+ (action (run %{<})))
+
+(executable
+ (name awa_test_server)
+ (public_name awa_test_server)
+ (modules awa_test_server)
+ (package awa)
+ (libraries awa mtime.clock.os cstruct-unix))
+
+(executable
+ (name awa_test_client)
+ (public_name awa_test_client)
+ (modules awa_test_client)
+ (package awa)
+ (libraries awa nocrypto.unix mtime.clock.os))
+
+(executable
+ (name awa_lwt_server)
+ (public_name awa_lwt_server)
+ (modules awa_lwt_server)
+ (package awa-lwt)
+ (libraries awa awa-lwt mtime.clock.os cstruct-unix))

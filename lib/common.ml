@@ -1,5 +1,4 @@
 open Rresult.R
-open Util
 
 let output_msg keys = function
   | Ssh.Msg_version v -> Cstruct.of_string (v ^ "\r\n"), keys

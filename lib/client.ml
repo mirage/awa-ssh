@@ -28,7 +28,6 @@ let pp_event ppf = function
 type state =
   | Init of string * Ssh.kexinit
   | Received_version of string * Ssh.kexinit * string
-  | Received_kexinit of string * Ssh.kexinit * string * Ssh.kexinit
   | Negotiated_kex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Nocrypto.Dh.secret * Ssh.mpint
   | Newkeys_before_auth
   | Requested_service of string
@@ -166,7 +165,7 @@ let handle_pk_ok t m pk = match m with
         [])
   | _ -> Error "not sure how we ended in pk ok now"
 
-let open_channel t m =
+let open_channel t _m =
   if Channel.is_empty t.channels then
     let channel, msg =
       let id = 0l
@@ -180,7 +179,7 @@ let open_channel t m =
   else
     Error "not sure what to do, there's already a channel"
 
-let open_channel_success t us our_id their_id win max_pkt data =
+let open_channel_success t us our_id their_id win max_pkt _data =
   if us.Channel.id = our_id then
     let them = Channel.make_end their_id win max_pkt in
     let c = Channel.make ~us ~them in

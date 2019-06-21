@@ -261,7 +261,7 @@ let t_parsing () =
 
 let t_key_exchange () =
   (* Read a pcap file and see if it makes sense. *)
-  let file = "test/kex.packet" in
+  let file = "data/kex.packet" in
   let fd = Unix.(openfile file [O_RDONLY] 0) in
   let buf = Unix_cstruct.of_fd fd in
   let pkt, _ = get_some @@ get_ok @@ decrypt_plain buf in
@@ -384,7 +384,7 @@ let t_crypto () =
   test_ok
 
 let t_openssh_pub () =
-  let fd = Unix.(openfile "test/awa_test_rsa.pub" [O_RDONLY] 0) in
+  let fd = Unix.(openfile "data/awa_test_rsa.pub" [O_RDONLY] 0) in
   let file_buf = Unix_cstruct.of_fd fd in
   let key = get_ok (Wire.pubkey_of_openssh file_buf) in
   let buf = Wire.openssh_of_pubkey key in
@@ -550,8 +550,8 @@ let t_channel_output () =
 let t_openssh_client () =
   let s1 = "Georg Wilhelm Friedrich Hegel" in
   let s2 = "Karl Marx" in
-  let ossh_cmd = "ssh -p 18022 awa@127.0.0.1 -i test/awa_test_rsa echo" in
-  let awa_cmd = "./_build/test/awa_test_server.native" in
+  let ossh_cmd = "ssh -p 18022 awa@127.0.0.1 -i data/awa_test_rsa echo" in
+  let awa_cmd = "./_build/default/test/awa_test_server.exe" in
   let awa_args = Array.of_list [] in
   let null = Unix.openfile "/dev/null" [ Unix.O_RDWR ] 0o666 in
   ignore @@ Unix.system "pkill awa_test_server";
@@ -604,5 +604,5 @@ let all_tests = [
 let _ =
   Nocrypto.Rng.reseed (Cstruct.of_string "180586");
   Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> failwith "timeout"));
-  Unix.chmod "test/awa_test_rsa" 0o600;
+  Unix.chmod "data/awa_test_rsa" 0o600;
   List.iter run_test all_tests;
