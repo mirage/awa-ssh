@@ -27,10 +27,7 @@ type pub =
 let pub_of_priv = function
   | Rsa_priv priv -> Rsa_pub (Rsa.pub_of_priv priv)
 
-let sexp_of_pub = function
-  | Rsa_pub pub -> Nocrypto.Rsa.sexp_of_pub pub
-  | Unknown -> sexp_of_string "Unknown"
-
+let sexp_of_pub _ = Sexplib.Sexp.Atom "Hostkey.sexp_of_pub: TODO"
 let pub_of_sexp _ = failwith "Hostkey.pub_of_sexp: TODO"
 
 (*

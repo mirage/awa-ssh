@@ -234,7 +234,7 @@ let derive_keys digesti k h session_id neg now =
     match cipher with
     | Plaintext -> invalid_arg "Deriving plaintext, abort at all costs"
     | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
-      let iv = Counters.C128be.of_cstruct iv in
+      let iv = AES.CTR.ctr_of_cstruct iv in
       { cipher;
         cipher_key = Aes_ctr_key ((AES.CTR.of_secret secret), iv) }
     | Aes128_cbc | Aes192_cbc | Aes256_cbc ->

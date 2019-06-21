@@ -28,7 +28,7 @@ type t =
 
 type cipher_key =
   | Plaintext_key
-  | Aes_ctr_key of (CTR.key * Nocrypto.Cipher_block.Counters.C128be.t)
+  | Aes_ctr_key of (CTR.key * Nocrypto.Cipher_block.AES.CTR.ctr)
   | Aes_cbc_key of (CBC.key * Cstruct.t)
 
 type key = {
