@@ -28,11 +28,6 @@ let write_cstruct fd buf =
   let n = Unix.write fd bytes 0 len in
   assert (n > 0)
 
-let write_msg fd t msg =
-  Client.output_msg t msg >>| fun (t, buf) ->
-  write_cstruct fd buf;
-  t
-
 let key () =
   let g =
     let seed = Cstruct.of_string "180586" in
@@ -50,18 +45,15 @@ let () =
   Nocrypto_entropy_unix.initialize ();
   let fd = Unix.(socket PF_INET SOCK_STREAM 0) in
   Unix.(connect fd (ADDR_INET (inet_addr_loopback, 22)));
-  let send = List.fold_left (fun t msg ->
-      t >>= fun t ->
-      write_msg fd t msg)
-  in
+  let send = List.iter (write_cstruct fd) in
   let t, out = Client.make "hannes" (key ()) () in
   let r =
-    send (Ok t) out >>= fun t ->
+    send out;
     let rec read_react t =
       let data = read_cstruct fd in
       let now = Mtime_clock.now () in
-      Client.handle_input t data now >>= fun (t, replies, events) ->
-      send (Ok t) replies >>= fun t ->
+      Client.incoming t now data >>= fun (t, replies, events) ->
+      send replies;
       Printf.printf "%d events\n" (List.length events);
       (List.iter (fun e ->
            Format.printf "some event %a\n%!" Client.pp_event e) events);

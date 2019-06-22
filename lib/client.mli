@@ -6,9 +6,7 @@
 
 type t
 
-val make : string -> Hostkey.priv -> unit -> (t * Ssh.message list)
-
-val output_msg : t -> Ssh.message -> (t * Cstruct.t, string) result
+val make : string -> Hostkey.priv -> unit -> t * Cstruct.t list
 
 type event =
   | Channel_data of int32 * Cstruct.t
@@ -18,8 +16,8 @@ type event =
 
 val pp_event : Format.formatter -> event -> unit
 
-val handle_input : t -> Cstruct.t -> Mtime.t ->
-  (t * Ssh.message list * event list, string) result
+val incoming : t -> Mtime.t -> Cstruct.t ->
+  (t * Cstruct.t list * event list, string) result
 
-val output_channel_data : t -> int32 -> Cstruct.t ->
-  (t * Ssh.message list, string) result
+val outgoing : t -> ?id:int32 -> Cstruct.t ->
+  (t * Cstruct.t list, string) result

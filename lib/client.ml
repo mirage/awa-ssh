@@ -29,7 +29,7 @@ type state =
   | Init of string * Ssh.kexinit
   | Received_version of string * Ssh.kexinit * string
   | Negotiated_kex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Nocrypto.Dh.secret * Ssh.mpint
-  | Newkeys_before_auth
+  | Newkeys_before_auth of Kex.keys * Kex.keys
   | Requested_service of string
   | Userauth_request of Ssh.auth_method
   | Opening_channel of Channel.channel_end
@@ -40,8 +40,6 @@ type t = {
   session_id     : Cstruct.t option;
   keys_ctos      : Kex.keys;
   keys_stoc      : Kex.keys;
-  new_keys_ctos  : Kex.keys option;
-  new_keys_stoc  : Kex.keys option;
   keying         : bool;
   key_eol        : Mtime.t option;
   channels       : Channel.db;
@@ -50,41 +48,17 @@ type t = {
   key : Hostkey.priv
 }
 
-let of_new_keys_ctos t =
+let rotate_keys_ctos t new_keys_ctos =
   let open Kex in
-  let open Hmac in
-  guard_some t.new_keys_ctos "No new_keys_ctos" >>= fun new_keys_ctos ->
-  guard (is_keyed new_keys_ctos) "Plaintext new keys" >>= fun () ->
   let new_mac_ctos = { new_keys_ctos.mac with seq = t.keys_ctos.mac.seq } in
   let new_keys_ctos = { new_keys_ctos with mac = new_mac_ctos } in
-  ok { t with keys_ctos = new_keys_ctos; new_keys_ctos = None }
+  { t with keys_ctos = new_keys_ctos }
 
-let of_new_keys_stoc t =
+let rotate_keys_stoc t new_keys_stoc =
   let open Kex in
-  let open Hmac in
-  guard_some t.new_keys_stoc "No new_keys_stoc" >>= fun new_keys_stoc ->
-  guard (is_keyed new_keys_stoc) "Plaintext new keys" >>= fun () ->
   let new_mac_stoc = { new_keys_stoc.mac with seq = t.keys_stoc.mac.seq } in
   let new_keys_stoc = { new_keys_stoc with mac = new_mac_stoc } in
-  ok { t with keys_stoc = new_keys_stoc; new_keys_stoc = None; keying = false }
-
-let make username key () =
-  let open Ssh in
-  let client_kexinit = Kex.make_kexinit () in
-  let banner_msg = Ssh.Msg_version version_banner in
-  let kex_msg = Ssh.Msg_kexinit client_kexinit in
-  { state = Init (version_banner, client_kexinit);
-    session_id = None;
-    keys_ctos = Kex.make_plaintext ();
-    keys_stoc = Kex.make_plaintext ();
-    new_keys_ctos = None;
-    new_keys_stoc = None;
-    keying = true;
-    key_eol = None;
-    linger = Cstruct.empty;
-    channels = Channel.empty_db;
-    username ; key
-  }, [ banner_msg ; kex_msg ]
+  { t with keys_stoc = new_keys_stoc; keying = false }
 
 let debug_msg prefix = function
   | Ssh.Msg_channel_data (id, data) ->
@@ -96,9 +70,38 @@ let output_msg t msg =
   let t = { t with keys_ctos } in
   debug_msg ">>>" msg;
   (* Do state transitions *)
-  match msg with
-  | Ssh.Msg_newkeys -> of_new_keys_ctos t >>= fun t -> ok (t, buf)
-  | _ -> ok (t, buf)
+  match t.state with
+  | Newkeys_before_auth (my_keys, _) ->
+    Printf.printf "rotating ctos keys\n%!";
+    let t' = rotate_keys_ctos t my_keys in
+    t', buf
+  | _ -> t, buf
+
+let output_msgs t msgs =
+  let t', data = List.fold_left (fun (t, acc) msg ->
+      let t', buf = output_msg t msg in
+      (t', buf :: acc))
+      (t, []) msgs
+  in
+  t', List.rev data
+
+let make username key () =
+  let open Ssh in
+  let client_kexinit = Kex.make_kexinit () in
+  let banner_msg = Ssh.Msg_version version_banner in
+  let kex_msg = Ssh.Msg_kexinit client_kexinit in
+  let t = { state = Init (version_banner, client_kexinit);
+            session_id = None;
+            keys_ctos = Kex.make_plaintext ();
+            keys_stoc = Kex.make_plaintext ();
+            keying = true;
+            key_eol = None;
+            linger = Cstruct.empty;
+            channels = Channel.empty_db;
+            username ; key
+          }
+  in
+  output_msgs t [ banner_msg ; kex_msg ]
 
 let handle_kexinit t c_v ckex s_v skex =
   Kex.negotiate ~s:skex ~c:ckex >>= fun neg ->
@@ -123,20 +126,20 @@ let handle_kexdh_reply t now c_v ckex s_v skex neg secret my_pub pubkey their_dh
     Kex.Dh.derive_keys shared h session_id neg now
     >>| fun (new_keys_ctos, new_keys_stoc, key_eol) ->
     { t with
-      state = Newkeys_before_auth ;
-      session_id = Some session_id ; new_keys_ctos = Some new_keys_ctos ;
-      new_keys_stoc = Some new_keys_stoc ; key_eol = Some key_eol },
+      state = Newkeys_before_auth (new_keys_ctos, new_keys_stoc) ;
+      session_id = Some session_id ; key_eol = Some key_eol },
     [ Ssh.Msg_newkeys ], []
    end else begin
      Printf.printf "verified kexdh_reply FAILED!\n%!";
      Error "not further implemented"
    end
 
-let handle_newkeys_before_auth t =
-  of_new_keys_stoc t >>| fun t ->
+let handle_newkeys_before_auth t keys =
+  Printf.printf "rotating stoc keys\n%!";
+  let t' = rotate_keys_stoc t keys in
   let service = "ssh-userauth" in
-  { t with state = Requested_service service },
-  [ Ssh.Msg_service_request service ], []
+  Ok ({ t' with state = Requested_service service },
+      [ Ssh.Msg_service_request service ], [])
 
 let service_accepted t = function
   | "ssh-userauth" ->
@@ -199,7 +202,7 @@ let input_msg t msg now =
     handle_kexinit t c_v c_kex s_v skex
   | Negotiated_kex (c_v, c_kex, s_v, s_kex, neg, sec, my_pub), Msg_kexdh_reply (pub, their_dh, signature) ->
     handle_kexdh_reply t now c_v c_kex s_v s_kex neg sec my_pub pub their_dh signature
-  | Newkeys_before_auth, Msg_newkeys -> handle_newkeys_before_auth t
+  | Newkeys_before_auth (_, keys), Msg_newkeys -> handle_newkeys_before_auth t keys
   | Requested_service s, Msg_service_accept s' when s = s' ->
     service_accepted t s
   | Userauth_request m, Msg_userauth_failure (methods, _) ->
@@ -244,7 +247,7 @@ let input_msg t msg now =
     debug_msg "unexpected" msg;
     Error "unexpected state and message"
 
-let rec handle_input t buf now =
+let rec incoming t now buf =
   let buf = Cstruct.append t.linger buf in
   (match t.state with
    | Init _ ->
@@ -259,12 +262,15 @@ let rec handle_input t buf now =
     Ok (t, [], [])
   | Some msg ->
     debug_msg "<<<" msg;
-    input_msg t msg now >>= fun (t, replies, events) ->
-    handle_input t Cstruct.empty now >>| fun (t', replies', events') ->
-    (t', replies @ replies', events @ events')
+    input_msg t msg now >>= fun (t', replies, events) ->
+    let t'', replies = output_msgs t' replies in
+    incoming t'' now Cstruct.empty >>| fun (t''', replies', events') ->
+    t''', replies @ replies', events @ events'
 
-let output_channel_data t id data =
+let outgoing t ?(id = 0l) data =
+  guard (match t.state with Established -> true | _ -> false) "not yet established" >>= fun () ->
   guard (Cstruct.len data > 0) "empty data" >>= fun () ->
   guard_some (Channel.lookup id t.channels) "no such channel" >>= fun c ->
-  Channel.output_data c data >>= fun (c, frags) ->
-  Ok ({ t with channels = Channel.update c t.channels }, frags)
+  Channel.output_data c data >>| fun (c, frags) ->
+  let t' = { t with channels = Channel.update c t.channels } in
+  output_msgs t' frags
