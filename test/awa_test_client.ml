@@ -28,31 +28,13 @@ let write_cstruct fd buf =
   let n = Unix.write fd bytes 0 len in
   assert (n > 0)
 
-let key seed =
-  let g =
-    let seed = Cstruct.of_string seed in
-    Nocrypto.Rng.(create ~seed (module Generators.Fortuna))
-  in
-  let key = Nocrypto.Rsa.generate ~g 2048 in
-  let public = Nocrypto.Rsa.pub_of_priv key in
-  let pubkey = Wire.blob_of_pubkey (Hostkey.Rsa_pub public) in
-  Logs.debug (fun m -> m "using ssh-rsa %s\n%!" (Cstruct.to_string (Nocrypto.Base64.encode pubkey)));
-  Hostkey.Rsa_priv key
-
-let server_key = function
-  | None -> Ok Hostkey.Unknown
-  | Some x ->
-    match Nocrypto.Base64.decode (Cstruct.of_string x) with
-    | None -> Error "couldn't decode key"
-    | Some k -> Wire.pubkey_of_blob k
-
 let jump _ seed host_key host port =
   Nocrypto_entropy_unix.initialize ();
   let fd = Unix.(socket PF_INET SOCK_STREAM 0) in
   Unix.(connect fd (ADDR_INET (inet_addr_of_string host, port)));
   match
-    server_key host_key >>= fun pub ->
-    let t, out = Client.make "hannes" (key seed) pub () in
+    Keys.host_key host_key >>= fun pub ->
+    let t, out = Client.make "hannes" (Keys.of_seed seed) pub () in
     List.iter (write_cstruct fd) out;
     let rec read_react t =
       let data = read_cstruct fd in
