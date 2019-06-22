@@ -1,6 +1,5 @@
 *.byte
 *.native
 _build
-awa.install
-awa-lwt.install
+*.install
 .merlin
