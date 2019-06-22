@@ -46,7 +46,7 @@ type t = {
   linger  : Cstruct.t;
   username : string ;
   key : Hostkey.priv ;
-  server_key : Nocrypto.Rsa.pub ;
+  server_key : Hostkey.pub ;
 }
 
 let rotate_keys_ctos t new_keys_ctos =
@@ -124,26 +124,29 @@ let handle_kexdh_reply t now c_v ckex s_v skex neg secret my_pub pubkey their_dh
       ~k_s:(Wire.blob_of_pubkey pubkey)
       ~e:my_pub ~f:their_dh ~k:shared
   in
-  Printf.printf "hostkey is %s\n%!" (hostkey pubkey);
-  if match pubkey with Unknown -> false | Rsa_pub p -> p = t.server_key then
-    if Hostkey.verify pubkey ~unsigned:h ~signed:signature then begin
-      Printf.printf "verified kexdh_reply!\n%!";
-      let session_id = match t.session_id with None -> h | Some x -> x in
-      Kex.Dh.derive_keys shared h session_id neg now
-      >>| fun (new_keys_ctos, new_keys_stoc, key_eol) ->
-      { t with
-        state = Newkeys_before_auth (new_keys_ctos, new_keys_stoc) ;
-        session_id = Some session_id ; key_eol = Some key_eol },
-      [ Ssh.Msg_newkeys ], []
-    end else begin
-      Printf.printf "verified kexdh_reply FAILED!\n%!";
-      Error "couldn't verify kex"
-    end
-  else
- begin
-   Printf.printf "server key mismatch!\n%!";
-   Error "server key mismatch"
- end
+  Printf.printf "received hostkey is %s\n%!" (hostkey pubkey);
+  (match pubkey, t.server_key with
+   | Unknown, _ -> Error "server key is unknown"
+   | _, Unknown ->
+     Printf.printf "NOT verifying hostkey. This is a bad idea!\n%!" ; Ok ()
+   | Rsa_pub k, Rsa_pub l ->
+     if k = l then begin
+       Printf.printf "host key matches ours!" ; Ok ()
+     end else
+       Error "host key verification failed") >>= fun () ->
+  if Hostkey.verify pubkey ~unsigned:h ~signed:signature then begin
+    Printf.printf "verified kexdh_reply!\n%!";
+    let session_id = match t.session_id with None -> h | Some x -> x in
+    Kex.Dh.derive_keys shared h session_id neg now
+    >>| fun (new_keys_ctos, new_keys_stoc, key_eol) ->
+    { t with
+      state = Newkeys_before_auth (new_keys_ctos, new_keys_stoc) ;
+      session_id = Some session_id ; key_eol = Some key_eol },
+    [ Ssh.Msg_newkeys ], []
+  end else begin
+    Printf.printf "verified kexdh_reply FAILED!\n%!";
+    Error "couldn't verify kex"
+  end
 
 let handle_newkeys_before_auth t keys =
   Printf.printf "rotating stoc keys\n%!";

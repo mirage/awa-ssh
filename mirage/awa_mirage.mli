@@ -26,7 +26,7 @@ module Make (F : Mirage_flow_lwt.S) (M : Mirage_clock.MCLOCK) : sig
 
   (** [client_of_flow username key flow] upgrades the existing connection
       to SSH using the configuration. *)
-  val client_of_flow : string -> Awa.Hostkey.priv -> Nocrypto.Rsa.pub ->
+  val client_of_flow : string -> Awa.Hostkey.priv -> Awa.Hostkey.pub ->
     FLOW.flow -> (flow, error) result Lwt.t
 
 end

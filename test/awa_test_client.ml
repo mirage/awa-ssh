@@ -44,10 +44,7 @@ let key () =
 let server_key =
   match Nocrypto.Base64.decode (Cstruct.of_string "AAAAB3NzaC1yc2EAAAADAQABAAABAQCf0degdGagZpd6KUyg2rFyZxbFfOQwSVerckgHmic6cg3V9TZuum66t3hNMTGNT6/+7eCctTUkogzRb0bWuwy4wByDz85XvcPa/ZdkGAgtjMEZhf1fyjoQwgT5H6AWtl/TslUWRCF78+H5QTcDLENYp7CXIZgq2vQ95qHCqBpw1fpboe9kikADmdAKPe7NUfUbu9oRyHwYK8mUSHKxcIqd4Pok6+B/gwh3YDtpV3mX5HIlUUpmpGo9VFaJn6IltETG4okkc+hf2fpbkNols9QXW2pC8x+pbe1F9TMIuJxurmLKvoWT6hWUNtwMeF58k3e8q5tuxCuFxe4k9V4cmzx3") with
   | None -> Error "couldn't decode key"
-  | Some k ->
-    Wire.pubkey_of_blob k >>= function
-    | Hostkey.Rsa_pub pk -> Ok pk
-    | _ -> Error "bad public key"
+  | Some k -> Wire.pubkey_of_blob k
 
 let () =
   Nocrypto_entropy_unix.initialize ();

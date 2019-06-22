@@ -6,7 +6,7 @@
 
 type t
 
-val make : string -> Hostkey.priv -> Nocrypto.Rsa.pub -> unit -> t * Cstruct.t list
+val make : string -> Hostkey.priv -> Hostkey.pub -> unit -> t * Cstruct.t list
 
 type event = [
   | `Established of int32
