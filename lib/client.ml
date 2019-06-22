@@ -9,21 +9,21 @@ open Util
 
 let service = "ssh-connection"
 
-type event =
-  | Channel_data of int32 * Cstruct.t
-  | Channel_eof of int32
-  | Channel_exit_status of int32 * int32
-  | Channel_close of int32
+type event = [
+  | `Established of int32
+  | `Channel_data of int32 * Cstruct.t
+  | `Channel_eof of int32
+  | `Channel_exit_status of int32 * int32
+  | `Disconnected
+]
 
 let pp_event ppf = function
-  | Channel_data (id, data) ->
+  | `Established id -> Format.fprintf ppf "established id %lu" id
+  | `Channel_data (id, data) ->
     Format.fprintf ppf "data %lu: %s" id (Cstruct.to_string data)
-  | Channel_eof id ->
-    Format.fprintf ppf "eof %lu" id
-  | Channel_exit_status (id, r) ->
-    Format.fprintf ppf "exit %lu with %lu" id r
-  | Channel_close id ->
-    Format.fprintf ppf "close %lu" id
+  | `Channel_eof id -> Format.fprintf ppf "eof %lu" id
+  | `Channel_exit_status (id, r) -> Format.fprintf ppf "exit %lu with %lu" id r
+  | `Disconnected -> Format.fprintf ppf "disconnected"
 
 type state =
   | Init of string * Ssh.kexinit
@@ -45,7 +45,8 @@ type t = {
   channels       : Channel.db;
   linger  : Cstruct.t;
   username : string ;
-  key : Hostkey.priv
+  key : Hostkey.priv ;
+  server_key : Nocrypto.Rsa.pub ;
 }
 
 let rotate_keys_ctos t new_keys_ctos =
@@ -85,7 +86,7 @@ let output_msgs t msgs =
   in
   t', List.rev data
 
-let make username key () =
+let make username key server_key () =
   let open Ssh in
   let client_kexinit = Kex.make_kexinit () in
   let banner_msg = Ssh.Msg_version version_banner in
@@ -98,7 +99,7 @@ let make username key () =
             key_eol = None;
             linger = Cstruct.empty;
             channels = Channel.empty_db;
-            username ; key
+            username ; key ; server_key
           }
   in
   output_msgs t [ banner_msg ; kex_msg ]
@@ -108,6 +109,10 @@ let handle_kexinit t c_v ckex s_v skex =
   let secret, my_pub = Kex.Dh.secret_pub neg.kex_alg in
   ok ({ t with state = Negotiated_kex (c_v, ckex, s_v, skex, neg, secret, my_pub) },
       [ Ssh.Msg_kexdh_init my_pub], [])
+
+let hostkey p =
+    let pubkey = Wire.blob_of_pubkey p in
+    Cstruct.to_string (Nocrypto.Base64.encode pubkey)
 
 let handle_kexdh_reply t now c_v ckex s_v skex neg secret my_pub pubkey their_dh signature =
   Kex.Dh.shared neg.Kex.kex_alg secret their_dh >>= fun shared ->
@@ -119,20 +124,26 @@ let handle_kexdh_reply t now c_v ckex s_v skex neg secret my_pub pubkey their_dh
       ~k_s:(Wire.blob_of_pubkey pubkey)
       ~e:my_pub ~f:their_dh ~k:shared
   in
-  (* TODO also verify hostkey against TOFU database *)
-  if Hostkey.verify pubkey ~unsigned:h ~signed:signature then begin
-    Printf.printf "verified kexdh_reply!\n%!";
-    let session_id = match t.session_id with None -> h | Some x -> x in
-    Kex.Dh.derive_keys shared h session_id neg now
-    >>| fun (new_keys_ctos, new_keys_stoc, key_eol) ->
-    { t with
-      state = Newkeys_before_auth (new_keys_ctos, new_keys_stoc) ;
-      session_id = Some session_id ; key_eol = Some key_eol },
-    [ Ssh.Msg_newkeys ], []
-   end else begin
-     Printf.printf "verified kexdh_reply FAILED!\n%!";
-     Error "not further implemented"
-   end
+  Printf.printf "hostkey is %s\n%!" (hostkey pubkey);
+  if match pubkey with Unknown -> false | Rsa_pub p -> p = t.server_key then
+    if Hostkey.verify pubkey ~unsigned:h ~signed:signature then begin
+      Printf.printf "verified kexdh_reply!\n%!";
+      let session_id = match t.session_id with None -> h | Some x -> x in
+      Kex.Dh.derive_keys shared h session_id neg now
+      >>| fun (new_keys_ctos, new_keys_stoc, key_eol) ->
+      { t with
+        state = Newkeys_before_auth (new_keys_ctos, new_keys_stoc) ;
+        session_id = Some session_id ; key_eol = Some key_eol },
+      [ Ssh.Msg_newkeys ], []
+    end else begin
+      Printf.printf "verified kexdh_reply FAILED!\n%!";
+      Error "couldn't verify kex"
+    end
+  else
+ begin
+   Printf.printf "server key mismatch!\n%!";
+   Error "server key mismatch"
+ end
 
 let handle_newkeys_before_auth t keys =
   Printf.printf "rotating stoc keys\n%!";
@@ -187,8 +198,7 @@ let open_channel_success t us our_id their_id win max_pkt _data =
     let them = Channel.make_end their_id win max_pkt in
     let c = Channel.make ~us ~them in
     let channels = Channel.update c t.channels in
-    Ok ({ t with channels ; state = Established },
-        [ Ssh.Msg_channel_request (0l, false, (Exec "ls")) ], [])
+    Ok ({ t with channels ; state = Established }, [], [ `Established our_id ])
   else
     Error (Printf.sprintf "channel ids do not match (our %lu their %lu)"
              us.Channel.id our_id)
@@ -224,7 +234,7 @@ let input_msg t msg now =
     Channel.input_data c data >>| fun (c, data, adjust) ->
     let channels = Channel.update c t.channels in
     let t = { t with channels } in
-    let e = Channel_data (Channel.id c, data) in
+    let e = `Channel_data (Channel.id c, data) in
     (match adjust with
      | None -> t, [], [ e ]
      | Some adjust -> t, [ adjust ], [ e ])
@@ -235,14 +245,17 @@ let input_msg t msg now =
     Ok ({ t with channels }, msgs, [])
   | Established, Msg_channel_eof id ->
     guard_some (Channel.lookup id t.channels) "no such channel" >>= fun c ->
-    Ok (t, [], [ Channel_eof (Channel.id c) ])
+    Ok (t, [], [ `Channel_eof (Channel.id c) ])
   | Established, Msg_channel_request (id, false, Exit_status r) ->
     guard_some (Channel.lookup id t.channels) "no such channel" >>= fun c ->
-    Ok (t, [], [ Channel_exit_status (Channel.id c, r) ])
+    Ok (t, [], [ `Channel_exit_status (Channel.id c, r) ])
   | Established, Msg_channel_close id ->
     guard_some (Channel.lookup id t.channels) "no such channel" >>= fun c ->
     let channels = Channel.remove (Channel.id c) t.channels in
-    Ok ({ t with channels }, [], [ Channel_close (Channel.id c) ])
+    Ok ({ t with channels },
+        [ Msg_channel_close (Channel.id c) ;
+          Msg_disconnect (DISCONNECT_BY_APPLICATION, "all channels are closed now", "") ],
+        [ `Disconnected ])
   | _, _ ->
     debug_msg "unexpected" msg;
     Error "unexpected state and message"
@@ -267,7 +280,13 @@ let rec incoming t now buf =
     incoming t'' now Cstruct.empty >>| fun (t''', replies', events') ->
     t''', replies @ replies', events @ events'
 
-let outgoing t ?(id = 0l) data =
+let outgoing_request t ?(id = 0l) ?(want_reply = false) req =
+  guard (match t.state with Established -> true | _ -> false) "not yet established" >>= fun () ->
+  guard_some (Channel.lookup id t.channels) "no such channel" >>| fun _ ->
+  let msg = Ssh.Msg_channel_request (id, want_reply, req) in
+  output_msg t msg
+
+let outgoing_data t ?(id = 0l) data =
   guard (match t.state with Established -> true | _ -> false) "not yet established" >>= fun () ->
   guard (Cstruct.len data > 0) "empty data" >>= fun () ->
   guard_some (Channel.lookup id t.channels) "no such channel" >>= fun c ->
