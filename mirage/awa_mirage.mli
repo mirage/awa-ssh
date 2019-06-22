@@ -24,10 +24,11 @@ module Make (F : Mirage_flow_lwt.S) (M : Mirage_clock.MCLOCK) : sig
      and type error := error
      and type write_error := write_error
 
-  (** [client_of_flow username key flow] upgrades the existing connection
-      to SSH using the configuration. *)
+  (** [client_of_flow username key hostkey channel_request flow] upgrades the
+      existing connection to SSH, mutually authenticates, opens a channel and
+      sends the channel request. *)
   val client_of_flow : string -> Awa.Hostkey.priv -> Awa.Hostkey.pub ->
-    FLOW.flow -> (flow, error) result Lwt.t
+    Awa.Ssh.channel_request -> FLOW.flow -> (flow, error) result Lwt.t
 
 end
   with module FLOW = F

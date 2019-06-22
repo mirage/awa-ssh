@@ -121,7 +121,7 @@ module Make (F : Mirage_flow_lwt.S) (M : Mirage_clock.MCLOCK) = struct
 
   let write t buf = writev t [buf]
 
-  let client_of_flow user key hostkey flow =
+  let client_of_flow user key hostkey req flow =
     let open Lwt_result.Infix in
     let client, msgs = Awa.Client.make user key hostkey () in
     let t = {
@@ -132,7 +132,7 @@ module Make (F : Mirage_flow_lwt.S) (M : Mirage_clock.MCLOCK) = struct
     drain_handshake t >>= fun id ->
     (* TODO that's a bit hardcoded... *)
     let ssh = match t.state with `Active t -> t | _ -> assert false in
-    (match Awa.Client.outgoing_request ssh ~id (Awa.Ssh.Exec "ls") with
+    (match Awa.Client.outgoing_request ssh ~id req with
      | Error msg -> t.state <- `Error (`Msg msg) ; Lwt.return (Error (`Msg msg))
      | Ok (ssh', data) -> t.state <- `Active ssh' ; write_flow t data) >|= fun () ->
     t
