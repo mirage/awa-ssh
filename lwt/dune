@@ -1,5 +1,4 @@
 (library
  (name awa_lwt)
  (public_name awa-lwt)
- (preprocess (pps ppx_cstruct ppx_sexp_conv))
- (libraries awa lwt lwt.unix mtime.clock.os))
+ (libraries awa cstruct lwt lwt.unix mtime.clock.os))

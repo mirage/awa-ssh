@@ -20,12 +20,10 @@ depends: [
   "ppx_cstruct"
   "nocrypto"
   "x509"
-  "cstruct"       {>= "1.9.0"}
-  "cstruct-unix"
+  "cstruct" {>= "1.9.0"}
+  "cstruct-unix" {with-test}
   "cstruct-sexp"
   "sexplib"
-  "ipaddr"        {>= "2.5.0"}
-  "tcpip"         {>= "3.0.0"}
   "rresult"
   "mtime"
 ]
