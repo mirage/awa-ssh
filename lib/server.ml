@@ -313,11 +313,11 @@ let input_msg t msg now =
     Kex.(Dh.generate neg.kex_alg e) >>= fun (f, k) ->
     let pub_host_key = Hostkey.pub_of_priv t.host_key in
     let h = Kex.Dh.compute_hash
-        ~v_c:(Cstruct.of_string client_version)
-        ~v_s:(Cstruct.of_string t.server_version)
+        ~v_c:client_version
+        ~v_s:t.server_version
         ~i_c:c.rawkex
         ~i_s:(Wire.blob_of_kexinit t.server_kexinit)
-        ~k_s:(Wire.blob_of_pubkey pub_host_key)
+        ~k_s:pub_host_key
         ~e ~f ~k
     in
     let signature = Hostkey.sign t.host_key h in

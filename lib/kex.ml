@@ -269,11 +269,11 @@ module Dh = struct
 
   let compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
     let open Wire in
-    put_cstring v_c (Dbuf.create ()) |>
-    put_cstring v_s |>
+    put_cstring (Cstruct.of_string v_c) (Dbuf.create ()) |>
+    put_cstring (Cstruct.of_string v_s) |>
     put_cstring i_c |>
     put_cstring i_s |>
-    put_cstring k_s |>
+    put_cstring (Wire.blob_of_pubkey k_s) |>
     put_mpint e |>
     put_mpint f |>
     put_mpint k |>

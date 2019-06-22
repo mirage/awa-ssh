@@ -22,7 +22,7 @@
  (public_name awa_test_client)
  (modules awa_test_client)
  (package awa)
- (libraries awa nocrypto.unix mtime.clock.os))
+ (libraries awa nocrypto.unix mtime.clock.os cmdliner fmt.tty logs.fmt logs.cli fmt.cli))
 
 (executable
  (name awa_lwt_server)
