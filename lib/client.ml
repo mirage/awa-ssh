@@ -48,9 +48,9 @@ type t = {
   key_eol        : Mtime.t option;
   channels       : Channel.db;
   linger  : Cstruct.t;
-  username : string ;
+  user : string ;
   key : Hostkey.priv ;
-  server_key : Hostkey.pub ;
+  authenticator : Keys.authenticator ;
 }
 
 let established t = match t.state with Established -> true | _ -> false
@@ -93,7 +93,7 @@ let output_msgs t msgs =
   in
   t', List.rev data
 
-let make username key server_key () =
+let make ?(authenticator = `No_authentication) ~user key =
   let open Ssh in
   let client_kexinit = Kex.make_kexinit () in
   let banner_msg = Ssh.Msg_version version_banner in
@@ -106,7 +106,7 @@ let make username key server_key () =
             key_eol = None;
             linger = Cstruct.empty;
             channels = Channel.empty_db;
-            username ; key ; server_key
+            user ; key ; authenticator
           }
   in
   output_msgs t [ banner_msg ; kex_msg ]
@@ -117,28 +117,14 @@ let handle_kexinit t c_v ckex s_v skex =
   ok ({ t with state = Negotiated_kex (c_v, ckex, s_v, skex, neg, secret, my_pub) },
       [ Ssh.Msg_kexdh_init my_pub], [])
 
-let hostkey p =
-    let pubkey = Wire.blob_of_pubkey p in
-    Cstruct.to_string (Nocrypto.Base64.encode pubkey)
-
-let handle_kexdh_reply t now v_c ckex v_s skex neg secret my_pub k_s their_dh signature =
-  Kex.Dh.shared neg.Kex.kex_alg secret their_dh >>= fun shared ->
+let handle_kexdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs signed =
+  Kex.Dh.shared neg.Kex.kex_alg secret theirs >>= fun shared ->
   let h =
     Kex.Dh.compute_hash
       ~v_c ~v_s ~i_c:(Wire.blob_of_kexinit ckex) ~i_s:skex.Ssh.rawkex
-      ~k_s ~e:my_pub ~f:their_dh ~k:shared
+      ~k_s ~e:my_pub ~f:theirs ~k:shared
   in
-  Log.info (fun m -> m "received hostkey is %s" (hostkey k_s));
-  (match k_s, t.server_key with
-   | Unknown, _ -> Error "server key is unknown"
-   | _, Unknown ->
-     Log.warn (fun m -> m "NOT verifying hostkey. This is a bad idea!") ; Ok ()
-   | Rsa_pub k, Rsa_pub l ->
-     if k = l then begin
-       Log.info (fun m -> m "host key matches ours!") ; Ok ()
-     end else
-       Error "host key verification failed") >>= fun () ->
-  if Hostkey.verify k_s ~unsigned:h ~signed:signature then begin
+  if Keys.hostkey_matches t.authenticator k_s && Hostkey.verify k_s ~unsigned:h ~signed then begin
     Log.info (fun m -> m "verified kexdh_reply!");
     let session_id = match t.session_id with None -> h | Some x -> x in
     Kex.Dh.derive_keys shared h session_id neg now
@@ -160,7 +146,7 @@ let handle_newkeys_before_auth t keys =
 let service_accepted t = function
   | "ssh-userauth" ->
     Ok ({ t with state = Userauth_request Authnone },
-        [ Ssh.Msg_userauth_request (t.username, service, Authnone) ],
+        [ Ssh.Msg_userauth_request (t.user, service, Authnone) ],
         [])
   | service -> Error ("unknown service: " ^ service)
 
@@ -170,17 +156,17 @@ let handle_auth_failure t _ = function
     let pub = Hostkey.pub_of_priv t.key in
     let met = Ssh.Pubkey (pub, None) in
     Ok ({ t with state = Userauth_request met },
-        [ Ssh.Msg_userauth_request (t.username, service, met) ],
+        [ Ssh.Msg_userauth_request (t.user, service, met) ],
         [])
   | _ -> Error "no supported authentication methods left"
 
 let handle_pk_ok t m pk = match m with
   | Ssh.Pubkey (pub, None) when pub = pk ->
     let session_id = match t.session_id with None -> assert false | Some x -> x in
-    let signature = Auth.sign t.username t.key session_id service in
-    let met = Ssh.Pubkey (Hostkey.pub_of_priv t.key, Some signature) in
+    let signed = Auth.sign t.user t.key session_id service in
+    let met = Ssh.Pubkey (Hostkey.pub_of_priv t.key, Some signed) in
     Ok ({ t with state = Userauth_requested },
-        [ Ssh.Msg_userauth_request (t.username, service, met) ],
+        [ Ssh.Msg_userauth_request (t.user, service, met) ],
         [])
   | _ -> Error "not sure how we ended in pk ok now"
 
@@ -216,8 +202,8 @@ let input_msg t msg now =
   | Received_version (cv, ckex, sv), Msg_kexinit skex ->
     handle_kexinit t cv ckex sv skex
   | Negotiated_kex (cv, ckex, sv, skex, neg, sec, mypub),
-    Msg_kexdh_reply (pub, their_dh, signed) ->
-    handle_kexdh_reply t now cv ckex sv skex neg sec mypub pub their_dh signed
+    Msg_kexdh_reply (pub, theirs, signed) ->
+    handle_kexdh_reply t now cv ckex sv skex neg sec mypub pub theirs signed
   | Newkeys_before_auth (_, keys), Msg_newkeys ->
     handle_newkeys_before_auth t keys
   | Requested_service s, Msg_service_accept s' when s = s' ->

@@ -121,9 +121,9 @@ module Make (F : Mirage_flow_lwt.S) (M : Mirage_clock.MCLOCK) = struct
 
   let write t buf = writev t [buf]
 
-  let client_of_flow user key hostkey req flow =
+  let client_of_flow ?authenticator ~user key req flow =
     let open Lwt_result.Infix in
-    let client, msgs = Awa.Client.make user key hostkey () in
+    let client, msgs = Awa.Client.make ?authenticator ~user key in
     let t = {
       flow   = flow ;
       state  = `Active client ;

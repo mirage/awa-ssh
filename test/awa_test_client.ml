@@ -28,13 +28,13 @@ let write_cstruct fd buf =
   let n = Unix.write fd bytes 0 len in
   assert (n > 0)
 
-let jump _ seed host_key host port =
+let jump _ user seed authenticator host port =
   Nocrypto_entropy_unix.initialize ();
   let fd = Unix.(socket PF_INET SOCK_STREAM 0) in
   Unix.(connect fd (ADDR_INET (inet_addr_of_string host, port)));
   match
-    Keys.host_key host_key >>= fun pub ->
-    let t, out = Client.make "hannes" (Keys.of_seed seed) pub () in
+    Keys.authenticator_of_string authenticator >>= fun authenticator ->
+    let t, out = Client.make ~authenticator ~user (Keys.of_seed seed) in
     List.iter (write_cstruct fd) out;
     let rec read_react t =
       let data = read_cstruct fd in
@@ -43,7 +43,7 @@ let jump _ seed host_key host port =
       List.iter (write_cstruct fd) replies;
       let t, cont = List.fold_left (fun (t, cont) -> function
           | `Established id ->
-            begin match Client.outgoing_request t ~id (Ssh.Exec "ls") with
+            begin match Client.outgoing_request t ~id (Ssh.Exec "ls\ /tmp/bla") with
               | Error e ->
                 Logs.err (fun m -> m "couldn't request ls: %s" e) ; t, cont
               | Ok (t', data) -> write_cstruct fd data ; t', cont
@@ -71,13 +71,17 @@ let setup_log style_renderer level =
 
 open Cmdliner
 
+let user =
+  let doc = "username to use" in
+  Arg.(value & opt string "hannes" & info [ "user" ] ~doc)
+
 let seed =
   let doc = "private key seed" in
   Arg.(value & opt string "180586" & info [ "seed" ] ~doc)
 
-let host_key =
-  let doc = "host key" in
-  Arg.(value & opt (some string) None & info [ "hostkey" ] ~doc)
+let authenticator =
+  let doc = "authenticator" in
+  Arg.(value & opt string "" & info [ "authenticator" ] ~doc)
 
 let host =
   let doc = "remote host" in
@@ -93,7 +97,7 @@ let setup_log =
         $ Logs_cli.level ())
 
 let cmd =
-  Term.(term_result (const jump $ setup_log $ seed $ host_key $ host $ port)),
+  Term.(term_result (const jump $ setup_log $ user $ seed $ authenticator $ host $ port)),
   Term.info "awa_test_client" ~version:"%%VERSION_NUM"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

@@ -6,7 +6,8 @@
 
 type t
 
-val make : string -> Hostkey.priv -> Hostkey.pub -> unit -> t * Cstruct.t list
+val make : ?authenticator:Keys.authenticator -> user:string -> Hostkey.priv ->
+  t * Cstruct.t list
 
 type event = [
   | `Established of int32
