@@ -57,7 +57,10 @@ let to_string t = Sexplib.Sexp.to_string_hum (sexp_of_channel t)
 let input_data t data =
   (* Normalize data, discard if greater than window *)
   let len = min (Cstruct.len data |> Int32.of_int) t.us.win in
-  let data = Cstruct.set_len data (Int32.to_int len) in
+  let data, left = Cstruct.split data (Int32.to_int len) in
+  if Cstruct.len left > 0 then
+    Printf.printf "channel input_data: discarding %d bytes (window size)\n%!"
+      (Cstruct.len left);
   let new_win = Int32.sub t.us.win len in
   Util.guard Int32.(new_win >= zero) "window underflow" >>= fun () ->
   let win, adjust =
@@ -78,7 +81,7 @@ let input_data t data =
 
 let output_data t data =
   let fragment data =
-    let max_pkt = t.them.max_pkt |> Int32.to_int in
+    let max_pkt = Int32.to_int t.them.max_pkt in
     let i =
       Cstruct.iter
         (fun buf ->
@@ -95,8 +98,7 @@ let output_data t data =
   in
   let tosend = Util.cs_join t.tosend data in
   let len = min (Cstruct.len tosend) (Int32.to_int t.them.win) in
-  let data = Cstruct.set_len tosend len in
-  let tosend = Cstruct.shift tosend len in
+  let data, tosend = Cstruct.split tosend len in
   let win = Int32.sub t.them.win (Int32.of_int len) in
   Util.guard Int32.(win >= zero) "window underflow" >>= fun () ->
   let t = { t with tosend; them = { t.them with win } } in

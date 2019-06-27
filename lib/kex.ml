@@ -226,7 +226,7 @@ let derive_keys digesti k h session_id neg now =
     let x = Cstruct.create 1 in
     Cstruct.set_char x 0 ch;
     let k1 = digesti (fun f -> List.iter f [k; h; x; session_id]) in
-    Cstruct.set_len (expand k1) need
+    Cstruct.sub (expand k1) 0 need
   in
   let key_of cipher iv secret =
     let open Cipher_block in

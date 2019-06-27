@@ -54,8 +54,7 @@ let get_cstring buf =
   trap_error (fun () ->
       let len = Cstruct.BE.get_uint32 buf 0 |> Int32.to_int in
       Ssh.guard_sshlen_exn len;
-      (Cstruct.set_len (Cstruct.shift buf 4) len,
-       Cstruct.shift buf (len + 4)))
+      Cstruct.split (Cstruct.shift buf 4) len)
 
 let put_cstring s t =
   let len = Cstruct.len s in
@@ -288,7 +287,7 @@ let get_message buf =
     get_nl buf >>= fun (languages_stoc, buf) ->
     get_bool buf >>= fun (first_kex_packet_follows, _) ->
     ok (Msg_kexinit
-          { cookie = Cstruct.set_len cookiebegin 16;
+          { cookie = Cstruct.sub cookiebegin 0 16;
             kex_algs;
             server_host_key_algs;
             encryption_algs_ctos;
@@ -738,27 +737,21 @@ let put_message msg buf =
 (* XXX Maybe move this to Packet *)
 let get_payload buf =
   let open Ssh in
-  guard ((Cstruct.len buf) >= 5) "Buf too short"
-  >>= fun () ->
+  guard (Cstruct.len buf >= 5) "Buf too short" >>= fun () ->
   let pkt_len = get_pkt_hdr_pkt_len buf |> Int32.to_int in
   let pad_len = get_pkt_hdr_pad_len buf in
-  guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len"
-  >>= fun () ->
-  guard (pad_len < pkt_len) "Bogus pad len"
-  >>= fun () ->
-  guard ((Cstruct.len buf) = (pkt_len + 4)) "Bogus buf len"
-  >>= fun () ->
+  guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len" >>= fun () ->
+  guard (pad_len < pkt_len) "Bogus pad len" >>= fun () ->
+  guard (Cstruct.len buf = pkt_len + 4) "Bogus buf len" >>= fun () ->
   let payload_len = pkt_len - pad_len - 1 in
-  guard (payload_len > 0) "Bogus payload_len"
-  >>= fun () ->
-  let payload = Cstruct.shift buf 5 in
-  let payload = Cstruct.set_len payload payload_len in
+  guard (payload_len > 0) "Bogus payload_len" >>= fun () ->
+  let payload = Cstruct.sub buf 5 payload_len in
   ok payload
 
 let get_version buf =
   (* Fetches next line, returns maybe a string and the remainder of buf *)
   let fetchline buf =
-    if (Cstruct.len buf) < 1 then
+    if Cstruct.len buf < 1 then
       None
     else
       let s = Cstruct.to_string buf in
@@ -798,7 +791,7 @@ let get_version buf =
   (* Scan all lines until an error or SSH version is found *)
   let rec scan buf =
     match fetchline buf with
-    | None -> if (Cstruct.len buf) > 1024 then
+    | None -> if Cstruct.len buf > 1024 then
         error "Buffer is too big"
       else
         ok (None, buf)
@@ -806,7 +799,7 @@ let get_version buf =
       processline line >>= function
       | Some peer_version -> ok (Some peer_version, buf)
       | None ->
-        if (Cstruct.len buf) > 2 then
+        if Cstruct.len buf > 2 then
           scan buf
         else
           ok (None, buf)
