@@ -21,7 +21,7 @@ depends: [
   "nocrypto"
   "x509"
   "cstruct" {>= "1.9.0"}
-  "cstruct-unix" {with-test}
+  "cstruct-unix"
   "cstruct-sexp"
   "sexplib"
   "rresult"
