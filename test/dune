@@ -30,3 +30,10 @@
  (modules awa_lwt_server)
  (package awa-lwt)
  (libraries awa awa-lwt mtime.clock.os cstruct-unix))
+
+(executable
+ (name awa_gen_key)
+ (public_name awa_gen_key)
+ (modules awa_gen_key)
+ (package awa)
+ (libraries awa nocrypto.unix cmdliner))
