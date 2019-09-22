@@ -211,6 +211,7 @@ let input_msg t msg now =
   | Userauth_request m, Msg_userauth_failure (methods, _) ->
     handle_auth_failure t m methods
   | Userauth_request m, Msg_userauth_pk_ok pk -> handle_pk_ok t m pk
+  | Userauth_request _, Msg_userauth_success -> open_channel t
   | Userauth_requested, Msg_userauth_success -> open_channel t
   | Opening_channel us, Msg_channel_open_confirmation (oid, tid, win, max, data) ->
     open_channel_success t us oid tid win max data
