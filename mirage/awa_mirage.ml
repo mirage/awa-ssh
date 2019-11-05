@@ -1,6 +1,6 @@
 open Lwt
 
-module Make (F : Mirage_flow_lwt.S) (M : Mirage_clock.MCLOCK) = struct
+module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) = struct
 
   module FLOW = F
 
@@ -8,9 +8,6 @@ module Make (F : Mirage_flow_lwt.S) (M : Mirage_clock.MCLOCK) = struct
                 | `Read of F.error
                 | `Write of F.write_error ]
   type write_error = [ Mirage_flow.write_error | error ]
-
-  type buffer = Cstruct.t
-  type +'a io = 'a Lwt.t
 
   let pp_error ppf = function
     | `Msg e -> Fmt.string ppf e

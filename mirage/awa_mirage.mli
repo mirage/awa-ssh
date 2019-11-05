@@ -1,9 +1,9 @@
 (** Effectful operations using Mirage for pure SSH. *)
 
 (** SSH module given a flow *)
-module Make (F : Mirage_flow_lwt.S) (M : Mirage_clock.MCLOCK) : sig
+module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) : sig
 
-  module FLOW : Mirage_flow_lwt.S
+  module FLOW : Mirage_flow.S
 
   (** possible errors: incoming alert, processing failure, or a
       problem in the underlying flow. *)
@@ -14,14 +14,9 @@ module Make (F : Mirage_flow_lwt.S) (M : Mirage_clock.MCLOCK) : sig
   type write_error = [ `Closed | error ]
   (** The type for write errors. *)
 
-  type buffer = Cstruct.t
-  type +'a io = 'a Lwt.t
-
   (** we provide the FLOW interface *)
-  include Mirage_flow_lwt.S
-    with type 'a io  := 'a io
-     and type buffer := buffer
-     and type error := error
+  include Mirage_flow.S
+    with type error := error
      and type write_error := write_error
 
   (** [client_of_flow ~authenticator ~user key channel_request flow] upgrades the
