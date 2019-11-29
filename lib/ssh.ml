@@ -75,7 +75,7 @@ type message_id =
 [@@uint8_t][@@sexp]]
 
 type kexinit = {
-  cookie                   : Cstruct.t;
+  cookie                   : Cstruct_sexp.t;
   kex_algs                 : string list;
   server_host_key_algs     : string list;
   encryption_algs_ctos     : string list;
@@ -87,7 +87,7 @@ type kexinit = {
   languages_ctos           : string list;
   languages_stoc           : string list;
   first_kex_packet_follows : bool;
-  rawkex                   : Cstruct.t;   (* raw kexinit *)
+  rawkex                   : Cstruct_sexp.t;   (* raw kexinit *)
 } [@@deriving sexp]
 
 [%%cenum
@@ -130,6 +130,7 @@ let sexp_of_mpint mpint = sexp_of_string (Z.to_string mpint)
 type global_request =
   | Tcpip_forward of (string * int32)
   | Cancel_tcpip_forward of (string * int32)
+  | Unknown_request of string
 [@@deriving sexp]
 
 type channel_request =
@@ -144,7 +145,7 @@ type channel_request =
   | Signal of string
   | Exit_status of int32
   | Exit_signal of (string * bool * string * string)
-  | Raw_data of Cstruct.t
+  | Raw_data of Cstruct_sexp.t
 [@@deriving sexp]
 
 type channel_open =
@@ -152,7 +153,7 @@ type channel_open =
   | X11 of (string * int32)
   | Forwarded_tcpip of (string * int32 * string * int32)
   | Direct_tcpip of (string * int32 * string * int32)
-  | Raw_data of Cstruct.t
+  | Raw_data of Cstruct_sexp.t
 [@@deriving sexp]
 
 (*
@@ -164,9 +165,9 @@ let sexp_of_password _ = sexp_of_string "????"
 let password_of_sexp _ = failwith "password_of_sexp: TODO"
 
 type auth_method =
-  | Pubkey of (Hostkey.pub * Cstruct.t option)
+  | Pubkey of (Hostkey.pub * Cstruct_sexp.t option)
   | Password of (password * password option)
-  | Hostbased of (string * Cstruct.t * string * string * Cstruct.t) (* TODO *)
+  | Hostbased of (string * Cstruct_sexp.t * string * string * Cstruct_sexp.t) (* TODO *)
   | Authnone
 [@@deriving sexp]
 
@@ -198,7 +199,7 @@ type message =
   | Msg_service_accept of string
   | Msg_kexinit of kexinit
   | Msg_newkeys
-  | Msg_kexdh_reply of (Hostkey.pub * mpint * Cstruct.t)
+  | Msg_kexdh_reply of (Hostkey.pub * mpint * Cstruct_sexp.t)
   | Msg_kexdh_init of mpint
   | Msg_userauth_request of (string * string * auth_method)
   | Msg_userauth_failure of (string list * bool)
@@ -206,14 +207,14 @@ type message =
   | Msg_userauth_banner of (string * string)
   | Msg_userauth_pk_ok of Hostkey.pub
   | Msg_global_request of (string * bool * global_request)
-  | Msg_request_success of Cstruct.t option
+  | Msg_request_success of Cstruct_sexp.t option
   | Msg_request_failure
   | Msg_channel_open of (int32 * int32 * int32 * channel_open)
-  | Msg_channel_open_confirmation of (int32 * int32 * int32 * int32 * Cstruct.t)
+  | Msg_channel_open_confirmation of (int32 * int32 * int32 * int32 * Cstruct_sexp.t)
   | Msg_channel_open_failure of (int32 * int32 * string * string)
   | Msg_channel_window_adjust of (int32 * int32)
-  | Msg_channel_data of (int32 * Cstruct.t)
-  | Msg_channel_extended_data of (int32 * int32 * Cstruct.t)
+  | Msg_channel_data of (int32 * Cstruct_sexp.t)
+  | Msg_channel_extended_data of (int32 * int32 * Cstruct_sexp.t)
   | Msg_channel_eof of int32
   | Msg_channel_close of int32
   | Msg_channel_request of (int32 * bool * channel_request)

@@ -119,22 +119,12 @@ let maybe_rekey t now = if should_rekey t now then rekey t else None
 
 let pop_msg2 t buf =
   let version t buf =
-    Wire.get_version buf >>= fun (client_version, input_buffer) ->
-    match client_version with
-    | None -> ok (t, None, input_buffer)
-    | Some v ->
-      let msg = Ssh.Msg_version v in
-      ok (t, Some msg, input_buffer)
+    Common.version buf >>| fun (v, i) ->
+    (t, v, i)
   in
   let decrypt t buf =
-    Packet.decrypt t.keys_ctos buf >>= function
-    | None -> ok (t, None, buf)
-    | Some (pkt, input_buffer, keys_ctos) ->
-      let ignore_packet = t.ignore_next_packet in
-      Packet.to_msg pkt >>= fun msg ->
-      ok ({ t with keys_ctos; ignore_next_packet = false },
-          (if ignore_packet then None else Some msg),
-          input_buffer)
+    Common.decrypt ~ignore_packet:t.ignore_next_packet t.keys_ctos buf >>| fun (keys_ctos, msg, buf) ->
+    { t with keys_ctos; ignore_next_packet = false }, msg, buf
   in
   match t.client_version with
   | None -> version t buf
@@ -323,14 +313,17 @@ let input_msg t msg now =
     Kex.(Dh.generate neg.kex_alg e) >>= fun (f, k) ->
     let pub_host_key = Hostkey.pub_of_priv t.host_key in
     let h = Kex.Dh.compute_hash
-        ~v_c:(Cstruct.of_string client_version)
-        ~v_s:(Cstruct.of_string t.server_version)
+        ~v_c:client_version
+        ~v_s:t.server_version
         ~i_c:c.rawkex
         ~i_s:(Wire.blob_of_kexinit t.server_kexinit)
-        ~k_s:(Wire.blob_of_pubkey pub_host_key)
+        ~k_s:pub_host_key
         ~e ~f ~k
     in
     let signature = Hostkey.sign t.host_key h in
+    Format.printf "shared is %a signature is %a (hash %a)\n%!"
+      Cstruct.hexdump_pp (Nocrypto.Numeric.Z.to_cstruct_be f)
+      Cstruct.hexdump_pp signature Cstruct.hexdump_pp h;
     let session_id = match t.session_id with None -> h | Some x -> x in
     Kex.Dh.derive_keys k h session_id neg now
     >>= fun (new_keys_ctos, new_keys_stoc, key_eol) ->
@@ -398,14 +391,8 @@ let input_msg t msg now =
   | msg -> error ("unhandled msg: " ^ (message_to_string msg))
 
 let output_msg t msg =
-  let t, buf =
-    match msg with
-    | Ssh.Msg_version v ->
-      t, Cstruct.of_string (v ^ "\r\n")
-    | msg ->
-      let enc, keys = Packet.encrypt t.keys_stoc msg in
-      { t with keys_stoc = keys }, enc
-  in
+  let buf, keys_stoc = Common.output_msg t.keys_stoc msg in
+  let t = { t with keys_stoc } in
   (* Do state transitions *)
   match msg with
   | Ssh.Msg_newkeys -> of_new_keys_stoc t >>= fun t -> ok (t, buf)

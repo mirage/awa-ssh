@@ -25,7 +25,7 @@ let chunk_size = 1024
 let create () =
   { tlen = chunk_size; coff = 0; cbuf = Cstruct.create chunk_size }
 
-let to_cstruct t = Cstruct.set_len t.cbuf t.coff
+let to_cstruct t = Cstruct.sub t.cbuf 0 t.coff
 
 let left t = t.tlen - t.coff
 

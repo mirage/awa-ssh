@@ -76,10 +76,10 @@ let preferred = [ Md5; Sha1; Sha2_256;
 
 let hmacv hmac ~key data =
   let take_96 buf =
-    if (Cstruct.len buf) < 12 then
+    if Cstruct.len buf < 12 then
       failwith "digest is too short."
     else
-      Cstruct.set_len buf 12
+      Cstruct.sub buf 0 12
   in
   match hmac with
   | Plaintext -> Cstruct.create 0

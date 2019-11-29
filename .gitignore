@@ -1,4 +1,5 @@
 *.byte
 *.native
 _build
-awa-ssh.install
+*.install
+.merlin

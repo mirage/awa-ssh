@@ -56,7 +56,7 @@ let group_of_alg = function
   | Diffie_hellman_group14_sha1 -> Dh.Group.oakley_14
   | Diffie_hellman_group1_sha1  -> Dh.Group.oakley_2
 
-let preferred = [ Diffie_hellman_group14_sha1; Diffie_hellman_group1_sha1 ]
+let preferred = [ Diffie_hellman_group14_sha1 ]
 
 let make_kexinit () =
   let k =
@@ -226,7 +226,7 @@ let derive_keys digesti k h session_id neg now =
     let x = Cstruct.create 1 in
     Cstruct.set_char x 0 ch;
     let k1 = digesti (fun f -> List.iter f [k; h; x; session_id]) in
-    Cstruct.set_len (expand k1) need
+    Cstruct.sub (expand k1) 0 need
   in
   let key_of cipher iv secret =
     let open Cipher_block in
@@ -234,7 +234,7 @@ let derive_keys digesti k h session_id neg now =
     match cipher with
     | Plaintext -> invalid_arg "Deriving plaintext, abort at all costs"
     | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
-      let iv = Counters.C128be.of_cstruct iv in
+      let iv = AES.CTR.ctr_of_cstruct iv in
       { cipher;
         cipher_key = Aes_ctr_key ((AES.CTR.of_secret secret), iv) }
     | Aes128_cbc | Aes192_cbc | Aes256_cbc ->
@@ -269,25 +269,33 @@ module Dh = struct
 
   let compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
     let open Wire in
-    put_cstring v_c (Dbuf.create ()) |>
-    put_cstring v_s |>
+    put_cstring (Cstruct.of_string v_c) (Dbuf.create ()) |>
+    put_cstring (Cstruct.of_string v_s) |>
     put_cstring i_c |>
     put_cstring i_s |>
-    put_cstring k_s |>
+    put_cstring (Wire.blob_of_pubkey k_s) |>
     put_mpint e |>
     put_mpint f |>
     put_mpint k |>
     Dbuf.to_cstruct |>
     Hash.SHA1.digest
 
-  let generate alg peer_pub =
+  let secret_pub alg =
+    let secret, pub = Dh.gen_key (group_of_alg alg) in
+    secret, Numeric.Z.of_cstruct_be pub
+
+  let shared alg secret recv =
     let g = group_of_alg alg in
-    let secret, my_pub = Dh.gen_key g in
     guard_some
-      (Dh.shared g secret (Numeric.Z.to_cstruct_be peer_pub))
+      (Dh.shared g secret (Numeric.Z.to_cstruct_be recv))
       "Can't compute shared secret"
     >>= fun shared ->
+    ok (Numeric.Z.of_cstruct_be shared)
+
+  let generate alg peer_pub =
+    let secret, my_pub = secret_pub alg in
+    shared alg secret peer_pub >>= fun shared ->
     (* my_pub is f or e, shared is k *)
-    ok Numeric.Z.(of_cstruct_be my_pub, of_cstruct_be shared)
+    ok (my_pub, shared)
 
 end

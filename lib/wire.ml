@@ -54,8 +54,7 @@ let get_cstring buf =
   trap_error (fun () ->
       let len = Cstruct.BE.get_uint32 buf 0 |> Int32.to_int in
       Ssh.guard_sshlen_exn len;
-      (Cstruct.set_len (Cstruct.shift buf 4) len,
-       Cstruct.shift buf (len + 4)))
+      Cstruct.split (Cstruct.shift buf 4) len)
 
 let put_cstring s t =
   let len = Cstruct.len s in
@@ -178,10 +177,8 @@ let openssh_of_pubkey key =
       Cstruct.of_string " awa-ssh\n" ]
 
 let privkey_of_pem buf =
-  trap_error (fun () ->
-      let open X509.Encoding.Pem in
-      match Private_key.of_pem_cstruct1 buf with
-        `RSA key -> Hostkey.Rsa_priv key)
+  X509.Private_key.decode_pem buf >>| fun (`RSA key) ->
+  Hostkey.Rsa_priv key
 
 let put_kexinit kex t =
   let open Ssh in
@@ -290,7 +287,7 @@ let get_message buf =
     get_nl buf >>= fun (languages_stoc, buf) ->
     get_bool buf >>= fun (first_kex_packet_follows, _) ->
     ok (Msg_kexinit
-          { cookie = Cstruct.set_len cookiebegin 16;
+          { cookie = Cstruct.sub cookiebegin 0 16;
             kex_algs;
             server_host_key_algs;
             encryption_algs_ctos;
@@ -372,7 +369,9 @@ let get_message buf =
        get_string buf >>= fun (address, buf) ->
        get_uint32 buf >>= fun (port, buf) ->
        ok (Cancel_tcpip_forward (address, port), buf)
-     | _ -> error ("Unknown request " ^ request))
+     | _ ->
+       get_string buf >>= fun (data, buf) ->
+       ok (Unknown_request data, buf))
     >>= fun (global_request, _) ->
     ok (Msg_global_request (request, want_reply, global_request))
   | MSG_REQUEST_SUCCESS ->
@@ -403,7 +402,7 @@ let get_message buf =
              (send_channel, init_win, max_pkt,
               Forwarded_tcpip (con_address, con_port, origin_address,
                                origin_port)))
-     | _ -> error ("Unknown request " ^ request))
+     | _ -> error ("Unknown channel open " ^ request))
   | MSG_CHANNEL_OPEN_CONFIRMATION ->
     get_uint32 buf >>= fun (recp_channel, buf) ->
     get_uint32 buf >>= fun (send_channel, buf) ->
@@ -507,7 +506,7 @@ let get_message buf =
        get_string buf >>= fun (lang, _) ->
        ok (Msg_channel_request (channel, want_reply,
                                 Exit_signal (name, core_dumped, message, lang)))
-     | _ -> error ("Unknown request " ^ request))
+     | _ -> error ("Unknown channel request " ^ request))
   | MSG_CHANNEL_SUCCESS ->
     get_uint32 buf >>= fun (channel, _) ->
     ok (Msg_channel_success channel)
@@ -616,7 +615,8 @@ let put_message msg buf =
        put_uint32 port
      | Cancel_tcpip_forward (address, port) ->
        put_string address buf |>
-       put_uint32 port)
+       put_uint32 port
+     | Unknown_request _ -> assert false)
   | Msg_request_success (req_data) ->
     let buf = put_id MSG_REQUEST_SUCCESS buf in
     (match req_data with
@@ -737,37 +737,33 @@ let put_message msg buf =
 (* XXX Maybe move this to Packet *)
 let get_payload buf =
   let open Ssh in
-  guard ((Cstruct.len buf) >= 5) "Buf too short"
-  >>= fun () ->
+  guard (Cstruct.len buf >= 5) "Buf too short" >>= fun () ->
   let pkt_len = get_pkt_hdr_pkt_len buf |> Int32.to_int in
   let pad_len = get_pkt_hdr_pad_len buf in
-  guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len"
-  >>= fun () ->
-  guard (pad_len < pkt_len) "Bogus pad len"
-  >>= fun () ->
-  guard ((Cstruct.len buf) = (pkt_len + 4)) "Bogus buf len"
-  >>= fun () ->
+  guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len" >>= fun () ->
+  guard (pad_len < pkt_len) "Bogus pad len" >>= fun () ->
+  guard (Cstruct.len buf = pkt_len + 4) "Bogus buf len" >>= fun () ->
   let payload_len = pkt_len - pad_len - 1 in
-  guard (payload_len > 0) "Bogus payload_len"
-  >>= fun () ->
-  let payload = Cstruct.shift buf 5 in
-  let payload = Cstruct.set_len payload payload_len in
+  guard (payload_len > 0) "Bogus payload_len" >>= fun () ->
+  let payload = Cstruct.sub buf 5 payload_len in
   ok payload
 
 let get_version buf =
   (* Fetches next line, returns maybe a string and the remainder of buf *)
   let fetchline buf =
-    if (Cstruct.len buf) < 2 then
+    if Cstruct.len buf < 1 then
       None
     else
       let s = Cstruct.to_string buf in
       let n = try String.index s '\n' with Not_found -> 0 in
-      if n = 0 || ((String.get s (pred n)) <> '\r')  then
+      if n = 0 then
         None
       else
-        let line = String.sub s 0 (pred n) in
+        let off = if String.get s (pred n) = '\r' then 1 else 0 in
+        let line = String.sub s 0 (n - off) in
         let line_len = String.length line in
-        Some (line, Cstruct.shift buf (line_len + 2))
+        let v = Cstruct.shift buf (line_len + 1 + off) in
+        Some (line, v)
   in
   (* Extract SSH version from line *)
   let processline line =
@@ -795,7 +791,7 @@ let get_version buf =
   (* Scan all lines until an error or SSH version is found *)
   let rec scan buf =
     match fetchline buf with
-    | None -> if (Cstruct.len buf) > 1024 then
+    | None -> if Cstruct.len buf > 1024 then
         error "Buffer is too big"
       else
         ok (None, buf)
@@ -803,7 +799,7 @@ let get_version buf =
       processline line >>= function
       | Some peer_version -> ok (Some peer_version, buf)
       | None ->
-        if (Cstruct.len buf) > 2 then
+        if Cstruct.len buf > 2 then
           scan buf
         else
           ok (None, buf)
