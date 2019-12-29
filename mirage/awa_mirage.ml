@@ -92,9 +92,10 @@ module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) = struct
       | `Eof -> Lwt.return (Ok `Eof)
       | `Active _ -> assert false
 
-  let close _ =
-    Logs.err (fun m -> m "ignoring close for now");
-    Lwt.return_unit
+  let close t =
+    (* TODO ssh session teardown (send some protocol messages) *)
+    FLOW.close t.flow >|= fun () ->
+    t.state <- `Eof
 
   let writev t bufs =
     let open Lwt_result.Infix in
