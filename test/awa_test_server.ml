@@ -47,7 +47,7 @@ let echo t id data =
 
 let bc t id data =
   let len = Cstruct.len data in
-  let line = (Cstruct.set_len data (len - 1)) |> Cstruct.to_string in
+  let line = Cstruct.sub data 0 (len - 1) |> Cstruct.to_string in
   let args = String.split_on_char ' ' line in
   let reply =
     if List.length args <> 3 then
@@ -100,7 +100,7 @@ let user_db =
   (* User foo auths by passoword *)
   let foo = Auth.make_user "foo" ~password:"bar" [] in
   (* User awa auths by pubkey *)
-  let fd = Unix.(openfile "test/data/awa_test_rsa.pub" [O_RDONLY] 0) in
+  let fd = Unix.(openfile "data/awa_test_rsa.pub" [O_RDONLY] 0) in
   let file_buf = Unix_cstruct.of_fd fd in
   let key = get_ok (Wire.pubkey_of_openssh file_buf) in
   Unix.close fd;
@@ -125,8 +125,9 @@ let rec wait_connection rsa listen_fd server_port =
   wait_connection rsa listen_fd server_port
 
 let () =
-  Nocrypto.Rng.reseed (Cstruct.of_string "180586");
-  let rsa = Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048) in
+  Mirage_crypto_rng_unix.initialize ();
+  let g = Mirage_crypto_rng.(create ~seed:(Cstruct.of_string "180586") (module Fortuna)) in
+  let rsa = Hostkey.Rsa_priv (Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 ()) in
   let server_port = 18022 in
   let listen_fd = Unix.(socket PF_INET SOCK_STREAM 0) in
   Unix.(setsockopt listen_fd SO_REUSEADDR true);

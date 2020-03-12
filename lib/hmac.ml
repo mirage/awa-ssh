@@ -15,7 +15,8 @@
  *)
 
 open Rresult.R
-open Nocrypto.Hash
+
+open Mirage_crypto.Hash
 
 type t =
   | Plaintext

@@ -31,7 +31,7 @@ let pp_event ppf = function
 type state =
   | Init of string * Ssh.kexinit
   | Received_version of string * Ssh.kexinit * string
-  | Negotiated_kex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Nocrypto.Dh.secret * Ssh.mpint
+  | Negotiated_kex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Mirage_crypto_pk.Dh.secret * Ssh.mpint
   | Newkeys_before_auth of Kex.keys * Kex.keys
   | Requested_service of string
   | Userauth_request of Ssh.auth_method
@@ -118,7 +118,7 @@ let handle_kexinit t c_v ckex s_v skex =
       [ Ssh.Msg_kexdh_init my_pub], [])
 
 let handle_kexdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs signed =
-  Kex.Dh.shared neg.Kex.kex_alg secret theirs >>= fun shared ->
+  Kex.Dh.shared secret theirs >>= fun shared ->
   let h =
     Kex.Dh.compute_hash
       ~v_c ~v_s ~i_c:(Wire.blob_of_kexinit ckex) ~i_s:skex.Ssh.rawkex

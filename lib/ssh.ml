@@ -123,7 +123,7 @@ type channel_open_code =
   | OPEN_RESOURCE_SHORTAGE            [@id 4]
 [@@uint32_t][@@sexp]]
 
-type mpint = Nocrypto.Numeric.Z.t
+type mpint = Z.t
 
 let sexp_of_mpint mpint = sexp_of_string (Z.to_string mpint)
 

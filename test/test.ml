@@ -40,13 +40,13 @@ let trap_exn f =
              (Printexc.get_backtrace ()))
 
 let cipher_key_of cipher key iv =
-  let open Nocrypto.Cipher_block.AES in
+  let open Mirage_crypto.Cipher_block.AES in
   let open Cipher in
   match cipher with
   | Plaintext -> { cipher = Plaintext;
                    cipher_key = Plaintext_key }
   | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
-    let iv = Nocrypto.Cipher_block.AES.CTR.ctr_of_cstruct iv in
+    let iv = Mirage_crypto.Cipher_block.AES.CTR.ctr_of_cstruct iv in
     { cipher;
       cipher_key = Aes_ctr_key ((CTR.of_secret key), iv) }
   | Aes128_cbc | Aes192_cbc | Aes256_cbc ->
@@ -183,12 +183,12 @@ let t_parsing () =
     | msg, msg2 -> assert (msg = msg2)
   in
   let long = Int32.of_int 180586 in
-  let mpint = Nocrypto.Numeric.Z.of_int 180586 in
+  let mpint = Z.of_int 180586 in
   let cstring = Cstruct.of_string "The Conquest of Bread" in
   (* XXX slow *)
-  let rsa = Nocrypto.Rsa.(generate 2048) in
+  let rsa = Mirage_crypto_pk.Rsa.(generate ~bits:2048 ()) in
   let priv_rsa = Hostkey.Rsa_priv rsa in
-  let pub_rsa = Hostkey.Rsa_pub (Nocrypto.Rsa.pub_of_priv rsa) in
+  let pub_rsa = Hostkey.Rsa_pub (Mirage_crypto_pk.Rsa.pub_of_priv rsa) in
   let signature = Hostkey.sign priv_rsa cstring in
   let l =
     [ Msg_disconnect (DISCONNECT_PROTOCOL_ERROR, "foo", "bar");
@@ -298,7 +298,7 @@ let t_mpint () =
   Cstruct.set_uint8 data 3 0x02;
   Cstruct.BE.set_uint32 head 0 (Int32.of_int (Cstruct.len data));
   let mpint = fst @@ get_ok @@ Wire.get_mpint (Cstruct.append head data) in
-  let buf = Nocrypto.Numeric.Z.to_cstruct_be mpint in
+  let buf = Mirage_crypto_pk.Z_extra.to_cstruct_be mpint in
   assert ((Cstruct.len buf) = 2); (* Cuts the first two zeros *)
   assert_byte buf 0 0xff;
   assert_byte buf 1 0x02;
@@ -336,7 +336,7 @@ let t_mpint () =
   test_ok
 
 let t_version () =
-  let t, _ = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) [] in
+  let t, _ = Server.make (Hostkey.Rsa_priv (Mirage_crypto_pk.Rsa.generate ~bits:2048 ())) [] in
   let client_version = "SSH-2.0-OpenSSH_6.9\r\n" in
   Server.pop_msg2 t (Cstruct.of_string client_version) >>=
   fun (t, msg, input_buffer) ->
@@ -371,7 +371,7 @@ let t_crypto () =
   in
   let make cipher hmac =
     let secret = Cstruct.of_string "Pyotr Alexeyevich Kropotkin 1842" in
-    let iv = Cstruct.set_len secret 16 in
+    let iv = Cstruct.sub secret 0 16 in
     let cipher = cipher_key_of cipher secret iv in
     let mac = hmac_key_of hmac secret in
     Kex.{ cipher; mac; tx_rx = Int64.zero }
@@ -393,9 +393,9 @@ let t_openssh_pub () =
   test_ok
 
 let t_signature () =
-  let priv = Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048) in
+  let priv = Hostkey.Rsa_priv (Mirage_crypto_pk.Rsa.generate ~bits:2048 ()) in
   let pub = Hostkey.pub_of_priv priv in
-  let unsigned = Nocrypto.Rng.generate 128 in
+  let unsigned = Mirage_crypto_rng.generate 128 in
   let signed = Hostkey.sign priv unsigned in
   assert (Hostkey.verify pub ~signed ~unsigned);
   (* Corrupt every one byte in the signature, all should fail *)
@@ -408,7 +408,7 @@ let t_signature () =
   test_ok
 
 let t_ignore_next_packet () =
-  let t, _ = Server.make (Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048)) [] in
+  let t, _ = Server.make (Hostkey.Rsa_priv (Mirage_crypto_pk.Rsa.generate ~bits:2048 ())) [] in
   let t = Server.{ t with client_version = Some "SSH-2.0-client";
                           expect = Some(Ssh.MSG_KEXINIT) }
   in
@@ -439,11 +439,11 @@ let t_ignore_next_packet () =
 let t_channel_input () =
   let x = Channel.make_end Int32.zero Ssh.channel_win_len Ssh.channel_max_pkt_len in
   let c = Channel.make ~us:x ~them:x in
-  let d = Nocrypto.Rng.generate
+  let d = Mirage_crypto_rng.generate
       Int32.(add Ssh.channel_win_len Int32.one |> Int32.to_int)
   in
   (* Case 1: No adjustments, just window consumption *)
-  let d' = Cstruct.set_len d 32 in
+  let d' = Cstruct.sub d 0 32 in
   Channel.input_data c d' >>= fun (c', dn', adj') ->
   assert ((Cstruct.len d') = 32);
   assert (Cstruct.equal d' dn');
@@ -453,7 +453,7 @@ let t_channel_input () =
                                  ((Cstruct.len d') |> Int32.of_int)));
   (* Case 2, Input 2/3 of the window, adjustment must match full window  *)
   let len' = ((Cstruct.len d) / 4) * 3 in
-  let d' = Cstruct.set_len d len' in
+  let d' = Cstruct.sub d 0 len' in
   Channel.input_data c d' >>= fun (c', dn', adj') ->
   assert Channel.(c'.us.win = Ssh.channel_win_len);
   assert ((Cstruct.len d') = len');
@@ -470,11 +470,11 @@ let t_channel_input () =
 let t_channel_output () =
   let x = Channel.make_end Int32.zero Ssh.channel_win_len Ssh.channel_max_pkt_len in
   let c = Channel.make ~us:x ~them:x in
-  let d = Nocrypto.Rng.generate
+  let d = Mirage_crypto_rng.generate
       Int32.(add Ssh.channel_win_len Int32.one |> Int32.to_int)
   in
   (* Case 1: Small output, single message *)
-  let d' = Cstruct.set_len d 32 in
+  let d' = Cstruct.sub d 0 32 in
   Channel.output_data c d' >>= fun (c', msgs') ->
   assert ((List.length msgs') = 1);
   let msg' = List.hd msgs' in
@@ -491,7 +491,7 @@ let t_channel_output () =
   (* Case 2: Enough output for 2 messages, first is 64, second 32 *)
   (* Make sure we didn't change defaults *)
   assert ((Int32.to_int Channel.(c.them.max_pkt)) = (64 * 1024));
-  let d' = Cstruct.set_len d (96 * 1024) in
+  let d' = Cstruct.sub d 0 (96 * 1024) in
   Channel.output_data c d' >>= fun (_c', msgs') ->
   assert ((List.length msgs') = 2);
   let msg1' = List.nth msgs' 0 in
@@ -499,7 +499,7 @@ let t_channel_output () =
   (match msg1' with
    | Ssh.Msg_channel_data (id, buf) ->
      assert (id = Int32.zero);
-     assert (Cstruct.equal buf (Cstruct.set_len d (64 * 1024)));
+     assert (Cstruct.equal buf (Cstruct.sub d 0 (64 * 1024)));
      ok ()
    | _ -> error "unexpected msg1'")
   >>= fun () ->
@@ -507,7 +507,7 @@ let t_channel_output () =
    | Ssh.Msg_channel_data (id, buf) ->
      assert (id = Int32.zero);
      let d'' = Cstruct.shift d (64 * 1024) in
-     let d'' = Cstruct.set_len d'' (32 * 1024) in
+     let d'' = Cstruct.sub d'' 0 (32 * 1024) in
      assert (Cstruct.equal buf d'');
      ok ()
    | _ -> error "unexpected msg2'")
@@ -533,7 +533,7 @@ let t_channel_output () =
       (Cstruct.create 0) bufs'
   in
   (* dwin is all of d that fit the window, one byte was out *)
-  let dwin' = Cstruct.set_len d ((Cstruct.len d) - 1) in
+  let dwin' = Cstruct.sub d 0 ((Cstruct.len d) - 1) in
   assert (Cstruct.equal rebuild' dwin');
   (* Now check if the byte outside of the window is there, and makes sense *)
   assert ((Cstruct.len Channel.(c'.tosend)) = 1);
@@ -551,7 +551,7 @@ let t_openssh_client () =
   let s1 = "Georg Wilhelm Friedrich Hegel" in
   let s2 = "Karl Marx" in
   let ossh_cmd = "ssh -p 18022 awa@127.0.0.1 -i data/awa_test_rsa echo" in
-  let awa_cmd = "./_build/default/test/awa_test_server.exe" in
+  let awa_cmd = "./awa_test_server.exe" in
   let awa_args = Array.of_list [] in
   let null = Unix.openfile "/dev/null" [ Unix.O_RDWR ] 0o666 in
   ignore @@ Unix.system "pkill awa_test_server";
@@ -602,7 +602,7 @@ let all_tests = [
 ]
 
 let _ =
-  Nocrypto.Rng.reseed (Cstruct.of_string "180586");
+  Mirage_crypto_rng_unix.initialize ();
   Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> failwith "timeout"));
   Unix.chmod "data/awa_test_rsa" 0o600;
   List.iter run_test all_tests;

@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Nocrypto
+open Mirage_crypto_pk
 
 type priv =
   | Rsa_priv of Rsa.priv
@@ -51,7 +51,7 @@ let signature_equal = Cstruct.equal
 let sign priv blob =
   match priv with
   | Rsa_priv priv ->
-    let digest = Hash.SHA1.digest blob in
+    let digest = Mirage_crypto.Hash.SHA1.digest blob in
     Rsa.PKCS1.sig_encode ~key:priv (Cstruct.append rsa_sha1_oid digest)
 
 let verify pub ~unsigned ~signed =
@@ -61,5 +61,5 @@ let verify pub ~unsigned ~signed =
     match Rsa.PKCS1.sig_decode ~key:pub signed with
     | None -> false
     | Some them ->
-      let us = Cstruct.append rsa_sha1_oid (Hash.SHA1.digest unsigned) in
+      let us = Cstruct.append rsa_sha1_oid (Mirage_crypto.Hash.SHA1.digest unsigned) in
       Cstruct.equal us them

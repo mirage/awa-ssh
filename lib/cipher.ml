@@ -15,7 +15,7 @@
  *)
 
 open Rresult.R
-open Nocrypto.Cipher_block.AES
+open Mirage_crypto.Cipher_block.AES
 
 type t =
   | Plaintext
@@ -28,7 +28,7 @@ type t =
 
 type cipher_key =
   | Plaintext_key
-  | Aes_ctr_key of (CTR.key * Nocrypto.Cipher_block.AES.CTR.ctr)
+  | Aes_ctr_key of (CTR.key * Mirage_crypto.Cipher_block.AES.CTR.ctr)
   | Aes_cbc_key of (CBC.key * Cstruct.t)
 
 type key = {
@@ -78,7 +78,7 @@ let known s = is_ok (of_string s)
 
 (* For some reason Nocrypto CTR modifies ctr in place, CBC returns next *)
 let enc_dec enc cipher buf =
-  let open Nocrypto.Cipher_block in
+  let open Mirage_crypto.Cipher_block in
   match cipher.cipher_key with
   | Plaintext_key -> buf, cipher
   | Aes_ctr_key (key, iv) ->

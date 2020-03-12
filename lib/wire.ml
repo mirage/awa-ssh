@@ -70,12 +70,12 @@ let put_raw buf t =
   Dbuf.shift len t
 
 let put_random len t =
-  put_raw (Nocrypto.Rng.generate len) t
+  put_raw (Mirage_crypto_rng.generate len) t
 
 let get_mpint buf =
   trap_error (fun () ->
       match ((Cstruct.BE.get_uint32 buf 0) |> Int32.to_int) with
-      | 0 -> Nocrypto.Numeric.Z.zero, Cstruct.shift buf 4
+      | 0 -> Z.zero, Cstruct.shift buf 4
       | len ->
         Ssh.guard_sshlen_exn len;
         let mpbuf = Cstruct.sub buf 4 len in
@@ -84,11 +84,11 @@ let get_mpint buf =
           invalid_arg "Negative mpint"
         else
           (* of_cstruct_be strips leading zeros for us *)
-          Nocrypto.Numeric.Z.of_cstruct_be mpbuf,
+          Mirage_crypto_pk.Z_extra.of_cstruct_be mpbuf,
           Cstruct.shift buf (len + 4))
 
 let put_mpint mpint t =
-  let mpbuf = Nocrypto.Numeric.Z.to_cstruct_be mpint in
+  let mpbuf = Mirage_crypto_pk.Z_extra.to_cstruct_be mpint in
   let mplen = Cstruct.len mpbuf in
   let t =
     if mplen > 0 &&
@@ -119,7 +119,7 @@ let put_nl nl t =
 
 let blob_of_pubkey = function
   | Hostkey.Rsa_pub rsa ->
-    let open Nocrypto.Rsa in
+    let open Mirage_crypto_pk.Rsa in
     put_string "ssh-rsa" (Dbuf.create ()) |>
     put_mpint rsa.e |>
     put_mpint rsa.n |>
@@ -133,7 +133,8 @@ let pubkey_of_blob blob =
   | "ssh-rsa" ->
     get_mpint blob >>= fun (e, blob) ->
     get_mpint blob >>= fun (n, _) ->
-    let pub = Nocrypto.Rsa.{e; n} in
+    reword_error (function `Msg m -> m)
+      (Mirage_crypto_pk.Rsa.pub ~e ~n) >>= fun pub ->
     ok (Hostkey.Rsa_pub pub)
   | _ -> ok Hostkey.Unknown
 
@@ -159,22 +160,20 @@ let pubkey_of_openssh buf =
   let tokens = String.split_on_char ' ' s in
   guard (List.length tokens = 3) "Invalid format" >>= fun () ->
   let key_type = List.nth tokens 0 in
-  let key_buf = Cstruct.of_string (List.nth tokens 1) in
+  let key_buf = List.nth tokens 1 in
   (* let key_comment = List.nth tokens 2 in *)
-  guard_some (Nocrypto.Base64.decode key_buf) "Can't decode key blob"
-  >>= fun blob ->
+  reword_error (function `Msg m -> m)
+    (Base64.decode key_buf) >>= fun blob ->
   (* NOTE: can't use get_pubkey here, there is no string blob *)
-  pubkey_of_blob blob >>= fun key ->
+  pubkey_of_blob (Cstruct.of_string blob) >>= fun key ->
   guard (key <> Hostkey.Unknown) "Unknown hostkey" >>= fun () ->
   guard (Hostkey.sshname key = key_type) "Key type mismatch" >>= fun () ->
   ok key
 
 let openssh_of_pubkey key =
-  let key_buf = Nocrypto.Base64.encode (blob_of_pubkey key) in
-  Cstruct.concat
-    [ Cstruct.of_string (Hostkey.sshname key ^ " ");
-      key_buf;
-      Cstruct.of_string " awa-ssh\n" ]
+  let key_buf = blob_of_pubkey key |> Cstruct.to_string |> Base64.encode_string in
+  String.concat "" [ Hostkey.sshname key ; " "; key_buf; " awa-ssh\n" ]
+  |> Cstruct.of_string
 
 let privkey_of_pem buf =
   X509.Private_key.decode_pem buf >>| fun (`RSA key) ->

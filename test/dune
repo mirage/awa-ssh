@@ -1,39 +1,34 @@
-(executable
+(test
  (name test)
- (public_name test)
  (modules test)
  (package awa)
- (libraries awa mtime.clock.os cstruct-unix))
-
-(alias
- (name runtest)
- (deps (source_tree data) (:< test.exe))
- (action (run %{<})))
+ (deps (source_tree data))
+ (libraries awa mtime.clock.os cstruct-unix mirage-crypto-rng.unix))
 
 (executable
  (name awa_test_server)
  (public_name awa_test_server)
  (modules awa_test_server)
  (package awa)
- (libraries awa mtime.clock.os cstruct-unix))
+ (libraries awa mtime.clock.os cstruct-unix mirage-crypto-rng.unix))
 
 (executable
  (name awa_test_client)
  (public_name awa_test_client)
  (modules awa_test_client)
  (package awa)
- (libraries awa nocrypto.unix mtime.clock.os cmdliner fmt.tty logs.fmt logs.cli fmt.cli))
+ (libraries awa mirage-crypto-rng.unix mtime.clock.os cmdliner fmt.tty logs.fmt logs.cli fmt.cli))
 
 (executable
  (name awa_lwt_server)
  (public_name awa_lwt_server)
  (modules awa_lwt_server)
  (package awa-lwt)
- (libraries awa awa-lwt mtime.clock.os cstruct-unix))
+ (libraries awa awa-lwt mtime.clock.os cstruct-unix mirage-crypto-rng.unix))
 
 (executable
  (name awa_gen_key)
  (public_name awa_gen_key)
  (modules awa_gen_key)
  (package awa)
- (libraries awa nocrypto.unix cmdliner))
+ (libraries awa mirage-crypto-rng.unix cmdliner))

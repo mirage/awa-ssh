@@ -3,14 +3,14 @@ open Rresult.R.Infix
 
 type authenticator = [
   | `No_authentication
-  | `Key of Nocrypto.Rsa.pub
+  | `Key of Mirage_crypto_pk.Rsa.pub
   | `Fingerprint of string
 ]
 
 let hostkey_matches a = function
   | Hostkey.Unknown -> false
   | Hostkey.Rsa_pub pub ->
-    let hash = Nocrypto.Hash.SHA256.digest (Wire.blob_of_pubkey (Hostkey.Rsa_pub pub))  in
+    let hash = Mirage_crypto.Hash.SHA256.digest (Wire.blob_of_pubkey (Hostkey.Rsa_pub pub))  in
     Logs.app (fun m -> m "authenticating RSA server fingerprint SHA256:%s"
                  (Base64.encode_string ~pad:false (Cstruct.to_string hash)));
     match a with
@@ -57,11 +57,11 @@ let authenticator_of_string str =
 let of_seed seed =
   let g =
     let seed = Cstruct.of_string seed in
-    Nocrypto.Rng.(create ~seed (module Generators.Fortuna))
+    Mirage_crypto_rng.(create ~seed (module Fortuna))
   in
-  let key = Nocrypto.Rsa.generate ~g 2048 in
-  let public = Nocrypto.Rsa.pub_of_priv key in
+  let key = Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 () in
+  let public = Mirage_crypto_pk.Rsa.pub_of_priv key in
   let pubkey = Wire.blob_of_pubkey (Hostkey.Rsa_pub public) in
   Logs.info (fun m -> m "using ssh-rsa %s"
-               (Cstruct.to_string (Nocrypto.Base64.encode pubkey)));
+               (Cstruct.to_string pubkey |> Base64.encode_string));
   Hostkey.Rsa_priv key

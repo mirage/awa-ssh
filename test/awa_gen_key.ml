@@ -1,9 +1,9 @@
 
 let gen_key seed =
-  Nocrypto_entropy_unix.initialize ();
-  let b64s x = Cstruct.to_string (Nocrypto.Base64.encode x) in
+  Mirage_crypto_rng_unix.initialize ();
+  let b64s x = Cstruct.to_string x |> Base64.encode_string in
   let seed = match seed with
-    | None -> b64s (Nocrypto.Rng.generate 30)
+    | None -> b64s (Mirage_crypto_rng.generate 30)
     | Some x -> x
   in
   Printf.printf "seed is %s\n" seed;

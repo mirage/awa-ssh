@@ -63,8 +63,9 @@ let rec wait_connection rsa listen_fd server_port =
   wait_connection rsa listen_fd server_port
 
 let main =
-  Nocrypto.Rng.reseed (Cstruct.of_string "180586");
-  let rsa = Awa.Hostkey.Rsa_priv (Nocrypto.Rsa.generate 2048) in
+  Mirage_crypto_rng_unix.initialize ();
+  let g = Mirage_crypto_rng.(create ~seed:(Cstruct.of_string "180586") (module Fortuna)) in
+  let rsa = Awa.Hostkey.Rsa_priv (Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 ()) in
   let server_port = 18022 in
   let listen_fd = Lwt_unix.(socket PF_INET SOCK_STREAM 0) in
   Lwt_unix.(setsockopt listen_fd SO_REUSEADDR true);

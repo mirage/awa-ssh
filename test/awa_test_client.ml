@@ -29,7 +29,7 @@ let write_cstruct fd buf =
   assert (n > 0)
 
 let jump _ user seed authenticator host port =
-  Nocrypto_entropy_unix.initialize ();
+  Mirage_crypto_rng_unix.initialize ();
   let fd = Unix.(socket PF_INET SOCK_STREAM 0) in
   Unix.(connect fd (ADDR_INET (inet_addr_of_string host, port)));
   match

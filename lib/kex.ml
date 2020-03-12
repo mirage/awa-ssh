@@ -17,7 +17,6 @@
 open Rresult.R
 open Util
 open Ssh
-open Nocrypto
 
 type server_host_key_alg =
   | Ssh_rsa
@@ -53,14 +52,14 @@ let alg_to_string = function
   | Diffie_hellman_group1_sha1  -> "diffie-hellman-group1-sha1"
 
 let group_of_alg = function
-  | Diffie_hellman_group14_sha1 -> Dh.Group.oakley_14
-  | Diffie_hellman_group1_sha1  -> Dh.Group.oakley_2
+  | Diffie_hellman_group14_sha1 -> Mirage_crypto_pk.Dh.Group.oakley_14
+  | Diffie_hellman_group1_sha1  -> Mirage_crypto_pk.Dh.Group.oakley_2
 
 let preferred = [ Diffie_hellman_group14_sha1 ]
 
 let make_kexinit () =
   let k =
-    { cookie = Rng.generate 16;
+    { cookie = Mirage_crypto_rng.generate 16;
       kex_algs = List.map alg_to_string preferred;
       server_host_key_algs = [ server_host_key_alg_to_string Ssh_rsa ];
       encryption_algs_ctos = List.map Cipher.to_string Cipher.preferred;
@@ -229,7 +228,7 @@ let derive_keys digesti k h session_id neg now =
     Cstruct.sub (expand k1) 0 need
   in
   let key_of cipher iv secret =
-    let open Cipher_block in
+    let open Mirage_crypto.Cipher_block in
     let open Cipher in
     match cipher with
     | Plaintext -> invalid_arg "Deriving plaintext, abort at all costs"
@@ -265,7 +264,7 @@ let derive_keys digesti k h session_id neg now =
 
 module Dh = struct
 
-  let derive_keys = derive_keys Hash.SHA1.digesti
+  let derive_keys = derive_keys Mirage_crypto.Hash.SHA1.digesti
 
   let compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
     let open Wire in
@@ -278,23 +277,22 @@ module Dh = struct
     put_mpint f |>
     put_mpint k |>
     Dbuf.to_cstruct |>
-    Hash.SHA1.digest
+    Mirage_crypto.Hash.SHA1.digest
 
   let secret_pub alg =
-    let secret, pub = Dh.gen_key (group_of_alg alg) in
-    secret, Numeric.Z.of_cstruct_be pub
+    let secret, pub = Mirage_crypto_pk.Dh.gen_key (group_of_alg alg) in
+    secret, Mirage_crypto_pk.Z_extra.of_cstruct_be pub
 
-  let shared alg secret recv =
-    let g = group_of_alg alg in
+  let shared secret recv =
     guard_some
-      (Dh.shared g secret (Numeric.Z.to_cstruct_be recv))
+      (Mirage_crypto_pk.Dh.shared secret (Mirage_crypto_pk.Z_extra.to_cstruct_be recv))
       "Can't compute shared secret"
     >>= fun shared ->
-    ok (Numeric.Z.of_cstruct_be shared)
+    ok (Mirage_crypto_pk.Z_extra.of_cstruct_be shared)
 
   let generate alg peer_pub =
     let secret, my_pub = secret_pub alg in
-    shared alg secret peer_pub >>= fun shared ->
+    shared secret peer_pub >>= fun shared ->
     (* my_pub is f or e, shared is k *)
     ok (my_pub, shared)
 
