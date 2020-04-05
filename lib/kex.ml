@@ -39,23 +39,32 @@ let compression_alg_to_string = function
   | Nothing -> "none"
 
 type alg =
+  | Diffie_hellman_group14_sha256
   | Diffie_hellman_group14_sha1
   | Diffie_hellman_group1_sha1
 
 let alg_of_string = function
+  | "diffie-hellman-group14-sha256" -> ok Diffie_hellman_group14_sha256
   | "diffie-hellman-group14-sha1" -> ok Diffie_hellman_group14_sha1
   | "diffie-hellman-group1-sha1"  -> ok Diffie_hellman_group1_sha1
   | s -> error ("Unknown kex_alg " ^ s)
 
 let alg_to_string = function
+  | Diffie_hellman_group14_sha256 -> "diffie-hellman-group14-sha256"
   | Diffie_hellman_group14_sha1 -> "diffie-hellman-group14-sha1"
   | Diffie_hellman_group1_sha1  -> "diffie-hellman-group1-sha1"
 
 let group_of_alg = function
+  | Diffie_hellman_group14_sha256 -> Mirage_crypto_pk.Dh.Group.oakley_14
   | Diffie_hellman_group14_sha1 -> Mirage_crypto_pk.Dh.Group.oakley_14
   | Diffie_hellman_group1_sha1  -> Mirage_crypto_pk.Dh.Group.oakley_2
 
-let preferred = [ Diffie_hellman_group14_sha1 ]
+let hash_of_alg = function
+  | Diffie_hellman_group14_sha256 -> Mirage_crypto.Hash.module_of `SHA256
+  | Diffie_hellman_group14_sha1
+  | Diffie_hellman_group1_sha1 -> Mirage_crypto.Hash.module_of `SHA1
+
+let preferred = [ Diffie_hellman_group14_sha256 ]
 
 let make_kexinit () =
   let k =
@@ -264,9 +273,12 @@ let derive_keys digesti k h session_id neg now =
 
 module Dh = struct
 
-  let derive_keys = derive_keys Mirage_crypto.Hash.SHA1.digesti
+  let derive_keys k h session_id neg now =
+    let (module H) = hash_of_alg neg.kex_alg in
+    derive_keys H.digesti k h session_id neg now
 
-  let compute_hash ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
+  let compute_hash neg ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
+    let (module H) = hash_of_alg neg.kex_alg in
     let open Wire in
     put_cstring (Cstruct.of_string v_c) (Dbuf.create ()) |>
     put_cstring (Cstruct.of_string v_s) |>
@@ -277,7 +289,7 @@ module Dh = struct
     put_mpint f |>
     put_mpint k |>
     Dbuf.to_cstruct |>
-    Mirage_crypto.Hash.SHA1.digest
+    H.digest
 
   let secret_pub alg =
     let secret, pub = Mirage_crypto_pk.Dh.gen_key (group_of_alg alg) in
