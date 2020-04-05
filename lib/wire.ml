@@ -767,25 +767,26 @@ let get_version buf =
   (* Extract SSH version from line *)
   let processline line =
     let line_len = String.length line in
-    if line_len < 4 || String.sub line 0 4 <> "SSH-" then
+    if line_len < 4 || not String.(equal (sub line 0 4) "SSH-") then
       ok None
     else if line_len < 9 then
       error "Version line is too short"
     else
       (* Strip the comments *)
-      let version_line = try
+      let version_line =
+        try
           String.sub line 0 (String.index line ' ')
         with Not_found -> line
       in
       let tokens = String.split_on_char '-' version_line in
-      if List.length tokens <> 3 then
-        error "Can't parse version line"
+      if List.length tokens < 3 then
+        error ("Can't parse version line: " ^ version_line)
       else
         let version = List.nth tokens 1 in
-        if version <> "2.0" then
-          error ("Bad version " ^ version)
-        else
+        if String.equal version "2.0" then
           ok (Some line)
+        else
+          error ("Bad version " ^ version)
   in
   (* Scan all lines until an error or SSH version is found *)
   let rec scan buf =

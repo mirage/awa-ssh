@@ -85,7 +85,11 @@ let t_banner () =
     "\r\n\r\nSSH-2.0-foobar lalal\r\n";
     "SSH-2.0-foobar lalal lololo\r\n";
     "SSH-2.0-OpenSSH_6.9\r\n";
+    "SSH-2.0-Open-SSH_6.9\r\n";
+    "SSH-2.0-babeld-72deb3a2\r\n";
     "Some crap before\r\nSSH-2.0-OpenSSH_6.9\r\n";
+    "Some crap before\r\nSSH-2.0-Open-SSH_6.9\r\n";
+    "\r\nSSH-2.0-Open-SSH_6.9\r\nSom crap after";
     "SSH-2.0-OpenSSH_6.9\r\nSomeCrap After\r\n";
     "SSH-2.0-OpenSSH_7.4p1 Debian-6-lala-lolo\r\n";
   ]
@@ -100,15 +104,12 @@ let t_banner () =
   let bad_strings = [
     "SSH-2.0\r\n";
     "SSH-1.0-foobar lalal lololo\r\n";
-    "SSH-2.0-Open-SSH_6.9\r\n";
-    "Some crap before\r\nSSH-2.0-Open-SSH_6.9\r\n";
-    "\r\nSSH-2.0-Open-SSH_6.9\r\nSom crap after";
     "SSH-2.0-partiallineomg";
   ]
   in
   List.iter (fun s ->
       match Wire.get_version (Cstruct.of_string s) with
-      | Ok (Some _, _) -> failwith "expected none or error"
+      | Ok (Some _, _) -> failwith ("expected none or error: " ^ s)
       | Ok (None, _) -> ()
       | Error _ -> ())
     bad_strings;
