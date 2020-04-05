@@ -29,19 +29,6 @@ let pub_of_priv = function
 let sexp_of_pub _ = Sexplib.Sexp.Atom "Hostkey.sexp_of_pub: TODO"
 let pub_of_sexp _ = failwith "Hostkey.pub_of_sexp: TODO"
 
-(*
- * id-sha1 OBJECT IDENTIFIER ::= { iso(1) identified-organization(3)
- *     oiw(14) secsig(3) algorithms(2) 26 }
- * from OpenSSH ssh-rsa.c
- *)
-let rsa_sha1_oid = Util.cs_of_bytes
-    [ 0x30; 0x21;                    (* type Sequence, length 0x21 (33) *)
-      0x30; 0x09;                    (* type Sequence, length 0x09 *)
-      0x06; 0x05;                    (* type OID, length 0x05 *)
-      0x2b; 0x0e; 0x03; 0x02; 0x1a;  (* id-sha1 OID *)
-      0x05; 0x00;                    (* NULL *)
-      0x04; 0x14; ]                  (* Octet string, length 0x14 (20) *)
-
 let sshname = function
   | Rsa_pub _ -> "ssh-rsa"
   | Unknown -> "unknown"
@@ -51,15 +38,11 @@ let signature_equal = Cstruct.equal
 let sign priv blob =
   match priv with
   | Rsa_priv priv ->
-    let digest = Mirage_crypto.Hash.SHA1.digest blob in
-    Rsa.PKCS1.sig_encode ~key:priv (Cstruct.append rsa_sha1_oid digest)
+    Rsa.PKCS1.sign ~hash:`SHA1 ~key:priv (`Message blob)
 
 let verify pub ~unsigned ~signed =
   match pub with
   | Unknown -> false
   | Rsa_pub pub ->
-    match Rsa.PKCS1.sig_decode ~key:pub signed with
-    | None -> false
-    | Some them ->
-      let us = Cstruct.append rsa_sha1_oid (Mirage_crypto.Hash.SHA1.digest unsigned) in
-      Cstruct.equal us them
+    let hashp = function `SHA1 -> true | _ -> false in
+    Rsa.PKCS1.verify ~hashp ~key:pub ~signature:signed (`Message unsigned)
