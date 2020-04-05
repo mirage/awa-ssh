@@ -20,7 +20,7 @@ let user_db =
   (* User foo auths by passoword *)
   let foo = Awa.Auth.make_user "foo" ~password:"bar" [] in
   (* User awa auths by pubkey *)
-  let fd = Unix.(openfile "test/awa_test_rsa.pub" [O_RDONLY] 0) in
+  let fd = Unix.(openfile "test/data/awa_test_rsa.pub" [O_RDONLY] 0) in
   let file_buf = Unix_cstruct.of_fd fd in
   let key = Rresult.R.get_ok (Awa.Wire.pubkey_of_openssh file_buf) in
   Unix.close fd;
