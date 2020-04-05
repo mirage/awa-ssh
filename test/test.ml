@@ -156,10 +156,8 @@ let t_parsing () =
       Msg_userauth_request (user_b, service_b, authmethod_b) ->
       assert ((user_a, service_a) = (user_b, service_b));
       assert (auth_method_equal authmethod_a authmethod_b);
-    | Msg_kexdh_reply (pub_rsa1, mpint1, siga),
-      Msg_kexdh_reply (pub_rsa2, mpint2, sigb) ->
-      assert (pub_rsa1 = pub_rsa2 && mpint1 = mpint2);
-      assert (Hostkey.signature_equal siga sigb)
+    | Msg_kex (ida, dataa), Msg_kex (idb, datab) ->
+      assert (ida = idb && Cstruct.equal dataa datab)
     | Msg_channel_open_confirmation (a1, a2, a3, a4, a5),
       Msg_channel_open_confirmation (b1, b2, b3, b4, b5) ->
       assert (a1 = b1);
@@ -184,7 +182,7 @@ let t_parsing () =
     | msg, msg2 -> assert (msg = msg2)
   in
   let long = Int32.of_int 180586 in
-  let mpint = Z.of_int 180586 in
+  (* let mpint = Z.of_int 180586 in *)
   let cstring = Cstruct.of_string "The Conquest of Bread" in
   (* XXX slow *)
   let rsa = Mirage_crypto_pk.Rsa.(generate ~bits:2048 ()) in
@@ -199,8 +197,8 @@ let t_parsing () =
       Msg_service_request "Fora Temer";
       Msg_service_accept "Ricardo Flores Magon";
       (* Msg_kexinit foo; *)
-      Msg_kexdh_init mpint;
-      Msg_kexdh_reply (pub_rsa, mpint, signature);
+      (* Msg_kexdh_init mpint; *) (* two-step parsing *)
+      (* Msg_kexdh_reply (pub_rsa, mpint, signature); *) (* two-step parsing *)
       Msg_newkeys;
       Msg_userauth_request
         ("haesbaert", "ssh-userauth",
@@ -413,7 +411,7 @@ let t_ignore_next_packet () =
   let t = Server.{ t with client_version = Some "SSH-2.0-client";
                           expect = Some(Ssh.MSG_KEXINIT) }
   in
-  let kexinit = Ssh.{ (Kex.make_kexinit()) with
+  let kexinit = Ssh.{ (Kex.make_kexinit Kex.client_supported ()) with
                       encryption_algs_ctos = ["aes256-cbc"];
                       first_kex_packet_follows = true }
   in

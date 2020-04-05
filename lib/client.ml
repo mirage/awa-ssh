@@ -28,10 +28,18 @@ let pp_event ppf = function
   | `Channel_exit_status (id, r) -> Format.fprintf ppf "exit %lu with %lu" id r
   | `Disconnected -> Format.fprintf ppf "disconnected"
 
+type kex_state =
+  | Negotiated_kex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Mirage_crypto_pk.Dh.secret * Ssh.mpint
+
+type gex_state =
+  | Requested_gex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * int32 * int32 * int32
+  | Negotiated_gex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * int32 * int32 * int32 * Z.t * Z.t * Mirage_crypto_pk.Dh.secret * Ssh.mpint
+
 type state =
   | Init of string * Ssh.kexinit
   | Received_version of string * Ssh.kexinit * string
-  | Negotiated_kex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Mirage_crypto_pk.Dh.secret * Ssh.mpint
+  | Kex of kex_state
+  | Gex of gex_state
   | Newkeys_before_auth of Kex.keys * Kex.keys
   | Requested_service of string
   | Userauth_request of Ssh.auth_method
@@ -95,7 +103,7 @@ let output_msgs t msgs =
 
 let make ?(authenticator = `No_authentication) ~user key =
   let open Ssh in
-  let client_kexinit = Kex.make_kexinit () in
+  let client_kexinit = Kex.make_kexinit Kex.client_supported () in
   let banner_msg = Ssh.Msg_version version_banner in
   let kex_msg = Ssh.Msg_kexinit client_kexinit in
   let t = { state = Init (version_banner, client_kexinit);
@@ -113,9 +121,17 @@ let make ?(authenticator = `No_authentication) ~user key =
 
 let handle_kexinit t c_v ckex s_v skex =
   Kex.negotiate ~s:skex ~c:ckex >>= fun neg ->
-  let secret, my_pub = Kex.Dh.secret_pub neg.kex_alg in
-  ok ({ t with state = Negotiated_kex (c_v, ckex, s_v, skex, neg, secret, my_pub) },
-      [ Ssh.Msg_kexdh_init my_pub], [])
+  (* two cases: directly send the kexdh_init, or RFC 4419 and negotiate group *)
+  let state, msg =
+    if Kex.is_rfc4419 neg.kex_alg then
+      Gex (Requested_gex (c_v, ckex, s_v, skex, neg, Ssh.min_dh, Ssh.n, Ssh.max_dh)),
+      Ssh.Msg_kexdh_gex_request (Ssh.min_dh, Ssh.n, Ssh.max_dh)
+    else
+      let secret, my_pub = Kex.Dh.secret_pub neg.kex_alg in
+      Kex (Negotiated_kex (c_v, ckex, s_v, skex, neg, secret, my_pub)),
+      Ssh.Msg_kexdh_init my_pub
+  in
+  ok ({ t with state }, [ msg ], [])
 
 let handle_kexdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs signed =
   Kex.Dh.shared secret theirs >>= fun shared ->
@@ -123,6 +139,38 @@ let handle_kexdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs sign
     Kex.Dh.compute_hash neg
       ~v_c ~v_s ~i_c:(Wire.blob_of_kexinit ckex) ~i_s:skex.Ssh.rawkex
       ~k_s ~e:my_pub ~f:theirs ~k:shared
+  in
+  if Keys.hostkey_matches t.authenticator k_s && Hostkey.verify k_s ~unsigned:h ~signed then begin
+    Log.info (fun m -> m "verified kexdh_reply!");
+    let session_id = match t.session_id with None -> h | Some x -> x in
+    Kex.Dh.derive_keys shared h session_id neg now
+    >>| fun (new_keys_ctos, new_keys_stoc, key_eol) ->
+    { t with
+      state = Newkeys_before_auth (new_keys_ctos, new_keys_stoc) ;
+      session_id = Some session_id ; key_eol = Some key_eol },
+    [ Ssh.Msg_newkeys ], []
+  end else
+    Error "couldn't verify kex"
+
+let handle_kexdh_gex_group t v_c ckex v_s skex neg min n max p gg =
+  (* min <= |p| <= max *)
+  let open Mirage_crypto_pk.Dh in
+  reword_error (function `Msg m -> m) (group ~p ~gg ()) >>= fun group ->
+  let bits = modulus_size group in
+  if Int32.to_int min <= bits && bits <= Int32.to_int max then
+    let secret, shared = gen_key group in
+    let pub = Mirage_crypto_pk.Z_extra.of_cstruct_be shared in
+    let state = Negotiated_gex (v_c, ckex, v_s, skex, neg, min, n, max, p, gg, secret, pub) in
+    Ok ({ t with state = Gex state }, [ Ssh.Msg_kexdh_gex_init pub ], [])
+  else
+    Error "DH group not between min and max"
+
+let handle_kexdh_gex_reply t now v_c ckex v_s skex neg min n max p g secret my_pub k_s theirs signed =
+  Kex.Dh.shared secret theirs >>= fun shared ->
+  let h =
+    Kex.Dh.compute_hash_gex neg
+      ~v_c ~v_s ~i_c:(Wire.blob_of_kexinit ckex) ~i_s:skex.Ssh.rawkex
+      ~k_s ~min ~n ~max ~p ~g ~e:my_pub ~f:theirs ~k:shared
   in
   if Keys.hostkey_matches t.authenticator k_s && Hostkey.verify k_s ~unsigned:h ~signed then begin
     Log.info (fun m -> m "verified kexdh_reply!");
@@ -201,9 +249,28 @@ let input_msg t msg now =
     Ok ({ t with state = Received_version (cv, ckex, v) }, [], [])
   | Received_version (cv, ckex, sv), Msg_kexinit skex ->
     handle_kexinit t cv ckex sv skex
-  | Negotiated_kex (cv, ckex, sv, skex, neg, sec, mypub),
-    Msg_kexdh_reply (pub, theirs, signed) ->
-    handle_kexdh_reply t now cv ckex sv skex neg sec mypub pub theirs signed
+  | Kex (Negotiated_kex (cv, ckex, sv, skex, neg, sec, mypub)),
+    Msg_kex (i, d) ->
+    begin
+      Wire.dh_kexdh_of_kex i d >>= function
+      | Msg_kexdh_reply (pub, theirs, signed) ->
+        handle_kexdh_reply t now cv ckex sv skex neg sec mypub pub theirs signed
+      | _ ->
+        Error "unexpected KEX message"
+    end
+  | Gex sub, Msg_kex (i, d) ->
+    begin
+      Wire.dh_kexdh_gex_of_kex i d >>= fun msg ->
+      match sub, msg with
+      | Requested_gex (cv, ckex, sv, skex, neg, min, n, max),
+        Msg_kexdh_gex_group (p, g) ->
+        handle_kexdh_gex_group t cv ckex sv skex neg min n max p g
+      | Negotiated_gex (cv, ckex, sv, skex, neg, min, n, max, p, g, sec, mypub),
+        Msg_kexdh_gex_reply (pub, theirs, signed) ->
+        handle_kexdh_gex_reply t now cv ckex sv skex neg min n max p g sec mypub pub theirs signed
+      | _ ->
+        Error "unexpected KEX message"
+    end
   | Newkeys_before_auth (_, keys), Msg_newkeys ->
     handle_newkeys_before_auth t keys
   | Requested_service s, Msg_service_accept s' when s = s' ->

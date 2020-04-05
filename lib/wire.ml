@@ -301,14 +301,8 @@ let get_message buf =
             rawkex = msgbuf })
   | MSG_NEWKEYS ->
     ok Msg_newkeys
-  | MSG_KEXDH_INIT ->
-    get_mpint buf >>= fun (e, _) ->
-    ok (Msg_kexdh_init e)
-  | MSG_KEXDH_REPLY ->
-    get_pubkey_any buf >>= fun (k_s, buf) ->
-    get_mpint buf >>= fun (f, buf) ->
-    get_signature k_s buf >>= fun (_, key_sig) ->
-    ok (Msg_kexdh_reply (k_s, f, key_sig))
+  | MSG_KEX_0 | MSG_KEX_1 | MSG_KEX_2 | MSG_KEX_3 | MSG_KEX_4 ->
+    ok (Msg_kex (msgid, buf))
   | MSG_USERAUTH_REQUEST ->
     get_string buf >>= fun (user, buf) ->
     get_string buf >>= fun (service, buf) ->
@@ -515,6 +509,43 @@ let get_message buf =
   | MSG_VERSION ->
     error "got MSG_VERSION"
 
+let dh_kexdh_of_kex id buf =
+  (* for common DH KEX *)
+  let open Ssh in
+  match id with
+  | MSG_KEX_0 ->
+    get_mpint buf >>= fun (e, _) ->
+    ok (Msg_kexdh_init e)
+  | MSG_KEX_1 ->
+    get_pubkey_any buf >>= fun (k_s, buf) ->
+    get_mpint buf >>= fun (f, buf) ->
+    get_signature k_s buf >>= fun (_, key_sig) ->
+    ok (Msg_kexdh_reply (k_s, f, key_sig))
+  | _ -> error "unsupported KEX message"
+
+let dh_kexdh_gex_of_kex id buf =
+  (* for RFC 4419 GEX *)
+  let open Ssh in
+  match id with
+  | MSG_KEX_4 ->
+    get_uint32 buf >>= fun (min, buf) ->
+    get_uint32 buf >>= fun (n, buf) ->
+    get_uint32 buf >>= fun (max, _) ->
+    ok (Msg_kexdh_gex_request (min, n, max))
+  | MSG_KEX_1 ->
+    get_mpint buf >>= fun (p, buf) ->
+    get_mpint buf >>= fun (g, _) ->
+    ok (Msg_kexdh_gex_group (p, g))
+  | MSG_KEX_2 ->
+    get_mpint buf >>= fun (e, _) ->
+    ok (Msg_kexdh_gex_init e)
+  | MSG_KEX_3 ->
+    get_pubkey_any buf >>= fun (k_s, buf) ->
+    get_mpint buf >>= fun (f, buf) ->
+    get_signature k_s buf >>= fun (_, key_sig) ->
+    ok (Msg_kexdh_gex_reply (k_s, f, key_sig))
+  | _ -> error "unsupported KEX message"
+
 let put_message msg buf =
   let open Ssh in
   let guard p e = if not p then invalid_arg e in
@@ -548,13 +579,31 @@ let put_message msg buf =
   | Msg_newkeys ->
     put_id MSG_NEWKEYS buf
   | Msg_kexdh_init e ->
-    put_id MSG_KEXDH_INIT buf |>
+    put_id MSG_KEX_0 buf |>
     put_mpint e
   | Msg_kexdh_reply (k_s, f, signature) ->
-    put_id MSG_KEXDH_REPLY buf |>
+    put_id MSG_KEX_1 buf |>
     put_pubkey k_s |>
     put_mpint f |>
     put_signature k_s signature
+  | Msg_kexdh_gex_request (min, n, max) ->
+    put_id MSG_KEX_4 buf |>
+    put_uint32 min |>
+    put_uint32 n |>
+    put_uint32 max
+  | Msg_kexdh_gex_group (p, g) ->
+    put_id MSG_KEX_1 buf |>
+    put_mpint p |>
+    put_mpint g
+  | Msg_kexdh_gex_init e ->
+    put_id MSG_KEX_2 buf |>
+    put_mpint e
+  | Msg_kexdh_gex_reply (k_s, f, signature) ->
+    put_id MSG_KEX_3 buf |>
+    put_pubkey k_s |>
+    put_mpint f |>
+    put_signature k_s signature
+  | Msg_kex _ -> assert false
   | Msg_userauth_request (user, service, auth_method) ->
     let buf = put_id MSG_USERAUTH_REQUEST buf |>
               put_string user |>

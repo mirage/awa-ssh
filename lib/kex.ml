@@ -39,17 +39,30 @@ let compression_alg_to_string = function
   | Nothing -> "none"
 
 type alg =
+  | Diffie_hellman_group_exchange_sha256
   | Diffie_hellman_group14_sha256
   | Diffie_hellman_group14_sha1
   | Diffie_hellman_group1_sha1
+  | Diffie_hellman_group_exchange_sha1
+
+let is_rfc4419 = function
+  | Diffie_hellman_group_exchange_sha256
+  | Diffie_hellman_group_exchange_sha1 -> true
+  | Diffie_hellman_group14_sha256
+  | Diffie_hellman_group14_sha1
+  | Diffie_hellman_group1_sha1 -> false
 
 let alg_of_string = function
+  | "diffie-hellman-group-exchange-sha256" -> ok Diffie_hellman_group_exchange_sha256
+  | "diffie-hellman-group-exchange-sha1" -> ok Diffie_hellman_group_exchange_sha1
   | "diffie-hellman-group14-sha256" -> ok Diffie_hellman_group14_sha256
   | "diffie-hellman-group14-sha1" -> ok Diffie_hellman_group14_sha1
   | "diffie-hellman-group1-sha1"  -> ok Diffie_hellman_group1_sha1
   | s -> error ("Unknown kex_alg " ^ s)
 
 let alg_to_string = function
+  | Diffie_hellman_group_exchange_sha256 -> "diffie-hellman-group-exchange-sha256"
+  | Diffie_hellman_group_exchange_sha1 -> "diffie-hellman-group-exchange-sha1"
   | Diffie_hellman_group14_sha256 -> "diffie-hellman-group14-sha256"
   | Diffie_hellman_group14_sha1 -> "diffie-hellman-group14-sha1"
   | Diffie_hellman_group1_sha1  -> "diffie-hellman-group1-sha1"
@@ -58,18 +71,29 @@ let group_of_alg = function
   | Diffie_hellman_group14_sha256 -> Mirage_crypto_pk.Dh.Group.oakley_14
   | Diffie_hellman_group14_sha1 -> Mirage_crypto_pk.Dh.Group.oakley_14
   | Diffie_hellman_group1_sha1  -> Mirage_crypto_pk.Dh.Group.oakley_2
+  | Diffie_hellman_group_exchange_sha1
+  | Diffie_hellman_group_exchange_sha256 -> assert false
 
 let hash_of_alg = function
+  | Diffie_hellman_group_exchange_sha256
   | Diffie_hellman_group14_sha256 -> Mirage_crypto.Hash.module_of `SHA256
+  | Diffie_hellman_group_exchange_sha1
   | Diffie_hellman_group14_sha1
   | Diffie_hellman_group1_sha1 -> Mirage_crypto.Hash.module_of `SHA1
 
-let preferred = [ Diffie_hellman_group14_sha256 ]
+let client_supported =
+  [ Diffie_hellman_group14_sha256 ; Diffie_hellman_group_exchange_sha256 ;
+    Diffie_hellman_group14_sha1 ; Diffie_hellman_group1_sha1 ;
+    Diffie_hellman_group_exchange_sha1 ]
 
-let make_kexinit () =
+let server_supported =
+  [ Diffie_hellman_group14_sha256 ; Diffie_hellman_group14_sha1 ;
+    Diffie_hellman_group1_sha1 ]
+
+let make_kexinit algs () =
   let k =
     { cookie = Mirage_crypto_rng.generate 16;
-      kex_algs = List.map alg_to_string preferred;
+      kex_algs = List.map alg_to_string algs;
       server_host_key_algs = [ server_host_key_alg_to_string Ssh_rsa ];
       encryption_algs_ctos = List.map Cipher.to_string Cipher.preferred;
       encryption_algs_stoc = List.map Cipher.to_string Cipher.preferred;
@@ -113,6 +137,8 @@ let guessed_right ~s ~c =
   compare_hd s.compression_algs_ctos c.compression_algs_ctos &&
   compare_hd s.compression_algs_stoc c.compression_algs_stoc
 
+(* negotiate / pick_common should prefer _ours_ over _theirs_ (well, the
+   client decides ultimately (by sending the next message), no?) *)
 let negotiate ~s ~c =
   let pick_common f ~s ~c e =
     try
@@ -285,6 +311,25 @@ module Dh = struct
     put_cstring i_c |>
     put_cstring i_s |>
     put_cstring (Wire.blob_of_pubkey k_s) |>
+    put_mpint e |>
+    put_mpint f |>
+    put_mpint k |>
+    Dbuf.to_cstruct |>
+    H.digest
+
+  let compute_hash_gex neg ~v_c ~v_s ~i_c ~i_s ~k_s ~min ~n ~max ~p ~g ~e ~f ~k =
+    let (module H) = hash_of_alg neg.kex_alg in
+    let open Wire in
+    put_cstring (Cstruct.of_string v_c) (Dbuf.create ()) |>
+    put_cstring (Cstruct.of_string v_s) |>
+    put_cstring i_c |>
+    put_cstring i_s |>
+    put_cstring (Wire.blob_of_pubkey k_s) |>
+    put_uint32 min |>
+    put_uint32 n |>
+    put_uint32 max |>
+    put_mpint p |>
+    put_mpint g |>
     put_mpint e |>
     put_mpint f |>
     put_mpint k |>

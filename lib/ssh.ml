@@ -34,6 +34,8 @@ let channel_max_pkt_len =             (* Must be smaller than max_pkt_len *)
   Int32.of_int (64 * 1024)
 let max_channels = 1024               (* 1024 maximum channels per connection *)
 
+let min_dh, n, max_dh = 2048l, 3072l, 8192l
+
 let guard_sshlen len =
   guard (len >= 0 && len <= max_len) (sprintf "Bad length: %d" len)
 
@@ -50,8 +52,11 @@ type message_id =
   | MSG_SERVICE_ACCEPT            [@id 6]
   | MSG_KEXINIT                   [@id 20]
   | MSG_NEWKEYS                   [@id 21]
-  | MSG_KEXDH_INIT                [@id 30]
-  | MSG_KEXDH_REPLY               [@id 31]
+  | MSG_KEX_0                     [@id 30]
+  | MSG_KEX_1                     [@id 31]
+  | MSG_KEX_2                     [@id 32]
+  | MSG_KEX_3                     [@id 33]
+  | MSG_KEX_4                     [@id 34]
   | MSG_USERAUTH_REQUEST          [@id 50]
   | MSG_USERAUTH_FAILURE          [@id 51]
   | MSG_USERAUTH_SUCCESS          [@id 52]
@@ -201,6 +206,13 @@ type message =
   | Msg_newkeys
   | Msg_kexdh_reply of (Hostkey.pub * mpint * Cstruct_sexp.t)
   | Msg_kexdh_init of mpint
+  (* from RFC 4419 *)
+  (* there's as well a Msg_kexdh_gex_request_old with only a single int32 *)
+  | Msg_kexdh_gex_request of int32 * int32 * int32
+  | Msg_kexdh_gex_group of mpint * mpint
+  | Msg_kexdh_gex_init of mpint
+  | Msg_kexdh_gex_reply of Hostkey.pub * mpint * Cstruct_sexp.t
+  | Msg_kex of message_id * Cstruct_sexp.t
   | Msg_userauth_request of (string * string * auth_method)
   | Msg_userauth_failure of (string list * bool)
   | Msg_userauth_success
@@ -235,8 +247,13 @@ let message_to_id = function
   | Msg_service_accept _           -> MSG_SERVICE_ACCEPT
   | Msg_kexinit _                  -> MSG_KEXINIT
   | Msg_newkeys                    -> MSG_NEWKEYS
-  | Msg_kexdh_init _               -> MSG_KEXDH_INIT
-  | Msg_kexdh_reply _              -> MSG_KEXDH_REPLY
+  | Msg_kexdh_init _               -> MSG_KEX_0
+  | Msg_kexdh_reply _              -> MSG_KEX_1
+  | Msg_kexdh_gex_request _        -> MSG_KEX_4
+  | Msg_kexdh_gex_group _          -> MSG_KEX_1
+  | Msg_kexdh_gex_init _           -> MSG_KEX_2
+  | Msg_kexdh_gex_reply _          -> MSG_KEX_3
+  | Msg_kex (id, _)                -> id
   | Msg_userauth_request _         -> MSG_USERAUTH_REQUEST
   | Msg_userauth_failure _         -> MSG_USERAUTH_FAILURE
   | Msg_userauth_success           -> MSG_USERAUTH_SUCCESS
