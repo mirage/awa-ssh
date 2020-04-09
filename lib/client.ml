@@ -306,6 +306,10 @@ let input_msg t msg now =
   | Established, Msg_channel_request (id, false, Exit_status r) ->
     guard_some (Channel.lookup id t.channels) "no such channel" >>| fun c ->
     t, [], [ `Channel_exit_status (Channel.id c, r) ]
+  | Established, Msg_channel_success id ->
+    guard_some (Channel.lookup id t.channels) "no such channel" >>| fun _c ->
+    Log.info (fun m -> m "channel success %lu" id);
+    t, [], []
   | Established, Msg_channel_close id ->
     guard_some (Channel.lookup id t.channels) "no such channel" >>| fun c ->
     let channels = Channel.remove (Channel.id c) t.channels in
@@ -338,8 +342,8 @@ let rec incoming t now buf =
 
 let outgoing_request t ?(id = 0l) ?(want_reply = false) req =
   guard (established t) "not yet established" >>= fun () ->
-  guard_some (Channel.lookup id t.channels) "no such channel" >>| fun _ ->
-  let msg = Ssh.Msg_channel_request (id, want_reply, req) in
+  guard_some (Channel.lookup id t.channels) "no such channel" >>| fun c ->
+  let msg = Ssh.Msg_channel_request (c.them.id, want_reply, req) in
   output_msg t msg
 
 let outgoing_data t ?(id = 0l) data =
