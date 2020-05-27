@@ -1,0 +1,4 @@
+(library
+ (name awa_conduit)
+ (public_name awa-conduit)
+ (libraries mtime bigstringaf ke mirage-clock conduit awa))
