@@ -62,7 +62,7 @@ let alg_of_sexp = function
 
 let sexp_of_alg t = Sexplib.Sexp.Atom (alg_to_string t)
 
-let preferred_algs = [ Rsa_sha256 ; Rsa_sha256 ; Rsa_sha1 ]
+let preferred_algs = [ Rsa_sha256 ; Rsa_sha512 ; Rsa_sha1 ]
 
 let signature_equal = Cstruct.equal
 

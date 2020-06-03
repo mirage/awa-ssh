@@ -43,7 +43,7 @@ type state =
   | Newkeys_before_auth of Kex.keys * Kex.keys
   | Requested_service of string
   | Userauth_request of Ssh.auth_method
-  | Userauth_requested
+  | Userauth_requested of Hostkey.pub option
   | Opening_channel of Channel.channel_end
   | Established
 
@@ -55,6 +55,7 @@ type t = {
   keying         : bool;
   key_eol        : Mtime.t option;
   channels       : Channel.db;
+  sig_algs : Hostkey.alg list ;
   linger  : Cstruct.t;
   user : string ;
   key : Hostkey.priv ;
@@ -114,6 +115,7 @@ let make ?(authenticator = `No_authentication) ~user key =
             key_eol = None;
             linger = Cstruct.empty;
             channels = Channel.empty_db;
+            sig_algs = [];
             user ; key ; authenticator
           }
   in
@@ -131,7 +133,19 @@ let handle_kexinit t c_v ckex s_v skex =
       Kex (Negotiated_kex (c_v, ckex, s_v, skex, neg, secret, my_pub)),
       Ssh.Msg_kexdh_init my_pub
   in
-  ok ({ t with state }, [ msg ], [])
+  (* this is not correct in respect to the specification (should use
+     server-sig-algs extension of 8308): we reuse the server host key algorithms
+     from the kex for client key authentication. we iterate over them on
+     failure -> eventually we'll use ssh-rsa if the server denies sha256/512 *)
+  let sig_algs =
+    let s =
+      List.fold_left (fun acc a ->
+          match Hostkey.alg_of_string a with Ok a -> a :: acc | Error _ -> acc)
+        [] skex.server_host_key_algs
+    in
+    List.filter (fun a -> List.mem a s) Hostkey.preferred_algs
+  in
+  ok ({ t with state ; sig_algs }, [ msg ], [])
 
 let handle_kexdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs (alg, signed) =
   Kex.Dh.shared secret theirs >>= fun shared ->
@@ -208,16 +222,19 @@ let handle_auth_failure t _ = function
         [])
   | _ -> Error "no supported authentication methods left"
 
+let handle_pk_auth t pk =
+  let session_id = match t.session_id with None -> assert false | Some x -> x in
+  (match t.sig_algs with
+   | [] -> Error "no more signature algorithms available"
+   | a :: rt -> Ok (a, rt)) >>= fun (alg, sig_algs) ->
+  let signed = Auth.sign t.user alg t.key session_id service in
+  let met = Ssh.Pubkey (Hostkey.pub_of_priv t.key, Some (alg, signed)) in
+  Ok ({ t with state = Userauth_requested (Some pk) ; sig_algs },
+      [ Ssh.Msg_userauth_request (t.user, service, met) ],
+      [])
+
 let handle_pk_ok t m pk = match m with
-  | Ssh.Pubkey (pub, None) when pub = pk ->
-    let session_id = match t.session_id with None -> assert false | Some x -> x in
-    (* TODO figure out which to use from extensions, RFC 8308 *)
-    let alg = Hostkey.Rsa_sha1 in
-    let signed = Auth.sign t.user alg t.key session_id service in
-    let met = Ssh.Pubkey (Hostkey.pub_of_priv t.key, Some (alg, signed)) in
-    Ok ({ t with state = Userauth_requested },
-        [ Ssh.Msg_userauth_request (t.user, service, met) ],
-        [])
+  | Ssh.Pubkey (pub, None) when pub = pk -> handle_pk_auth t pk
   | _ -> Error "not sure how we ended in pk ok now"
 
 let open_channel t =
@@ -280,8 +297,9 @@ let input_msg t msg now =
   | Userauth_request m, Msg_userauth_failure (methods, _) ->
     handle_auth_failure t m methods
   | Userauth_request m, Msg_userauth_pk_ok pk -> handle_pk_ok t m pk
+  | Userauth_requested (Some pk), Msg_userauth_failure _ -> handle_pk_auth t pk
   | Userauth_request _, Msg_userauth_success -> open_channel t
-  | Userauth_requested, Msg_userauth_success -> open_channel t
+  | Userauth_requested _, Msg_userauth_success -> open_channel t
   | Opening_channel us, Msg_channel_open_confirmation (oid, tid, win, max, data) ->
     open_channel_success t us oid tid win max data
   | _, Msg_global_request (_, want_reply, Unknown_request _) ->
