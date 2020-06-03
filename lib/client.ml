@@ -133,14 +133,14 @@ let handle_kexinit t c_v ckex s_v skex =
   in
   ok ({ t with state }, [ msg ], [])
 
-let handle_kexdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs signed =
+let handle_kexdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs (alg, signed) =
   Kex.Dh.shared secret theirs >>= fun shared ->
   let h =
     Kex.Dh.compute_hash neg
       ~v_c ~v_s ~i_c:(Wire.blob_of_kexinit ckex) ~i_s:skex.Ssh.rawkex
       ~k_s ~e:my_pub ~f:theirs ~k:shared
   in
-  if Keys.hostkey_matches t.authenticator k_s && Hostkey.verify k_s ~unsigned:h ~signed then begin
+  if Keys.hostkey_matches t.authenticator k_s && alg = neg.server_host_key_alg && Hostkey.verify alg k_s ~unsigned:h ~signed then begin
     Log.info (fun m -> m "verified kexdh_reply!");
     let session_id = match t.session_id with None -> h | Some x -> x in
     Kex.Dh.derive_keys shared h session_id neg now
@@ -165,14 +165,14 @@ let handle_kexdh_gex_group t v_c ckex v_s skex neg min n max p gg =
   else
     Error "DH group not between min and max"
 
-let handle_kexdh_gex_reply t now v_c ckex v_s skex neg min n max p g secret my_pub k_s theirs signed =
+let handle_kexdh_gex_reply t now v_c ckex v_s skex neg min n max p g secret my_pub k_s theirs (alg, signed) =
   Kex.Dh.shared secret theirs >>= fun shared ->
   let h =
     Kex.Dh.compute_hash_gex neg
       ~v_c ~v_s ~i_c:(Wire.blob_of_kexinit ckex) ~i_s:skex.Ssh.rawkex
       ~k_s ~min ~n ~max ~p ~g ~e:my_pub ~f:theirs ~k:shared
   in
-  if Keys.hostkey_matches t.authenticator k_s && Hostkey.verify k_s ~unsigned:h ~signed then begin
+  if Keys.hostkey_matches t.authenticator k_s && alg = neg.server_host_key_alg && Hostkey.verify alg k_s ~unsigned:h ~signed then begin
     Log.info (fun m -> m "verified kexdh_reply!");
     let session_id = match t.session_id with None -> h | Some x -> x in
     Kex.Dh.derive_keys shared h session_id neg now
@@ -211,8 +211,10 @@ let handle_auth_failure t _ = function
 let handle_pk_ok t m pk = match m with
   | Ssh.Pubkey (pub, None) when pub = pk ->
     let session_id = match t.session_id with None -> assert false | Some x -> x in
-    let signed = Auth.sign t.user t.key session_id service in
-    let met = Ssh.Pubkey (Hostkey.pub_of_priv t.key, Some signed) in
+    (* TODO figure out which to use from extensions, RFC 8308 *)
+    let alg = Hostkey.Rsa_sha1 in
+    let signed = Auth.sign t.user alg t.key session_id service in
+    let met = Ssh.Pubkey (Hostkey.pub_of_priv t.key, Some (alg, signed)) in
     Ok ({ t with state = Userauth_requested },
         [ Ssh.Msg_userauth_request (t.user, service, met) ],
         [])

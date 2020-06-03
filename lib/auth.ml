@@ -48,7 +48,7 @@ let by_password name password db =
   | None -> false
   | Some user -> user.password = Some password
 
-let to_hash name pubkey session_id service =
+let to_hash name alg pubkey session_id service =
   let open Wire in
   put_cstring session_id (Dbuf.create ()) |>
   put_message_id Ssh.MSG_USERAUTH_REQUEST |>
@@ -56,17 +56,17 @@ let to_hash name pubkey session_id service =
   put_string service |>
   put_string "publickey" |>
   put_bool true |>
-  put_string (Hostkey.sshname pubkey) |>
+  put_string (Hostkey.alg_to_string alg) |>
   put_pubkey pubkey |>
   Dbuf.to_cstruct
 
-let sign name key session_id service =
-  let data = to_hash name (Hostkey.pub_of_priv key) session_id service in
-  Hostkey.sign key data
+let sign name alg key session_id service =
+  let data = to_hash name alg (Hostkey.pub_of_priv key) session_id service in
+  Hostkey.sign alg key data
 
-let by_pubkey name pubkey session_id service signed db =
+let by_pubkey name alg pubkey session_id service signed db =
   match lookup_user_key name pubkey db with
   | None -> false
   | Some pubkey ->
-    let unsigned = to_hash name pubkey session_id service in
-    Hostkey.verify pubkey ~unsigned ~signed
+    let unsigned = to_hash name alg pubkey session_id service in
+    Hostkey.verify alg pubkey ~unsigned ~signed

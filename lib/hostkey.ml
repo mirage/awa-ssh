@@ -31,15 +31,49 @@ let pub_of_sexp _ = failwith "Hostkey.pub_of_sexp: TODO"
 let sshname = function
   | Rsa_pub _ -> "ssh-rsa"
 
+type alg =
+  | Rsa_sha1
+  | Rsa_sha256
+  | Rsa_sha512
+
+let hash = function
+  | Rsa_sha1 -> `SHA1
+  | Rsa_sha256 -> `SHA256
+  | Rsa_sha512 -> `SHA512
+
+let alg_of_string = function
+  | "ssh-rsa" -> Ok Rsa_sha1
+  | "rsa-sha2-256" -> Ok Rsa_sha256
+  | "rsa-sha2-512" -> Ok Rsa_sha512
+  | s -> Error ("Unknown public key algorithm " ^ s)
+
+let alg_to_string = function
+  | Rsa_sha1 -> "ssh-rsa"
+  | Rsa_sha256 -> "rsa-sha2-256"
+  | Rsa_sha512 -> "rsa-sha2-512"
+
+let alg_of_sexp = function
+  | Sexplib.Sexp.Atom s ->
+    begin match alg_of_string s with
+      | Ok alg -> alg
+      | Error msg -> failwith msg
+    end
+  | _ -> failwith "expected sexp atom for public key algorithm"
+
+let sexp_of_alg t = Sexplib.Sexp.Atom (alg_to_string t)
+
+let preferred_algs = [ Rsa_sha256 ; Rsa_sha256 ; Rsa_sha1 ]
+
 let signature_equal = Cstruct.equal
 
-let sign priv blob =
+let sign alg priv blob =
   match priv with
   | Rsa_priv priv ->
-    Rsa.PKCS1.sign ~hash:`SHA1 ~key:priv (`Message blob)
+    let hash = hash alg in
+    Rsa.PKCS1.sign ~hash ~key:priv (`Message blob)
 
-let verify pub ~unsigned ~signed =
+let verify alg pub ~unsigned ~signed =
   match pub with
   | Rsa_pub pub ->
-    let hashp = function `SHA1 -> true | _ -> false in
+    let hashp h = h = hash alg in
     Rsa.PKCS1.verify ~hashp ~key:pub ~signature:signed (`Message unsigned)

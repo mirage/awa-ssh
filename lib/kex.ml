@@ -18,16 +18,6 @@ open Rresult.R
 open Util
 open Ssh
 
-type server_host_key_alg =
-  | Ssh_rsa
-
-let server_host_key_alg_of_string = function
-  | "ssh-rsa" -> ok Ssh_rsa
-  | s -> error ("Unknown server host key algorithm " ^ s)
-
-let server_host_key_alg_to_string = function
-  | Ssh_rsa -> "ssh-rsa"
-
 type compression_alg =
   | Nothing                        (* Can't use None :-D *)
 
@@ -94,7 +84,7 @@ let make_kexinit algs () =
   let k =
     { cookie = Mirage_crypto_rng.generate 16;
       kex_algs = List.map alg_to_string algs;
-      server_host_key_algs = [ server_host_key_alg_to_string Ssh_rsa ];
+      server_host_key_algs = List.map Hostkey.alg_to_string Hostkey.preferred_algs;
       encryption_algs_ctos = List.map Cipher.to_string Cipher.preferred;
       encryption_algs_stoc = List.map Cipher.to_string Cipher.preferred;
       mac_algs_ctos = List.map Hmac.to_string Hmac.preferred;
@@ -111,7 +101,7 @@ let make_kexinit algs () =
 
 type negotiation = {
   kex_alg              : alg;
-  server_host_key_alg  : server_host_key_alg;
+  server_host_key_alg  : Hostkey.alg;
   encryption_alg_ctos  : Cipher.t;
   encryption_alg_stoc  : Cipher.t;
   mac_alg_ctos         : Hmac.t;
@@ -153,7 +143,7 @@ let negotiate ~s ~c =
     "Can't agree on kex algorithm"
   >>= fun kex_alg ->
   pick_common
-    server_host_key_alg_of_string
+    Hostkey.alg_of_string
     ~s:s.server_host_key_algs
     ~c:c.server_host_key_algs
     "Can't agree on server host key algorithm"

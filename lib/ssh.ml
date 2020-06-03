@@ -170,7 +170,7 @@ let sexp_of_password _ = sexp_of_string "????"
 let password_of_sexp _ = failwith "password_of_sexp: TODO"
 
 type auth_method =
-  | Pubkey of (Hostkey.pub * Cstruct_sexp.t option)
+  | Pubkey of (Hostkey.pub * (Hostkey.alg * Cstruct_sexp.t) option)
   | Password of (password * password option)
   | Hostbased of (string * Cstruct_sexp.t * string * string * Cstruct_sexp.t) (* TODO *)
   | Authnone
@@ -181,7 +181,7 @@ let auth_method_equal a b =
   | Pubkey (key_a, signature_a),
     Pubkey (key_b, signature_b) ->
     let signature_match = match signature_a, signature_b with
-      | Some sa, Some sb -> Cstruct.equal sa sb
+      | Some (alga, sa), Some (algb, sb) -> alga = algb && Cstruct.equal sa sb
       | None, None -> true
       | _ -> false
     in
@@ -204,14 +204,14 @@ type message =
   | Msg_service_accept of string
   | Msg_kexinit of kexinit
   | Msg_newkeys
-  | Msg_kexdh_reply of (Hostkey.pub * mpint * Cstruct_sexp.t)
+  | Msg_kexdh_reply of Hostkey.pub * mpint * (Hostkey.alg * Cstruct_sexp.t)
   | Msg_kexdh_init of mpint
   (* from RFC 4419 *)
   (* there's as well a Msg_kexdh_gex_request_old with only a single int32 *)
   | Msg_kexdh_gex_request of int32 * int32 * int32
   | Msg_kexdh_gex_group of mpint * mpint
   | Msg_kexdh_gex_init of mpint
-  | Msg_kexdh_gex_reply of Hostkey.pub * mpint * Cstruct_sexp.t
+  | Msg_kexdh_gex_reply of Hostkey.pub * mpint * (Hostkey.alg * Cstruct_sexp.t)
   | Msg_kex of message_id * Cstruct_sexp.t
   | Msg_userauth_request of (string * string * auth_method)
   | Msg_userauth_failure of (string list * bool)
