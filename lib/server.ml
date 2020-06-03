@@ -160,10 +160,7 @@ let rec input_userauth_request t username service auth_method =
     make_reply { t with auth_state = Done; expect = None } Msg_userauth_success
   in
   let try_probe t pubkey =
-    if pubkey <> Hostkey.Unknown then
-      make_reply t (Msg_userauth_pk_ok pubkey)
-    else
-      failure t
+    make_reply t (Msg_userauth_pk_ok pubkey)
   in
   let try_auth t b = if b then success t else failure t in
   let handle_auth t =

@@ -124,9 +124,7 @@ let blob_of_pubkey = function
     put_mpint rsa.e |>
     put_mpint rsa.n |>
     Dbuf.to_cstruct
-  | Hostkey.Unknown -> invalid_arg "Can't make blob of unknown key."
 
-(* XXX need to express unknown better *)
 let pubkey_of_blob blob =
   get_string blob >>= fun (key_alg, blob) ->
   match key_alg with
@@ -136,7 +134,7 @@ let pubkey_of_blob blob =
     reword_error (function `Msg m -> m)
       (Mirage_crypto_pk.Rsa.pub ~e ~n) >>= fun pub ->
     ok (Hostkey.Rsa_pub pub)
-  | _ -> ok Hostkey.Unknown
+  | k -> Error ("unsupported key algorithm: " ^ k)
 
 (* Prefer using get_pubkey_alg always *)
 let get_pubkey_any buf =
@@ -147,10 +145,10 @@ let get_pubkey_any buf =
 (* Always use get_pubkey_alg since it returns Unknown if key_alg mismatches *)
 let get_pubkey key_alg buf =
   get_pubkey_any buf >>= fun (pubkey, buf) ->
-  if (Hostkey.sshname pubkey) = key_alg then
+  if String.equal (Hostkey.sshname pubkey) key_alg then
     ok (pubkey, buf)
   else
-    ok (Hostkey.Unknown, buf)
+    Error ("public key algorithm not supported " ^ key_alg)
 
 let put_pubkey pubkey t =
   put_cstring (blob_of_pubkey pubkey) t
@@ -166,7 +164,6 @@ let pubkey_of_openssh buf =
     (Base64.decode key_buf) >>= fun blob ->
   (* NOTE: can't use get_pubkey here, there is no string blob *)
   pubkey_of_blob (Cstruct.of_string blob) >>= fun key ->
-  guard (key <> Hostkey.Unknown) "Unknown hostkey" >>= fun () ->
   guard (Hostkey.sshname key = key_type) "Key type mismatch" >>= fun () ->
   ok key
 
@@ -548,7 +545,6 @@ let dh_kexdh_gex_of_kex id buf =
 
 let put_message msg buf =
   let open Ssh in
-  let guard p e = if not p then invalid_arg e in
   let put_id = put_message_id in (* save some columns *)
   match msg with
   | Msg_disconnect (code, desc, lang) ->
@@ -648,7 +644,6 @@ let put_message msg buf =
     put_string message |>
     put_string lang
   | Msg_userauth_pk_ok pubkey ->
-    guard (pubkey <> Hostkey.Unknown) "Unknown key";
     put_id MSG_USERAUTH_PK_OK buf |>
     put_string (Hostkey.sshname pubkey) |>
     put_pubkey pubkey

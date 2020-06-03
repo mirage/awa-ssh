@@ -68,8 +68,5 @@ let by_pubkey name pubkey session_id service signed db =
   match lookup_user_key name pubkey db with
   | None -> false
   | Some pubkey ->
-    if pubkey = Hostkey.Unknown then
-      false
-    else
-      let unsigned = to_hash name pubkey session_id service in
-      Hostkey.verify pubkey ~unsigned ~signed
+    let unsigned = to_hash name pubkey session_id service in
+    Hostkey.verify pubkey ~unsigned ~signed

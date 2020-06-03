@@ -21,7 +21,6 @@ type priv =
 
 type pub =
   | Rsa_pub of Rsa.pub
-  | Unknown
 
 let pub_of_priv = function
   | Rsa_priv priv -> Rsa_pub (Rsa.pub_of_priv priv)
@@ -31,7 +30,6 @@ let pub_of_sexp _ = failwith "Hostkey.pub_of_sexp: TODO"
 
 let sshname = function
   | Rsa_pub _ -> "ssh-rsa"
-  | Unknown -> "unknown"
 
 let signature_equal = Cstruct.equal
 
@@ -42,7 +40,6 @@ let sign priv blob =
 
 let verify pub ~unsigned ~signed =
   match pub with
-  | Unknown -> false
   | Rsa_pub pub ->
     let hashp = function `SHA1 -> true | _ -> false in
     Rsa.PKCS1.verify ~hashp ~key:pub ~signature:signed (`Message unsigned)

@@ -8,7 +8,6 @@ type authenticator = [
 ]
 
 let hostkey_matches a = function
-  | Hostkey.Unknown -> false
   | Hostkey.Rsa_pub pub ->
     let hash = Mirage_crypto.Hash.SHA256.digest (Wire.blob_of_pubkey (Hostkey.Rsa_pub pub))  in
     Logs.app (fun m -> m "authenticating RSA server fingerprint SHA256:%s"
@@ -49,8 +48,7 @@ let authenticator_of_string str =
       match Base64.decode ~pad:false str with
       | Ok k ->
         (Wire.pubkey_of_blob (Cstruct.of_string k) >>= function
-          | Hostkey.Rsa_pub key -> Ok (`Key key)
-          | Hostkey.Unknown -> Error "invalid authenticator")
+          | Hostkey.Rsa_pub key -> Ok (`Key key))
       | Error (`Msg msg) ->
         Error (str ^ " is invalid or unsupported authenticator, b64 failed: " ^ msg)
 
