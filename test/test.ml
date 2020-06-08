@@ -188,7 +188,8 @@ let t_parsing () =
   let rsa = Mirage_crypto_pk.Rsa.(generate ~bits:2048 ()) in
   let priv_rsa = Hostkey.Rsa_priv rsa in
   let pub_rsa = Hostkey.Rsa_pub (Mirage_crypto_pk.Rsa.pub_of_priv rsa) in
-  let signature = Hostkey.sign priv_rsa cstring in
+  let alg = Hostkey.Rsa_sha1 in
+  let signature = Hostkey.sign alg priv_rsa cstring in
   let l =
     [ Msg_disconnect (DISCONNECT_PROTOCOL_ERROR, "foo", "bar");
       Msg_ignore "Fora Temer";
@@ -205,7 +206,7 @@ let t_parsing () =
          Pubkey (pub_rsa, None));
       Msg_userauth_request
         ("haesbaert", "ssh-userauth",
-         Pubkey (pub_rsa, Some signature));
+         Pubkey (pub_rsa, Some (alg, signature)));
       Msg_userauth_request
         ("haesbaert", "ssh-userauth",
          Password ("a", Some "b"));
@@ -395,13 +396,14 @@ let t_signature () =
   let priv = Hostkey.Rsa_priv (Mirage_crypto_pk.Rsa.generate ~bits:2048 ()) in
   let pub = Hostkey.pub_of_priv priv in
   let unsigned = Mirage_crypto_rng.generate 128 in
-  let signed = Hostkey.sign priv unsigned in
-  assert (Hostkey.verify pub ~signed ~unsigned);
+  let alg = Hostkey.Rsa_sha1 in
+  let signed = Hostkey.sign alg priv unsigned in
+  assert (Hostkey.verify alg pub ~signed ~unsigned);
   (* Corrupt every one byte in the signature, all should fail *)
   for off = 0 to pred (Cstruct.len signed) do
     let evilbyte = Cstruct.get_uint8 signed off in
     Cstruct.set_uint8 signed off (succ evilbyte);
-    assert_false (Hostkey.verify pub ~signed ~unsigned);
+    assert_false (Hostkey.verify alg pub ~signed ~unsigned);
     Cstruct.set_uint8 signed off evilbyte;
   done;
   test_ok

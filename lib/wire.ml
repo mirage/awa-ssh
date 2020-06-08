@@ -118,15 +118,13 @@ let put_nl nl t =
   put_string (String.concat "," nl) t
 
 let blob_of_pubkey = function
-  | Hostkey.Rsa_pub rsa ->
+  | Hostkey.Rsa_pub rsa as k ->
     let open Mirage_crypto_pk.Rsa in
-    put_string "ssh-rsa" (Dbuf.create ()) |>
+    put_string (Hostkey.sshname k) (Dbuf.create ()) |>
     put_mpint rsa.e |>
     put_mpint rsa.n |>
     Dbuf.to_cstruct
-  | Hostkey.Unknown -> invalid_arg "Can't make blob of unknown key."
 
-(* XXX need to express unknown better *)
 let pubkey_of_blob blob =
   get_string blob >>= fun (key_alg, blob) ->
   match key_alg with
@@ -136,7 +134,7 @@ let pubkey_of_blob blob =
     reword_error (function `Msg m -> m)
       (Mirage_crypto_pk.Rsa.pub ~e ~n) >>= fun pub ->
     ok (Hostkey.Rsa_pub pub)
-  | _ -> ok Hostkey.Unknown
+  | k -> Error ("unsupported key algorithm: " ^ k)
 
 (* Prefer using get_pubkey_alg always *)
 let get_pubkey_any buf =
@@ -147,10 +145,10 @@ let get_pubkey_any buf =
 (* Always use get_pubkey_alg since it returns Unknown if key_alg mismatches *)
 let get_pubkey key_alg buf =
   get_pubkey_any buf >>= fun (pubkey, buf) ->
-  if (Hostkey.sshname pubkey) = key_alg then
+  if String.equal (Hostkey.sshname pubkey) key_alg then
     ok (pubkey, buf)
   else
-    ok (Hostkey.Unknown, buf)
+    Error ("public key algorithm not supported " ^ key_alg)
 
 let put_pubkey pubkey t =
   put_cstring (blob_of_pubkey pubkey) t
@@ -166,7 +164,6 @@ let pubkey_of_openssh buf =
     (Base64.decode key_buf) >>= fun blob ->
   (* NOTE: can't use get_pubkey here, there is no string blob *)
   pubkey_of_blob (Cstruct.of_string blob) >>= fun key ->
-  guard (key <> Hostkey.Unknown) "Unknown hostkey" >>= fun () ->
   guard (Hostkey.sshname key = key_type) "Key type mismatch" >>= fun () ->
   ok key
 
@@ -201,20 +198,16 @@ let blob_of_kexinit kex =
   put_message_id Ssh.MSG_KEXINIT (Dbuf.create ()) |>
   put_kexinit kex |> Dbuf.to_cstruct
 
-let get_signature_nocheck buf =
+let get_signature buf =
   get_cstring buf >>= fun (blob, _) ->
   get_string blob >>= fun (key_alg, blob) ->
+  Hostkey.alg_of_string key_alg >>= fun key_alg ->
   get_cstring blob >>= fun (key_sig, _) ->
   ok (key_alg, key_sig)
 
-let get_signature pub buf =
-  get_signature_nocheck buf >>= fun (key_alg, key_sig) ->
-  guard ((Hostkey.sshname pub) = key_alg) "Key type mismatch" >>= fun () ->
-  ok (key_alg, key_sig)
-
-let put_signature pubkey signature t =
+let put_signature (alg, signature) t =
   let blob =
-    put_string (Hostkey.sshname pubkey) (Dbuf.create ()) |>
+    put_string (Hostkey.alg_to_string alg) (Dbuf.create ()) |>
     put_cstring signature |>
     Dbuf.to_cstruct
   in
@@ -313,7 +306,7 @@ let get_message buf =
        get_string buf >>= fun (key_alg, buf) ->
        get_pubkey key_alg buf >>= fun (pubkey, buf) ->
        if has_sig then
-         get_signature pubkey buf >>= fun (_, key_sig) ->
+         get_signature buf >>= fun key_sig ->
          ok (Pubkey (pubkey, Some key_sig), buf)
        else
          ok (Pubkey (pubkey, None), buf)
@@ -519,7 +512,7 @@ let dh_kexdh_of_kex id buf =
   | MSG_KEX_1 ->
     get_pubkey_any buf >>= fun (k_s, buf) ->
     get_mpint buf >>= fun (f, buf) ->
-    get_signature k_s buf >>= fun (_, key_sig) ->
+    get_signature buf >>= fun key_sig ->
     ok (Msg_kexdh_reply (k_s, f, key_sig))
   | _ -> error "unsupported KEX message"
 
@@ -542,13 +535,12 @@ let dh_kexdh_gex_of_kex id buf =
   | MSG_KEX_3 ->
     get_pubkey_any buf >>= fun (k_s, buf) ->
     get_mpint buf >>= fun (f, buf) ->
-    get_signature k_s buf >>= fun (_, key_sig) ->
+    get_signature buf >>= fun key_sig ->
     ok (Msg_kexdh_gex_reply (k_s, f, key_sig))
   | _ -> error "unsupported KEX message"
 
 let put_message msg buf =
   let open Ssh in
-  let guard p e = if not p then invalid_arg e in
   let put_id = put_message_id in (* save some columns *)
   match msg with
   | Msg_disconnect (code, desc, lang) ->
@@ -585,7 +577,7 @@ let put_message msg buf =
     put_id MSG_KEX_1 buf |>
     put_pubkey k_s |>
     put_mpint f |>
-    put_signature k_s signature
+    put_signature signature
   | Msg_kexdh_gex_request (min, n, max) ->
     put_id MSG_KEX_4 buf |>
     put_uint32 min |>
@@ -602,7 +594,7 @@ let put_message msg buf =
     put_id MSG_KEX_3 buf |>
     put_pubkey k_s |>
     put_mpint f |>
-    put_signature k_s signature
+    put_signature signature
   | Msg_kex _ -> assert false
   | Msg_userauth_request (user, service, auth_method) ->
     let buf = put_id MSG_USERAUTH_REQUEST buf |>
@@ -611,14 +603,19 @@ let put_message msg buf =
     in
     (match auth_method with
      | Pubkey (pubkey, signature) ->
-       let buf = put_string "publickey" buf |>
-                 put_bool (is_some signature) |>
-                 put_string (Hostkey.sshname pubkey) |>
-                 put_pubkey pubkey
+       let buf =
+         let alg = match signature with
+           | None -> Hostkey.Rsa_sha1
+           | Some (alg, _) -> alg
+         in
+         put_string "publickey" buf |>
+         put_bool (is_some signature) |>
+         put_string (Hostkey.alg_to_string alg) |>
+         put_pubkey pubkey
        in
        (match signature with
         | None -> buf
-        | Some signature -> put_signature pubkey signature buf)
+        | Some signature -> put_signature signature buf)
      | Password (password, oldpassword) ->
        let buf = put_string "password" buf in
        (match oldpassword with
@@ -648,7 +645,6 @@ let put_message msg buf =
     put_string message |>
     put_string lang
   | Msg_userauth_pk_ok pubkey ->
-    guard (pubkey <> Hostkey.Unknown) "Unknown key";
     put_id MSG_USERAUTH_PK_OK buf |>
     put_string (Hostkey.sshname pubkey) |>
     put_pubkey pubkey

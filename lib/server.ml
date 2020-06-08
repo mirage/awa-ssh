@@ -160,10 +160,7 @@ let rec input_userauth_request t username service auth_method =
     make_reply { t with auth_state = Done; expect = None } Msg_userauth_success
   in
   let try_probe t pubkey =
-    if pubkey <> Hostkey.Unknown then
-      make_reply t (Msg_userauth_pk_ok pubkey)
-    else
-      failure t
+    make_reply t (Msg_userauth_pk_ok pubkey)
   in
   let try_auth t b = if b then success t else failure t in
   let handle_auth t =
@@ -173,8 +170,8 @@ let rec input_userauth_request t username service auth_method =
     match auth_method with
     | Pubkey (pubkey, None) ->        (* Public key probing *)
       try_probe t pubkey
-    | Pubkey (pubkey, Some signed) -> (* Public key authentication *)
-      try_auth t (by_pubkey username pubkey session_id service signed t.user_db)
+    | Pubkey (pubkey, Some (alg, signed)) -> (* Public key authentication *)
+      try_auth t (by_pubkey username alg pubkey session_id service signed t.user_db)
     | Password (password, None) ->    (* Password authentication *)
       try_auth t (by_password username password t.user_db)
     (* Change of password, or Hostbased or Authnone won't be supported *)
@@ -323,13 +320,14 @@ let input_msg t msg now =
             ~k_s:pub_host_key
             ~e ~f ~k
         in
-        let signature = Hostkey.sign t.host_key h in
+        let signature = Hostkey.sign neg.server_host_key_alg t.host_key h in
         Format.printf "shared is %a signature is %a (hash %a)\n%!"
           Cstruct.hexdump_pp (Mirage_crypto_pk.Z_extra.to_cstruct_be f)
           Cstruct.hexdump_pp signature Cstruct.hexdump_pp h;
         let session_id = match t.session_id with None -> h | Some x -> x in
         Kex.Dh.derive_keys k h session_id neg now
         >>= fun (new_keys_ctos, new_keys_stoc, key_eol) ->
+        let signature = neg.server_host_key_alg, signature in
         make_replies { t with session_id = Some session_id;
                               new_keys_ctos = Some new_keys_ctos;
                               new_keys_stoc = Some new_keys_stoc;
