@@ -1,3 +1,9 @@
+type endpoint =
+  { authenticator : Awa.Keys.authenticator option
+  ; user : string
+  ; key : Awa.Hostkey.priv
+  ; req : Awa.Ssh.channel_request }
+
 module Make
     (Scheduler : Conduit.Sigs.SCHEDULER)
     (Conduit : Conduit.S
@@ -7,15 +13,7 @@ module Make
     (M : Mirage_clock.MCLOCK) : sig
   type 'flow protocol_with_ssh
 
-  type endpoint =
-    { authenticator : Awa.Keys.authenticator option
-    ; user : string
-    ; key : Awa.Hostkey.priv
-    ; req : Awa.Ssh.channel_request }
-
   val protocol_with_ssh :
-      key:'edn Conduit.key ->
-      'flow Conduit.Witness.protocol ->
-      ('edn * endpoint) Conduit.key
-      * 'flow protocol_with_ssh Conduit.Witness.protocol
+      ('edn, 'flow) Conduit.protocol ->
+      ('edn * endpoint, 'flow protocol_with_ssh) Conduit.protocol
 end

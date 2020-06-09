@@ -1,5 +1,11 @@
 open Conduit
 
+type endpoint =
+  { authenticator : Awa.Keys.authenticator option
+  ; user : string
+  ; key : Awa.Hostkey.priv
+  ; req : Awa.Ssh.channel_request }
+
 module Make
     (Scheduler : Sigs.SCHEDULER)
     (Conduit : Conduit.S
@@ -34,11 +40,9 @@ module Make
   let is_close : closed -> bool = function
     | None -> false | _ -> true
 
-  type endpoint =
-    { authenticator : Awa.Keys.authenticator option
-    ; user : string
-    ; key : Awa.Hostkey.priv
-    ; req : Awa.Ssh.channel_request }
+  let src = Logs.Src.create "conduit-ssh"
+
+  module Log = (val Logs.src_log src : Logs.LOG)
 
   module Make_protocol
       (Flow : Sigs.PROTOCOL
@@ -57,12 +61,14 @@ module Make
       type error =
         [ `Flow of Flow.error
         | `SSH of string
-        | `Closed_by_peer ]
+        | `Closed_by_peer
+        | `Handshake_aborted ]
 
       let pp_error : error Fmt.t = fun ppf -> function
         | `Flow err -> Flow.pp_error ppf err
         | `SSH err -> Fmt.string ppf err
         | `Closed_by_peer -> Fmt.string ppf "Closed by peer"
+        | `Handshake_aborted -> Fmt.string ppf "Handshake aborted"
 
       let flow_error err = `Flow err
 
@@ -81,6 +87,7 @@ module Make
         Bigstringaf.blit src ~src_off dst ~dst_off ~len
 
       let write queue v =
+        Log.debug (fun m -> m "Got %S." (Cstruct.to_string v)) ;
         Ke.Rke.N.push queue ~blit ~length:Cstruct.len ~off:0 v
 
       let handle_event t = function
@@ -98,7 +105,7 @@ module Make
 
       let rec handle t =
         Flow.recv t.flow t.raw >>| reword_error flow_error >>? function
-        | `End_of_input ->
+        | `End_of_flow ->
           t.uid <- None ;
           t.closed <- Eof ;
           return (Ok ())
@@ -116,17 +123,23 @@ module Make
             writev t.flow out >>| reword_error flow_error >>? fun () ->
             return (Ok ())
 
-      let flow (edn, { authenticator; user; key; req; }) =
-        Flow.flow edn >>| reword_error flow_error >>? fun flow ->
+      let connect (edn, { authenticator; user; key; req; }) =
+        Log.debug (fun m -> m "Start a SSH connection with a peer.") ;
+        Flow.connect edn >>| reword_error flow_error >>? fun flow ->
+        Log.debug (fun m -> m "Connected to our peer.") ;
         let ssh, bufs = Awa.Client.make ?authenticator ~user key in
+        Log.debug (fun m -> m "SSH State initialized.") ;
         let raw = Cstruct.create 0x1000 in
         let queue = Ke.Rke.create ~capacity:0x1000 Bigarray.Char in
+        Log.debug (fun m -> m "Start a handshake SSH.") ;
         writev flow bufs >>| reword_error flow_error >>? fun () ->
         let t = { ssh; uid= None; closed= None; flow; raw; queue; } in
         handle t >>? fun () ->
         match t.uid with
-        | None -> assert false
-        | Some uid -> match Awa.Client.outgoing_request t.ssh ~id:uid req with
+        | None -> t.closed <- Eof ; return (Error `Handshake_aborted)
+        | Some uid ->
+          Log.debug (fun m -> m "Handshake is done.") ;
+          match Awa.Client.outgoing_request t.ssh ~id:uid req with
           | Error err -> return (Error (`SSH err))
           | Ok (ssh, out) ->
             t.ssh <- ssh ; writev flow [ out ] >>| reword_error flow_error >>? fun () ->
@@ -137,11 +150,12 @@ module Make
         Bigstringaf.blit src ~src_off dst ~dst_off ~len
 
       let rec recv t raw =
+        Log.debug (fun m -> m "Start to read incoming data.") ;
         match Ke.Rke.N.peek t.queue with
         | [] ->
           if not (is_close t.closed)
           then handle t >>? fun () -> recv t raw
-          else return (Ok `End_of_input)
+          else return (Ok `End_of_flow)
         | _ ->
           let max = Cstruct.len raw in
           let len = min (Ke.Rke.length t.queue) max in
@@ -150,15 +164,16 @@ module Make
           return (Ok (`Input len))
 
       let send t raw =
-        if not (is_close t.closed)
+        if is_close t.closed
         then return (Error `Closed_by_peer)
         else
-          match Awa.Client.outgoing_data t.ssh raw with
+          ( Log.debug (fun m -> m "Start encrypt outgoing data.\n%!" )
+          ; match Awa.Client.outgoing_data t.ssh raw with
           | Ok (ssh, out) ->
             writev t.flow out >>| reword_error flow_error >>? fun () ->
             t.ssh <- ssh ; return (Ok (Cstruct.len raw))
           | Error err ->
-            return (Error (`SSH err))
+            return (Error (`SSH err)) )
 
       let close t =
         t.closed <- Eof ; Flow.close t.flow >>| reword_error flow_error
@@ -166,16 +181,10 @@ module Make
 
   let protocol_with_ssh :
     type edn flow.
-    key:edn Conduit.key ->
-    flow Conduit.Witness.protocol ->
-    (edn * endpoint) Conduit.key
-    * flow protocol_with_ssh Conduit.Witness.protocol =
-    fun ~key protocol ->
-    match Conduit.impl_of_protocol ~key protocol with
-    | Ok (module Flow) ->
-      let module M = Make_protocol (Flow) in
-      let k = Conduit.key (Fmt.strf "%s + ssh" (Conduit.name_of_key key)) in
-      let p = Conduit.register_protocol ~key:k ~protocol:(module M) in
-      (k, p)
-    | Error _ -> invalid_arg "Invalid key"
+    (edn, flow) Conduit.protocol ->
+    (edn * endpoint, flow protocol_with_ssh) Conduit.protocol =
+    fun protocol ->
+    let module Flow = (val (Conduit.impl protocol)) in
+    let module M = Make_protocol (Flow) in
+    Conduit.register ~protocol:(module M)
 end
