@@ -5,11 +5,11 @@ type endpoint =
   ; req : Awa.Ssh.channel_request }
 
 module Make
-    (Scheduler : Conduit.Sigs.SCHEDULER)
+    (IO : Conduit.IO)
     (Conduit : Conduit.S
      with type input = Cstruct.t
       and type output = Cstruct.t
-      and type +'a s = 'a Scheduler.t)
+      and type +'a io = 'a IO.t)
     (M : Mirage_clock.MCLOCK) : sig
   type 'flow protocol_with_ssh
 

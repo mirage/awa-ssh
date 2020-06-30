@@ -1,5 +1,3 @@
-open Conduit
-
 type endpoint =
   { authenticator : Awa.Keys.authenticator option
   ; user : string
@@ -7,15 +5,15 @@ type endpoint =
   ; req : Awa.Ssh.channel_request }
 
 module Make
-    (Scheduler : Sigs.SCHEDULER)
+    (IO : Conduit.IO)
     (Conduit : Conduit.S
                  with type input = Cstruct.t
                   and type output = Cstruct.t
-                  and type +'a s = 'a Scheduler.t)
+                  and type +'a io = 'a IO.t)
     (M : Mirage_clock.MCLOCK)
 = struct
-  let return x = Scheduler.return x
-  let ( >>= ) x f = Scheduler.bind x f
+  let return x = IO.return x
+  let ( >>= ) x f = IO.bind x f
   let ( >>| ) x f = x >>= fun x -> return (f x)
   let ( >>? ) x f = x >>= function
     | Ok x -> f x
@@ -45,14 +43,14 @@ module Make
   module Log = (val Logs.src_log src : Logs.LOG)
 
   module Make_protocol
-      (Flow : Sigs.PROTOCOL
+      (Flow : Conduit.PROTOCOL
                 with type input = Conduit.input
                  and type output = Conduit.output
-                 and type +'a s = 'a Scheduler.t) =
+                 and type +'a io = 'a IO.t) =
     struct
       type input = Conduit.input
       type output = Conduit.output
-      type +'a s = 'a Conduit.s
+      type +'a io = 'a Conduit.io
 
       type nonrec endpoint = Flow.endpoint * endpoint
 
