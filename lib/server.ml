@@ -83,21 +83,17 @@ let make host_key user_db =
 (* t with updated keys from new_keys_ctos *)
 let of_new_keys_ctos t =
   let open Kex in
-  let open Hmac in
   guard_some t.new_keys_ctos "No new_keys_ctos" >>= fun new_keys_ctos ->
   guard (is_keyed new_keys_ctos) "Plaintext new keys" >>= fun () ->
-  let new_mac_ctos = { new_keys_ctos.mac with seq = t.keys_ctos.mac.seq } in
-  let new_keys_ctos = { new_keys_ctos with mac = new_mac_ctos } in
+  let new_keys_ctos = { new_keys_ctos with seq = t.keys_ctos.seq } in
   ok { t with keys_ctos = new_keys_ctos; new_keys_ctos = None }
 
 (* t with updated keys from new_keys_stoc *)
 let of_new_keys_stoc t =
   let open Kex in
-  let open Hmac in
   guard_some t.new_keys_stoc "No new_keys_stoc" >>= fun new_keys_stoc ->
   guard (is_keyed new_keys_stoc) "Plaintext new keys" >>= fun () ->
-  let new_mac_stoc = { new_keys_stoc.mac with seq = t.keys_stoc.mac.seq } in
-  let new_keys_stoc = { new_keys_stoc with mac = new_mac_stoc } in
+  let new_keys_stoc = { new_keys_stoc with seq = t.keys_stoc.seq } in
   ok { t with keys_stoc = new_keys_stoc; new_keys_stoc = None; keying = false }
 
 let rekey t =

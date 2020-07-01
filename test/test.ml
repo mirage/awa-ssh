@@ -53,7 +53,7 @@ let cipher_key_of cipher key iv =
     { cipher;
       cipher_key = Aes_cbc_key ((CBC.of_secret key), iv) }
 
-let hmac_key_of hmac key = Hmac.{ hmac; key; seq = Int32.zero }
+let hmac_key_of hmac key = Hmac.{ hmac; key }
 
 let encrypt_plain msg =
   fst (Packet.encrypt (Kex.make_plaintext ()) msg)
@@ -374,7 +374,7 @@ let t_crypto () =
     let iv = Cstruct.sub secret 0 16 in
     let cipher = cipher_key_of cipher secret iv in
     let mac = hmac_key_of hmac secret in
-    Kex.{ cipher; mac; tx_rx = Int64.zero }
+    Kex.{ cipher; mac; seq = Int32.zero; tx_rx = Int64.zero }
   in
   List.iter (fun cipher ->
       List.iter (fun hmac ->
