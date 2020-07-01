@@ -110,6 +110,14 @@ type negotiation = {
   compression_alg_stoc : compression_alg;
 }
 
+let pp_negotiation ppf neg =
+  Format.fprintf ppf "kex %s host key alg %s@.enc ctos %s stoc %s@.mac ctos %s stoc %s@.compression ctos %s stoc %s"
+    (alg_to_string neg.kex_alg) (Hostkey.alg_to_string neg.server_host_key_alg)
+    (Cipher.to_string neg.encryption_alg_ctos) (Cipher.to_string neg.encryption_alg_stoc)
+    (Hmac.to_string neg.mac_alg_ctos) (Hmac.to_string neg.mac_alg_stoc)
+    (compression_alg_to_string neg.compression_alg_ctos)
+    (compression_alg_to_string neg.compression_alg_stoc)
+
 let guessed_right ~s ~c =
   let compare_hd a b =
     match (a, b) with
@@ -160,17 +168,23 @@ let negotiate ~s ~c =
     ~c:c.encryption_algs_stoc
     "Can't agree on encryption algorithm server to client"
   >>= fun encryption_alg_stoc ->
-  pick_common
-    Hmac.of_string
-    ~s:s.mac_algs_ctos
-    ~c:c.mac_algs_ctos
-    "Can't agree on mac algorithm client to server"
+  (if Cipher.aead encryption_alg_ctos then
+     ok Hmac.Plaintext
+   else
+     pick_common
+       Hmac.of_string
+       ~s:s.mac_algs_ctos
+       ~c:c.mac_algs_ctos
+       "Can't agree on mac algorithm client to server")
   >>= fun mac_alg_ctos ->
-  pick_common
-    Hmac.of_string
-    ~s:s.mac_algs_stoc
-    ~c:c.mac_algs_stoc
-    "Can't agree on mac algorithm server to client"
+  (if Cipher.aead encryption_alg_stoc then
+     ok Hmac.Plaintext
+   else
+     pick_common
+       Hmac.of_string
+       ~s:s.mac_algs_stoc
+       ~c:c.mac_algs_stoc
+       "Can't agree on mac algorithm server to client")
   >>= fun mac_alg_stoc ->
   pick_common
     compression_alg_of_string
@@ -265,6 +279,13 @@ let derive_keys digesti k h session_id neg now =
     | Aes128_cbc | Aes192_cbc | Aes256_cbc ->
       { cipher;
         cipher_key = Aes_cbc_key ((AES.CBC.of_secret secret), iv) }
+    | Chacha20_poly1305 ->
+      assert (Cstruct.len secret = 64);
+      let d, l = Cstruct.split secret 32 in
+      let lkey = Mirage_crypto.Chacha20.of_secret l
+      and key = Mirage_crypto.Chacha20.of_secret d
+      in
+      { cipher; cipher_key = Chacha20_poly1305_key (lkey, key) }
   in
   (* Build new keys_ctos keys *)
   let ctos_iv = hash 'A' (Cipher.iv_len cipher_ctos) in

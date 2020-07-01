@@ -46,12 +46,15 @@ let cipher_key_of cipher key iv =
   | Plaintext -> { cipher = Plaintext;
                    cipher_key = Plaintext_key }
   | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
-    let iv = Mirage_crypto.Cipher_block.AES.CTR.ctr_of_cstruct iv in
+    let iv = CTR.ctr_of_cstruct iv in
     { cipher;
       cipher_key = Aes_ctr_key ((CTR.of_secret key), iv) }
   | Aes128_cbc | Aes192_cbc | Aes256_cbc ->
     { cipher;
       cipher_key = Aes_cbc_key ((CBC.of_secret key), iv) }
+  | Chacha20_poly1305 ->
+    let key = Mirage_crypto.Chacha20.of_secret key in
+    { cipher; cipher_key = Chacha20_poly1305_key (key, key) }
 
 let hmac_key_of hmac key = Hmac.{ hmac; key }
 

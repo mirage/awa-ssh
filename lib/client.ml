@@ -121,6 +121,7 @@ let make ?(authenticator = `No_authentication) ~user key =
 
 let handle_kexinit t c_v ckex s_v skex =
   Kex.negotiate ~s:skex ~c:ckex >>= fun neg ->
+  Log.info (fun m -> m "negotiated: %a" Kex.pp_negotiation neg);
   (* two cases: directly send the kexdh_init, or RFC 4419 and negotiate group *)
   let state, msg =
     if Kex.is_rfc4419 neg.kex_alg then
