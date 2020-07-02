@@ -198,6 +198,7 @@ let negotiate ~s ~c =
 type keys = {
   cipher   : Cipher.key; (* Encryption key *)
   mac      : Hmac.key;   (* Integrity key *)
+  seq      : int32;      (* Sequence number *)
   tx_rx    : int64;      (* Transmitted or Received bytes with this key *)
 }
 
@@ -205,8 +206,8 @@ let make_plaintext () =
   { cipher = Cipher.{ cipher = Plaintext;
                       cipher_key = Plaintext_key };
     mac = Hmac.{ hmac = Plaintext;
-                 key = Cstruct.create 0;
-                 seq = Int32.zero };
+                 key = Cstruct.create 0 };
+    seq = Int32.zero ;
     tx_rx = Int64.zero }
 
 let is_plaintext keys =
@@ -270,8 +271,8 @@ let derive_keys digesti k h session_id neg now =
   let ctos = { cipher = hash 'C' (Cipher.key_len cipher_ctos) |>
                         key_of cipher_ctos ctos_iv;
                mac = Hmac.{ hmac = mac_ctos;
-                            key = hash 'E' (key_len mac_ctos);
-                            seq = Int32.zero };
+                            key = hash 'E' (key_len mac_ctos) };
+               seq = Int32.zero;
                tx_rx = Int64.zero }
   in
   (* Build new stoc keys *)
@@ -279,8 +280,8 @@ let derive_keys digesti k h session_id neg now =
   let stoc = { cipher = hash 'D' (Cipher.key_len cipher_stoc) |>
                         key_of cipher_stoc stoc_iv;
                mac = Hmac.{ hmac = mac_stoc;
-                            key = hash 'F' (key_len mac_stoc);
-                            seq = Int32.zero };
+                            key = hash 'F' (key_len mac_stoc) };
+               seq = Int32.zero;
                tx_rx = Int64.zero }
   in
   guard_some (Mtime.add_span now keys_lifespan) "key eol overflow"

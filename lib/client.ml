@@ -66,14 +66,12 @@ let established t = match t.state with Established -> true | _ -> false
 
 let rotate_keys_ctos t new_keys_ctos =
   let open Kex in
-  let new_mac_ctos = { new_keys_ctos.mac with seq = t.keys_ctos.mac.seq } in
-  let new_keys_ctos = { new_keys_ctos with mac = new_mac_ctos } in
+  let new_keys_ctos = { new_keys_ctos with seq = t.keys_ctos.seq } in
   { t with keys_ctos = new_keys_ctos }
 
 let rotate_keys_stoc t new_keys_stoc =
   let open Kex in
-  let new_mac_stoc = { new_keys_stoc.mac with seq = t.keys_stoc.mac.seq } in
-  let new_keys_stoc = { new_keys_stoc with mac = new_mac_stoc } in
+  let new_keys_stoc = { new_keys_stoc with seq = t.keys_stoc.seq } in
   { t with keys_stoc = new_keys_stoc; keying = false }
 
 let debug_msg prefix = function
