@@ -117,13 +117,18 @@ let get_nl buf =
 let put_nl nl t =
   put_string (String.concat "," nl) t
 
-let blob_of_pubkey = function
-  | Hostkey.Rsa_pub rsa as k ->
-    let open Mirage_crypto_pk.Rsa in
-    put_string (Hostkey.sshname k) (Dbuf.create ()) |>
-    put_mpint rsa.e |>
-    put_mpint rsa.n |>
-    Dbuf.to_cstruct
+let blob_of_pubkey pk =
+  let buf = put_string (Hostkey.sshname pk) (Dbuf.create ()) in
+  let buf' =
+    match pk with
+    | Hostkey.Rsa_pub rsa ->
+      let open Mirage_crypto_pk.Rsa in
+      put_mpint rsa.e buf |>
+      put_mpint rsa.n
+    | Hostkey.Ed25519_pub pub ->
+      put_string (Cstruct.to_string pub) buf
+  in
+  Dbuf.to_cstruct buf'
 
 let pubkey_of_blob blob =
   get_string blob >>= fun (key_alg, blob) ->
@@ -134,6 +139,9 @@ let pubkey_of_blob blob =
     reword_error (function `Msg m -> m)
       (Mirage_crypto_pk.Rsa.pub ~e ~n) >>= fun pub ->
     ok (Hostkey.Rsa_pub pub)
+  | "ssh-ed25519" ->
+    get_string blob >>= fun (pub, _) ->
+    ok (Hostkey.Ed25519_pub (Cstruct.of_string pub))
   | k -> Error ("unsupported key algorithm: " ^ k)
 
 (* Prefer using get_pubkey_alg always *)
@@ -627,8 +635,10 @@ let put_message msg buf =
      | Pubkey (pubkey, signature) ->
        let buf =
          let alg = match signature with
-           | None -> Hostkey.Rsa_sha1
            | Some (alg, _) -> alg
+           | None -> match pubkey with
+             | Hostkey.Rsa_pub _ -> Hostkey.Rsa_sha1
+             | Hostkey.Ed25519_pub _ -> Hostkey.Ed25519
          in
          put_string "publickey" buf |>
          put_bool (is_some signature) |>

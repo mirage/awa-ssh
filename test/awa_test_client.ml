@@ -28,13 +28,13 @@ let write_cstruct fd buf =
   let n = Unix.write fd bytes 0 len in
   assert (n > 0)
 
-let jump _ user seed authenticator host port =
+let jump _ user seed typ authenticator host port =
   Mirage_crypto_rng_unix.initialize ();
   let fd = Unix.(socket PF_INET SOCK_STREAM 0) in
   Unix.(connect fd (ADDR_INET (inet_addr_of_string host, port)));
   match
     Keys.authenticator_of_string authenticator >>= fun authenticator ->
-    let t, out = Client.make ~authenticator ~user (Keys.of_seed seed) in
+    let t, out = Client.make ~authenticator ~user (Keys.of_seed ~typ seed) in
     List.iter (write_cstruct fd) out;
     let rec read_react t =
       let data = read_cstruct fd in
@@ -79,6 +79,10 @@ let seed =
   let doc = "private key seed" in
   Arg.(value & opt string "180586" & info [ "seed" ] ~doc)
 
+let keytype =
+  let doc = "private key type" in
+  Arg.(value & opt (enum [ ("rsa", `RSA) ; ("ed25519", `Ed25519) ]) `RSA & info [ "keytype" ] ~doc)
+
 let authenticator =
   let doc = "authenticator" in
   Arg.(value & opt string "" & info [ "authenticator" ] ~doc)
@@ -97,7 +101,7 @@ let setup_log =
         $ Logs_cli.level ())
 
 let cmd =
-  Term.(term_result (const jump $ setup_log $ user $ seed $ authenticator $ host $ port)),
+  Term.(term_result (const jump $ setup_log $ user $ seed $ keytype $ authenticator $ host $ port)),
   Term.info "awa_test_client" ~version:"%%VERSION_NUM"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
