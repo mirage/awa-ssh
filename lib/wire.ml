@@ -72,7 +72,7 @@ let put_raw buf t =
 let put_random len t =
   put_raw (Mirage_crypto_rng.generate len) t
 
-let get_mpint buf =
+let get_mpint ?(signed = true) buf =
   trap_error (fun () ->
       match ((Cstruct.BE.get_uint32 buf 0) |> Int32.to_int) with
       | 0 -> Z.zero, Cstruct.shift buf 4
@@ -80,18 +80,18 @@ let get_mpint buf =
         Ssh.guard_sshlen_exn len;
         let mpbuf = Cstruct.sub buf 4 len in
         let msb = Cstruct.get_uint8 mpbuf 0 in
-        if (msb land 0x80) <> 0 then
+        if signed && (msb land 0x80) <> 0 then
           invalid_arg "Negative mpint"
         else
           (* of_cstruct_be strips leading zeros for us *)
           Mirage_crypto_pk.Z_extra.of_cstruct_be mpbuf,
           Cstruct.shift buf (len + 4))
 
-let put_mpint mpint t =
+let put_mpint ?(signed = true) mpint t =
   let mpbuf = Mirage_crypto_pk.Z_extra.to_cstruct_be mpint in
   let mplen = Cstruct.len mpbuf in
   let t =
-    if mplen > 0 &&
+    if signed && mplen > 0 &&
        ((Cstruct.get_uint8 mpbuf 0) land 0x80) <> 0 then
       put_uint32 (Int32.of_int (succ mplen)) t |>
       put_uint8 0
@@ -516,6 +516,20 @@ let dh_kexdh_of_kex id buf =
     ok (Msg_kexdh_reply (k_s, f, key_sig))
   | _ -> error "unsupported KEX message"
 
+let dh_kexecdh_of_kex id buf =
+  (* for ECDH KEX *)
+  let open Ssh in
+  match id with
+  | MSG_KEX_0 ->
+    get_mpint ~signed:false buf >>= fun (e, _) ->
+    ok (Msg_kexecdh_init e)
+  | MSG_KEX_1 ->
+    get_pubkey_any buf >>= fun (k_s, buf) ->
+    get_mpint ~signed:false buf >>= fun (f, buf) ->
+    get_signature buf >>= fun key_sig ->
+    ok (Msg_kexecdh_reply (k_s, f, key_sig))
+  | _ -> error "unsupported KEX message"
+
 let dh_kexdh_gex_of_kex id buf =
   (* for RFC 4419 GEX *)
   let open Ssh in
@@ -577,6 +591,14 @@ let put_message msg buf =
     put_id MSG_KEX_1 buf |>
     put_pubkey k_s |>
     put_mpint f |>
+    put_signature signature
+  | Msg_kexecdh_init e ->
+    put_id MSG_KEX_0 buf |>
+    put_mpint ~signed:false e
+  | Msg_kexecdh_reply (k_s, f, signature) ->
+    put_id MSG_KEX_1 buf |>
+    put_pubkey k_s |>
+    put_mpint ~signed:false f |>
     put_signature signature
   | Msg_kexdh_gex_request (min, n, max) ->
     put_id MSG_KEX_4 buf |>

@@ -206,6 +206,9 @@ type message =
   | Msg_newkeys
   | Msg_kexdh_reply of Hostkey.pub * mpint * (Hostkey.alg * Cstruct_sexp.t)
   | Msg_kexdh_init of mpint
+  (* from RFC 5656 / 8731 *)
+  | Msg_kexecdh_reply of Hostkey.pub * mpint * (Hostkey.alg * Cstruct_sexp.t)
+  | Msg_kexecdh_init of mpint
   (* from RFC 4419 *)
   (* there's as well a Msg_kexdh_gex_request_old with only a single int32 *)
   | Msg_kexdh_gex_request of int32 * int32 * int32
@@ -249,6 +252,8 @@ let message_to_id = function
   | Msg_newkeys                    -> MSG_NEWKEYS
   | Msg_kexdh_init _               -> MSG_KEX_0
   | Msg_kexdh_reply _              -> MSG_KEX_1
+  | Msg_kexecdh_init _             -> MSG_KEX_0
+  | Msg_kexecdh_reply _            -> MSG_KEX_1
   | Msg_kexdh_gex_request _        -> MSG_KEX_4
   | Msg_kexdh_gex_group _          -> MSG_KEX_1
   | Msg_kexdh_gex_init _           -> MSG_KEX_2

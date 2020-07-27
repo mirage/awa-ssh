@@ -31,6 +31,9 @@ let pp_event ppf = function
 type kex_state =
   | Negotiated_kex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Mirage_crypto_pk.Dh.secret * Ssh.mpint
 
+type eckex_state =
+  | Negotiated_eckex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Hacl_x25519.secret * Ssh.mpint
+
 type gex_state =
   | Requested_gex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * int32 * int32 * int32
   | Negotiated_gex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * int32 * int32 * int32 * Z.t * Z.t * Mirage_crypto_pk.Dh.secret * Ssh.mpint
@@ -39,6 +42,7 @@ type state =
   | Init of string * Ssh.kexinit
   | Received_version of string * Ssh.kexinit * string
   | Kex of kex_state
+  | Eckex of eckex_state
   | Gex of gex_state
   | Newkeys_before_auth of Kex.keys * Kex.keys
   | Requested_service of string
@@ -127,10 +131,14 @@ let handle_kexinit t c_v ckex s_v skex =
     if Kex.is_rfc4419 neg.kex_alg then
       Gex (Requested_gex (c_v, ckex, s_v, skex, neg, Ssh.min_dh, Ssh.n, Ssh.max_dh)),
       Ssh.Msg_kexdh_gex_request (Ssh.min_dh, Ssh.n, Ssh.max_dh)
-    else
+    else if Kex.is_finite_field neg.kex_alg then
       let secret, my_pub = Kex.Dh.secret_pub neg.kex_alg in
       Kex (Negotiated_kex (c_v, ckex, s_v, skex, neg, secret, my_pub)),
       Ssh.Msg_kexdh_init my_pub
+    else (* not RFC 4419, not finite field -> ECDH *)
+      let secret, my_pub = Kex.Dh.ecdh_secret_pub neg.kex_alg in
+      Eckex (Negotiated_eckex (c_v, ckex, s_v, skex, neg, secret, my_pub)),
+      Ssh.Msg_kexecdh_init my_pub
   in
   (* this is not correct in respect to the specification (should use
      server-sig-algs extension of 8308): we reuse the server host key algorithms
@@ -146,10 +154,9 @@ let handle_kexinit t c_v ckex s_v skex =
   in
   ok ({ t with state ; sig_algs }, [ msg ], [])
 
-let handle_kexdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs (alg, signed) =
-  Kex.Dh.shared secret theirs >>= fun shared ->
+let dh_reply ~ec t now v_c ckex v_s skex neg shared my_pub k_s theirs (alg, signed) =
   let h =
-    Kex.Dh.compute_hash neg
+    Kex.Dh.compute_hash ~signed:(not ec) neg
       ~v_c ~v_s ~i_c:(Wire.blob_of_kexinit ckex) ~i_s:skex.Ssh.rawkex
       ~k_s ~e:my_pub ~f:theirs ~k:shared
   in
@@ -164,6 +171,14 @@ let handle_kexdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs (alg
     [ Ssh.Msg_newkeys ], []
   end else
     Error "couldn't verify kex"
+
+let handle_kexdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs p =
+  Kex.Dh.shared secret theirs >>= fun shared ->
+  dh_reply ~ec:false t now v_c ckex v_s skex neg shared my_pub k_s theirs p
+
+let handle_kexecdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs p =
+  Kex.Dh.ecdh_shared secret theirs >>= fun shared ->
+  dh_reply ~ec:true t now v_c ckex v_s skex neg shared my_pub k_s theirs p
 
 let handle_kexdh_gex_group t v_c ckex v_s skex neg min n max p gg =
   (* min <= |p| <= max *)
@@ -273,6 +288,15 @@ let input_msg t msg now =
       Wire.dh_kexdh_of_kex i d >>= function
       | Msg_kexdh_reply (pub, theirs, signed) ->
         handle_kexdh_reply t now cv ckex sv skex neg sec mypub pub theirs signed
+      | _ ->
+        Error "unexpected KEX message"
+    end
+  | Eckex (Negotiated_eckex (cv, ckex, sv, skex, neg, sec, mypub)),
+    Msg_kex (i, d) ->
+    begin
+      Wire.dh_kexecdh_of_kex i d >>= function
+      | Msg_kexecdh_reply (pub, theirs, signed) ->
+        handle_kexecdh_reply t now cv ckex sv skex neg sec mypub pub theirs signed
       | _ ->
         Error "unexpected KEX message"
     end

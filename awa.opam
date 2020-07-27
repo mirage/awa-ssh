@@ -32,6 +32,7 @@ depends: [
   "fmt"
   "cmdliner"
   "base64" {>= "3.0.0"}
+  "hacl_x25519"
 ]
 synopsis: "SSH implementation in OCaml"
 description: """The OpenSSH protocol implemented in OCaml."""
