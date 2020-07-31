@@ -34,20 +34,31 @@ type alg =
   | Diffie_hellman_group14_sha1
   | Diffie_hellman_group1_sha1
   | Diffie_hellman_group_exchange_sha1
+  | Curve25519_sha256
 
 let is_rfc4419 = function
   | Diffie_hellman_group_exchange_sha256
   | Diffie_hellman_group_exchange_sha1 -> true
   | Diffie_hellman_group14_sha256
   | Diffie_hellman_group14_sha1
-  | Diffie_hellman_group1_sha1 -> false
+  | Diffie_hellman_group1_sha1
+  | Curve25519_sha256 -> false
+
+let is_finite_field = function
+  | Diffie_hellman_group_exchange_sha256
+  | Diffie_hellman_group_exchange_sha1
+  | Diffie_hellman_group14_sha256
+  | Diffie_hellman_group14_sha1
+  | Diffie_hellman_group1_sha1 -> true
+  | Curve25519_sha256 -> false
 
 let alg_of_string = function
   | "diffie-hellman-group-exchange-sha256" -> ok Diffie_hellman_group_exchange_sha256
   | "diffie-hellman-group-exchange-sha1" -> ok Diffie_hellman_group_exchange_sha1
   | "diffie-hellman-group14-sha256" -> ok Diffie_hellman_group14_sha256
   | "diffie-hellman-group14-sha1" -> ok Diffie_hellman_group14_sha1
-  | "diffie-hellman-group1-sha1"  -> ok Diffie_hellman_group1_sha1
+  | "diffie-hellman-group1-sha1" -> ok Diffie_hellman_group1_sha1
+  | "curve25519-sha256" -> ok Curve25519_sha256
   | s -> error ("Unknown kex_alg " ^ s)
 
 let alg_to_string = function
@@ -56,23 +67,27 @@ let alg_to_string = function
   | Diffie_hellman_group14_sha256 -> "diffie-hellman-group14-sha256"
   | Diffie_hellman_group14_sha1 -> "diffie-hellman-group14-sha1"
   | Diffie_hellman_group1_sha1  -> "diffie-hellman-group1-sha1"
+  | Curve25519_sha256 -> "curve25519-sha256"
 
 let group_of_alg = function
   | Diffie_hellman_group14_sha256 -> Mirage_crypto_pk.Dh.Group.oakley_14
   | Diffie_hellman_group14_sha1 -> Mirage_crypto_pk.Dh.Group.oakley_14
   | Diffie_hellman_group1_sha1  -> Mirage_crypto_pk.Dh.Group.oakley_2
   | Diffie_hellman_group_exchange_sha1
-  | Diffie_hellman_group_exchange_sha256 -> assert false
+  | Diffie_hellman_group_exchange_sha256
+  | Curve25519_sha256 -> assert false
 
 let hash_of_alg = function
   | Diffie_hellman_group_exchange_sha256
-  | Diffie_hellman_group14_sha256 -> Mirage_crypto.Hash.module_of `SHA256
+  | Diffie_hellman_group14_sha256
+  | Curve25519_sha256 -> Mirage_crypto.Hash.module_of `SHA256
   | Diffie_hellman_group_exchange_sha1
   | Diffie_hellman_group14_sha1
   | Diffie_hellman_group1_sha1 -> Mirage_crypto.Hash.module_of `SHA1
 
 let client_supported =
-  [ Diffie_hellman_group14_sha256 ; Diffie_hellman_group_exchange_sha256 ;
+  [ Curve25519_sha256 ;
+    Diffie_hellman_group14_sha256 ; Diffie_hellman_group_exchange_sha256 ;
     Diffie_hellman_group14_sha1 ; Diffie_hellman_group1_sha1 ;
     Diffie_hellman_group_exchange_sha1 ]
 
@@ -315,7 +330,7 @@ module Dh = struct
     let (module H) = hash_of_alg neg.kex_alg in
     derive_keys H.digesti k h session_id neg now
 
-  let compute_hash neg ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
+  let compute_hash ?(signed = false) neg ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
     let (module H) = hash_of_alg neg.kex_alg in
     let open Wire in
     put_cstring (Cstruct.of_string v_c) (Dbuf.create ()) |>
@@ -323,8 +338,8 @@ module Dh = struct
     put_cstring i_c |>
     put_cstring i_s |>
     put_cstring (Wire.blob_of_pubkey k_s) |>
-    put_mpint e |>
-    put_mpint f |>
+    put_mpint ~signed e |>
+    put_mpint ~signed f |>
     put_mpint k |>
     Dbuf.to_cstruct |>
     H.digest
@@ -353,10 +368,22 @@ module Dh = struct
     secret, Mirage_crypto_pk.Z_extra.of_cstruct_be pub
 
   let shared secret recv =
-    guard_some
-      (Mirage_crypto_pk.Dh.shared secret (Mirage_crypto_pk.Z_extra.to_cstruct_be recv))
-      "Can't compute shared secret"
-    >>= fun shared ->
+    let r = Mirage_crypto_pk.Z_extra.to_cstruct_be recv in
+    guard_some (Mirage_crypto_pk.Dh.shared secret r)
+      "Can't compute shared secret" >>= fun shared ->
+    ok (Mirage_crypto_pk.Z_extra.of_cstruct_be shared)
+
+  let ecdh_secret_pub = function
+    | Curve25519_sha256 ->
+      let secret, pub = Hacl_x25519.gen_key ~rng:Mirage_crypto_rng.generate in
+      secret, Mirage_crypto_pk.Z_extra.of_cstruct_be pub
+    | _ -> assert false
+
+  let ecdh_shared secret recv =
+    let r = Mirage_crypto_pk.Z_extra.to_cstruct_be recv in
+    Rresult.R.(reword_error (function `Msg m -> m)
+        (error_to_msg ~pp_error:Hacl_x25519.pp_error
+           (Hacl_x25519.key_exchange secret r))) >>= fun shared ->
     ok (Mirage_crypto_pk.Z_extra.of_cstruct_be shared)
 
   let generate alg peer_pub =
