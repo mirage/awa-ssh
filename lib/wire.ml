@@ -184,6 +184,62 @@ let privkey_of_pem buf =
   X509.Private_key.decode_pem buf >>| fun (`RSA key) ->
   Hostkey.Rsa_priv key
 
+let privkey_of_openssh buf =
+  (* as defined in https://cvsweb.openbsd.org/cgi-bin/cvsweb/~checkout~/src/usr.bin/ssh/PROTOCOL.key?rev=1.1&content-type=text/plain *)
+  let id s =
+    let dash = "-----" in
+    dash ^ (if s then "BEGIN" else "END") ^ " OPENSSH PRIVATE KEY" ^ dash
+  in
+  let data = Cstruct.to_string buf in
+  (match String.split_on_char '\n' data with
+   | hd :: data ->
+     begin match List.rev data with
+       | "" :: last :: data' | last :: data' ->
+         let data = String.concat "" (List.rev data') in
+         if String.equal hd (id true) && String.equal last (id false) then
+           Rresult.R.reword_error (function `Msg m -> m ) (Base64.decode data)
+         else
+           Error "not an OpenSSH private key"
+       | [] -> Error "not a valid OpenSSH private key"
+     end
+   | [] -> Error "invalid OpenSSH private key") >>= fun data ->
+  let cs = Cstruct.of_string data in
+  let auth_magic = Cstruct.of_string "openssh-key-v1\000" in
+  let pre, cs = Cstruct.split cs (Cstruct.len auth_magic) in
+  guard (Cstruct.equal pre auth_magic) "bad auth magic" >>= fun () ->
+  get_string cs >>= fun (cipher, cs) ->
+  guard (String.equal cipher "none") "only unencrypted private keys supported" >>= fun () ->
+  get_string cs >>= fun (kdf, cs) ->
+  guard (String.equal kdf "none") "only unencrypted private keys supported" >>= fun () ->
+  get_string cs >>= fun (kdfopts, cs) ->
+  guard (String.equal kdfopts "") "only no kdfoptions supported" >>= fun () ->
+  get_uint32 cs >>= fun (keys, cs) ->
+  guard (keys = 1l) "only one key supported" >>= fun () ->
+  get_uint32 cs >>= fun (pklen, cs) ->
+  get_uint32 (Cstruct.shift cs (Int32.to_int pklen)) >>= fun (_plen, priv) ->
+  (* 64 bit checkint - useful when crypted *)
+  get_string (Cstruct.shift priv 8) >>= fun (keytype, cs) ->
+  match keytype with
+  | "ssh-ed25519" ->
+    get_cstring cs >>= fun (_pub, cs) ->
+    get_cstring cs >>= fun (priv, cs) ->
+    get_string cs >>= fun (comment, _padding) ->
+    let priv = Cstruct.sub priv 0 32 in
+    Ok (Hostkey.Ed25519_priv (Hacl_ed25519.priv priv), comment)
+  | "ssh-rsa" ->
+    get_mpint cs >>= fun (n, cs) ->
+    get_mpint cs >>= fun (e, cs) ->
+    get_mpint cs >>= fun (d, cs) ->
+    get_mpint cs >>= fun (q', cs) ->
+    get_mpint cs >>= fun (p, cs) ->
+    get_mpint cs >>= fun (q, cs) ->
+    get_string cs >>= fun (comment, _padding) ->
+    let dp = Z.(d mod (pred p)) and dq = Z.(d mod (pred q)) in
+    Rresult.R.reword_error (function `Msg m -> m)
+      (Mirage_crypto_pk.Rsa.priv ~e ~d ~n ~p ~q ~dp ~dq ~q') >>= fun p ->
+    Ok (Hostkey.Rsa_priv p, comment)
+  | x -> Error ("unsupported key type " ^ x)
+
 let put_kexinit kex t =
   let open Ssh in
   let nll = [ kex.kex_algs;
