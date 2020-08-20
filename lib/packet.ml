@@ -55,7 +55,7 @@ let decrypt keys buf =
     guard (pkt_len > 0 && pkt_len < max_pkt_len) "decrypt: Bogus pkt len"
     >>= fun () ->
     (* 4 is pkt_len field itself *)
-    if Cstruct.len buf < pkt_len + 4 + digest_len then
+    if Cstruct.len buf < pkt_len + 4 + digest_len + mac_len then
       partial buf
     else
       let pkt_enc, digest1 = Cstruct.split buf (pkt_len + 4 + mac_len) in
