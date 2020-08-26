@@ -1,5 +1,0 @@
-(library
- (name awa_mirage)
- (public_name awa-mirage)
- (wrapped false)
- (libraries awa mirage-flow mirage-clock lwt mtime logs))
