@@ -57,7 +57,9 @@ let guard_msg t msg =
 
 let make host_key user_db =
   let open Ssh in
-  let server_kexinit = Kex.make_kexinit Kex.server_supported () in
+  let server_kexinit =
+    Kex.make_kexinit Hostkey.preferred_algs Kex.server_supported ()
+  in
   let banner_msg = Ssh.Msg_version version_banner in
   let kex_msg = Ssh.Msg_kexinit server_kexinit in
   { client_version = None;
@@ -99,7 +101,9 @@ let of_new_keys_stoc t =
 let rekey t =
   match t.keying, (Kex.is_keyed t.keys_stoc) with
   | false, true ->              (* can't be keying and must be keyed *)
-    let server_kexinit = Kex.make_kexinit Kex.server_supported () in
+    let server_kexinit =
+      Kex.make_kexinit Hostkey.preferred_algs Kex.server_supported ()
+    in
     let t = { t with server_kexinit; keying = true } in
     Some (t, Ssh.Msg_kexinit server_kexinit)
   | _ -> None

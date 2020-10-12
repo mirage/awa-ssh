@@ -74,6 +74,10 @@ let sexp_of_alg t = Sexplib.Sexp.Atom (alg_to_string t)
 
 let preferred_algs = [ Ed25519 ; Rsa_sha256 ; Rsa_sha512 ; Rsa_sha1 ]
 
+let algs_of_typ = function
+  | `Ed25519 -> [ Ed25519 ]
+  | `Rsa -> [ Rsa_sha256 ; Rsa_sha512 ; Rsa_sha1 ]
+
 let signature_equal = Cstruct.equal
 
 let sign alg priv blob =

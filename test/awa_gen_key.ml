@@ -21,7 +21,7 @@ let seed =
 
 let keytype =
   let doc = "private key type" in
-  Arg.(value & opt (enum [ ("rsa", `RSA) ; ("ed25519", `Ed25519) ]) `RSA & info [ "keytype" ] ~doc)
+  Arg.(value & opt (enum [ ("rsa", `Rsa) ; ("ed25519", `Ed25519) ]) `Rsa & info [ "keytype" ] ~doc)
 
 let cmd =
   Term.(term_result (const gen_key $ seed $ keytype)),
