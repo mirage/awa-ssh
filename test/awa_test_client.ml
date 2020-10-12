@@ -34,7 +34,7 @@ let jump _ user seed typ authenticator host port =
   Unix.(connect fd (ADDR_INET (inet_addr_of_string host, port)));
   match
     Keys.authenticator_of_string authenticator >>= fun authenticator ->
-    let t, out = Client.make ~authenticator ~user (Keys.of_seed ~typ seed) in
+    let t, out = Client.make ~authenticator ~user (Keys.of_seed typ seed) in
     List.iter (write_cstruct fd) out;
     let rec read_react t =
       let data = read_cstruct fd in

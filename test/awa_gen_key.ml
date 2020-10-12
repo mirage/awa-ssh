@@ -7,7 +7,7 @@ let gen_key seed typ =
     | Some x -> x
   in
   Printf.printf "seed is %s\n" seed;
-  let hostkey = Awa.Keys.of_seed ~typ seed in
+  let hostkey = Awa.Keys.of_seed typ seed in
   let pub = Awa.Hostkey.pub_of_priv hostkey in
   let public = Awa.Wire.blob_of_pubkey pub in
   Printf.printf "%s %s awa@awa.local\n" (Awa.Hostkey.sshname pub) (b64s public);

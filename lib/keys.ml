@@ -71,7 +71,7 @@ let authenticator_of_string str =
       | Error (`Msg msg) ->
         Error (str ^ " is invalid or unsupported authenticator, b64 failed: " ^ msg)
 
-let of_seed ?(typ = `Rsa) seed =
+let of_seed typ seed =
   let g =
     let seed = Cstruct.of_string seed in
     Mirage_crypto_rng.(create ~seed (module Fortuna))
