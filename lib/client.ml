@@ -106,7 +106,13 @@ let output_msgs t msgs =
 
 let make ?(authenticator = `No_authentication) ~user key =
   let open Ssh in
-  let client_kexinit = Kex.make_kexinit Kex.client_supported () in
+  let hostkey_algs = match authenticator with
+    | `No_authentication -> Hostkey.preferred_algs
+    | `Key Hostkey.Rsa_pub _ -> Hostkey.algs_of_typ `Rsa
+    | `Key Hostkey.Ed25519_pub _ -> Hostkey.algs_of_typ `Ed25519
+    | `Fingerprint (typ, _) -> Hostkey.algs_of_typ typ
+  in
+  let client_kexinit = Kex.make_kexinit hostkey_algs Kex.client_supported () in
   let banner_msg = Ssh.Msg_version version_banner in
   let kex_msg = Ssh.Msg_kexinit client_kexinit in
   let t = { state = Init (version_banner, client_kexinit);

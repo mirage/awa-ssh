@@ -95,11 +95,11 @@ let server_supported =
   [ Diffie_hellman_group14_sha256 ; Diffie_hellman_group14_sha1 ;
     Diffie_hellman_group1_sha1 ]
 
-let make_kexinit algs () =
+let make_kexinit host_key_algs algs () =
   let k =
     { cookie = Mirage_crypto_rng.generate 16;
       kex_algs = List.map alg_to_string algs;
-      server_host_key_algs = List.map Hostkey.alg_to_string Hostkey.preferred_algs;
+      server_host_key_algs = List.map Hostkey.alg_to_string host_key_algs;
       encryption_algs_ctos = List.map Cipher.to_string Cipher.preferred;
       encryption_algs_stoc = List.map Cipher.to_string Cipher.preferred;
       mac_algs_ctos = List.map Hmac.to_string Hmac.preferred;
