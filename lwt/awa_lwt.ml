@@ -52,16 +52,12 @@ let wrapr = function
   | Ok x -> Lwt.return x
   | Error e -> Lwt.fail_invalid_arg e
 
-(* XXX REMOVE ME ONCE WE DONT CONFLICT WITH NEW CSTRUCT *)
-let cs_to_bytes buf =
-  Cstruct.to_string buf |> Bytes.of_string
-
 let send_msg fd server msg =
   wrapr (Awa.Server.output_msg server msg)
   >>= fun (server, msg_buf) ->
   Lwt_io.printf ">>> %s\n%!" (Awa.Ssh.message_to_string msg)
   >>= fun () ->
-  Lwt_unix.write fd (cs_to_bytes msg_buf) 0 (Cstruct.len msg_buf)
+  Lwt_unix.write fd (Cstruct.to_bytes msg_buf) 0 (Cstruct.len msg_buf)
   >>= fun n ->
   assert (n = Cstruct.len msg_buf);
   Lwt.return server
