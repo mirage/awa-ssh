@@ -1,6 +1,6 @@
 opam-version: "2.0"
 maintainer: [ "Christiano F. Haesbaert <haesbaert@haesbaert.org>" "Hannes Mehnert <hannes@mehnert.org>" ]
-authors: "Christiano F. Haesbaert <haesbaert@haesbaert.org>"
+authors: [ "Christiano F. Haesbaert <haesbaert@haesbaert.org>" "Hannes Mehnert <hannes@mehnert.org>" ]
 license: "ISC"
 homepage: "https://github.com/mirage/awa-ssh"
 bug-reports: "https://github.com/mirage/awa-ssh/issues"
@@ -8,13 +8,13 @@ dev-repo: "git+https://github.com/mirage/awa-ssh.git"
 doc: "https://mirage.github.io/awa-ssh/api"
 
 build: [
-  ["dune" "subst"] {pinned}
+  ["dune" "subst"] {dev}
   ["dune" "build" "-p" name "-j" jobs]
   ["dune" "runtest" "-p" name "-j" jobs] {with-test}
 ]
 
 depends: [
-  "ocaml" {>= "4.07.0"}
+  "ocaml" {>= "4.08.0"}
   "dune" {>= "1.0"}
   "ppx_sexp_conv"
   "ppx_cstruct"
