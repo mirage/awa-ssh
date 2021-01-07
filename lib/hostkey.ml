@@ -78,6 +78,12 @@ let algs_of_typ = function
   | `Ed25519 -> [ Ed25519 ]
   | `Rsa -> [ Rsa_sha256 ; Rsa_sha512 ; Rsa_sha1 ]
 
+let priv_to_typ = function
+  | Rsa_priv _ -> `Rsa
+  | Ed25519_priv _ -> `Ed25519
+
+let alg_matches typ alg = List.mem alg (algs_of_typ typ)
+
 let signature_equal = Cstruct.equal
 
 let sign alg priv blob =

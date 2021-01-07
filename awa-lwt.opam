@@ -17,9 +17,11 @@ depends: [
   "ocaml" {>= "4.04.2"}
   "dune" {build & >= "1.0"}
   "awa" {= version}
-  "cstruct"       {>= "1.9.0"}
+  "cstruct"       {>= "3.2.0"}
   "mtime"
   "lwt"
+  "cstruct-unix"
+  "mirage-crypto-rng"
 ]
 synopsis: "SSH implementation in OCaml"
 description: """The OpenSSH protocol implemented in OCaml."""

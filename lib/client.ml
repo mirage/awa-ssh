@@ -156,7 +156,8 @@ let handle_kexinit t c_v ckex s_v skex =
           match Hostkey.alg_of_string a with Ok a -> a :: acc | Error _ -> acc)
         [] skex.server_host_key_algs
     in
-    List.filter (fun a -> List.mem a s) Hostkey.preferred_algs
+    let s = List.filter (fun a -> List.mem a s) Hostkey.preferred_algs in
+    List.filter Hostkey.(alg_matches (priv_to_typ t.key)) s
   in
   ok ({ t with state ; sig_algs }, [ msg ], [])
 
