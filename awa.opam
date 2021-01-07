@@ -1,6 +1,6 @@
 opam-version: "2.0"
 maintainer: [ "Christiano F. Haesbaert <haesbaert@haesbaert.org>" "Hannes Mehnert <hannes@mehnert.org>" ]
-authors: "Christiano F. Haesbaert <haesbaert@haesbaert.org>"
+authors: [ "Christiano F. Haesbaert <haesbaert@haesbaert.org>" "Hannes Mehnert <hannes@mehnert.org>" ]
 license: "ISC"
 homepage: "https://github.com/mirage/awa-ssh"
 bug-reports: "https://github.com/mirage/awa-ssh/issues"
