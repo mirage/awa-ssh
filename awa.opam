@@ -21,6 +21,7 @@ depends: [
   "mirage-crypto" {>= "0.8.1"}
   "mirage-crypto-rng"
   "mirage-crypto-pk"
+  "mirage-crypto-ec"
   "x509" {>= "0.10.0"}
   "cstruct" {>= "3.2.0"}
   "cstruct-unix"
@@ -32,7 +33,6 @@ depends: [
   "fmt"
   "cmdliner"
   "base64" {>= "3.0.0"}
-  "hacl_x25519" {>= "0.2.0"}
   "zarith"
 ]
 synopsis: "SSH implementation in OCaml"

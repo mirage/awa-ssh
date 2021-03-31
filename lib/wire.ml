@@ -126,7 +126,8 @@ let blob_of_pubkey pk =
       put_mpint rsa.e buf |>
       put_mpint rsa.n
     | Hostkey.Ed25519_pub pub ->
-      put_string (Cstruct.to_string pub) buf
+      let pub_cs = Mirage_crypto_ec.Ed25519.pub_to_cstruct pub in
+      put_string (Cstruct.to_string pub_cs) buf
   in
   Dbuf.to_cstruct buf'
 
@@ -141,7 +142,10 @@ let pubkey_of_blob blob =
     ok (Hostkey.Rsa_pub pub)
   | "ssh-ed25519" ->
     get_string blob >>= fun (pub, _) ->
-    ok (Hostkey.Ed25519_pub (Cstruct.of_string pub))
+    let cs = Cstruct.of_string pub in
+    reword_error (Fmt.to_to_string Mirage_crypto_ec.pp_error)
+      (Mirage_crypto_ec.Ed25519.pub_of_cstruct cs) >>= fun pubkey ->
+    ok (Hostkey.Ed25519_pub pubkey)
   | k -> Error ("unsupported key algorithm: " ^ k)
 
 (* Prefer using get_pubkey_alg always *)
@@ -225,7 +229,9 @@ let privkey_of_openssh buf =
     get_cstring cs >>= fun (priv, cs) ->
     get_string cs >>= fun (comment, _padding) ->
     let priv = Cstruct.sub priv 0 32 in
-    Ok (Hostkey.Ed25519_priv (Hacl_ed25519.priv priv), comment)
+    reword_error (Fmt.to_to_string Mirage_crypto_ec.pp_error)
+      (Mirage_crypto_ec.Ed25519.priv_of_cstruct priv) >>= fun priv_key ->
+    Ok (Hostkey.Ed25519_priv priv_key, comment)
   | "ssh-rsa" ->
     get_mpint cs >>= fun (n, cs) ->
     get_mpint cs >>= fun (e, cs) ->
