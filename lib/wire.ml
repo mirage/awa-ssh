@@ -185,8 +185,10 @@ let openssh_of_pubkey key =
   |> Cstruct.of_string
 
 let privkey_of_pem buf =
-  X509.Private_key.decode_pem buf >>| fun (`RSA key) ->
-  Hostkey.Rsa_priv key
+  X509.Private_key.decode_pem buf >>= function
+  | `RSA key -> Ok (Hostkey.Rsa_priv key)
+  | `ED25519 key -> Ok (Hostkey.Ed25519_priv key)
+  | _ -> Error (`Msg "unsupported private key")
 
 let privkey_of_openssh buf =
   (* as defined in https://cvsweb.openbsd.org/cgi-bin/cvsweb/~checkout~/src/usr.bin/ssh/PROTOCOL.key?rev=1.1&content-type=text/plain *)
