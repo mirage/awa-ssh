@@ -18,15 +18,15 @@ open Mirage_crypto_pk
 
 type priv =
   | Rsa_priv of Rsa.priv
-  | Ed25519_priv of Hacl_ed25519.priv
+  | Ed25519_priv of Mirage_crypto_ec.Ed25519.priv
 
 type pub =
   | Rsa_pub of Rsa.pub
-  | Ed25519_pub of Cstruct.t
+  | Ed25519_pub of Mirage_crypto_ec.Ed25519.pub
 
 let pub_of_priv = function
   | Rsa_priv priv -> Rsa_pub (Rsa.pub_of_priv priv)
-  | Ed25519_priv priv -> Ed25519_pub (Hacl_ed25519.priv_to_public priv)
+  | Ed25519_priv priv -> Ed25519_pub (Mirage_crypto_ec.Ed25519.pub_of_priv priv)
 
 let sexp_of_pub p =
   let alg = match p with Rsa_pub _ -> "RSA" | Ed25519_pub _ -> "ED25519" in
@@ -92,12 +92,12 @@ let sign alg priv blob =
     let hash = hash alg in
     Rsa.PKCS1.sign ~hash ~key:priv (`Message blob)
   | Ed25519_priv priv ->
-    Hacl_ed25519.sign priv blob
+    Mirage_crypto_ec.Ed25519.sign ~key:priv blob
 
 let verify alg pub ~unsigned ~signed =
   match pub with
-  | Rsa_pub pub ->
+  | Rsa_pub key ->
     let hashp h = h = hash alg in
-    Rsa.PKCS1.verify ~hashp ~key:pub ~signature:signed (`Message unsigned)
-  | Ed25519_pub pub ->
-    Hacl_ed25519.verify ~pub ~msg:unsigned ~signature:signed
+    Rsa.PKCS1.verify ~hashp ~key ~signature:signed (`Message unsigned)
+  | Ed25519_pub key ->
+    Mirage_crypto_ec.Ed25519.verify ~key signed ~msg:unsigned

@@ -42,7 +42,7 @@ type kex_state =
   | Negotiated_kex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Mirage_crypto_pk.Dh.secret * Ssh.mpint
 
 type eckex_state =
-  | Negotiated_eckex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Hacl_x25519.secret * Ssh.mpint
+  | Negotiated_eckex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Mirage_crypto_ec.X25519.secret * Ssh.mpint
 
 type gex_state =
   | Requested_gex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * int32 * int32 * int32

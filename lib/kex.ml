@@ -375,15 +375,15 @@ module Dh = struct
 
   let ecdh_secret_pub = function
     | Curve25519_sha256 ->
-      let secret, pub = Hacl_x25519.gen_key ~rng:Mirage_crypto_rng.generate in
+      let rng = Mirage_crypto_rng.generate in
+      let secret, pub = Mirage_crypto_ec.X25519.gen_key ~rng in
       secret, Mirage_crypto_pk.Z_extra.of_cstruct_be pub
     | _ -> assert false
 
   let ecdh_shared secret recv =
     let r = Mirage_crypto_pk.Z_extra.to_cstruct_be recv in
-    Rresult.R.(reword_error (function `Msg m -> m)
-        (error_to_msg ~pp_error:Hacl_x25519.pp_error
-           (Hacl_x25519.key_exchange secret r))) >>= fun shared ->
+    Rresult.R.(reword_error (Fmt.to_to_string Mirage_crypto_ec.pp_error)
+                 (Mirage_crypto_ec.X25519.key_exchange secret r)) >>= fun shared ->
     ok (Mirage_crypto_pk.Z_extra.of_cstruct_be shared)
 
   let generate alg peer_pub =
