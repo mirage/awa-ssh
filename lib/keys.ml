@@ -85,9 +85,7 @@ let of_seed typ seed =
                  (Cstruct.to_string pubkey |> Base64.encode_string));
     Hostkey.Rsa_priv key
   | `Ed25519 ->
-    let priv, pub =
-      Mirage_crypto_ec.Ed25519.generate ~rng:(Mirage_crypto_rng.generate ~g)
-    in
+    let priv, pub = Mirage_crypto_ec.Ed25519.generate ~g () in
     let pubkey = Wire.blob_of_pubkey (Hostkey.Ed25519_pub pub) in
     Log.info (fun m -> m "using ssh-ed25519 %s"
                  (Cstruct.to_string pubkey |> Base64.encode_string));

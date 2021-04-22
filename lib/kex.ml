@@ -375,8 +375,7 @@ module Dh = struct
 
   let ecdh_secret_pub = function
     | Curve25519_sha256 ->
-      let rng = Mirage_crypto_rng.generate in
-      let secret, pub = Mirage_crypto_ec.X25519.gen_key ~rng in
+      let secret, pub = Mirage_crypto_ec.X25519.gen_key () in
       secret, Mirage_crypto_pk.Z_extra.of_cstruct_be pub
     | _ -> assert false
 
