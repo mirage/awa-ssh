@@ -91,7 +91,7 @@ let rotate_keys_stoc t new_keys_stoc =
 let debug_msg prefix = function
   | Ssh.Msg_channel_data (id, data) ->
     Log.debug (fun m -> m "%s (Msg_data %d bytes for %lu)" prefix
-                  (Cstruct.len data) id)
+                  (Cstruct.length data) id)
   | msg -> Log.debug (fun m -> m "%s %s" prefix (Ssh.message_to_string msg))
 
 let output_msg t msg =
@@ -408,7 +408,7 @@ let outgoing_request t ?(id = 0l) ?(want_reply = false) req =
 
 let outgoing_data t ?(id = 0l) data =
   guard (established t) "not yet established" >>= fun () ->
-  guard (Cstruct.len data > 0) "empty data" >>= fun () ->
+  guard (Cstruct.length data > 0) "empty data" >>= fun () ->
   guard_some (Channel.lookup id t.channels) "no such channel" >>= fun c ->
   Channel.output_data c data >>| fun (c, frags) ->
   let t' = { t with channels = Channel.update c t.channels } in

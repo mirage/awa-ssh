@@ -403,7 +403,7 @@ let output_msg t msg =
   | _ -> ok (t, buf)
 
 let output_channel_data t id data =
-  guard ((Cstruct.len data) > 0) "empty data" >>= fun () ->
+  guard (Cstruct.length data > 0) "empty data" >>= fun () ->
   guard_some (Channel.lookup id t.channels) "no such channel" >>= fun c ->
   Channel.output_data c data >>= fun (c, frags) ->
   ok ({ t with channels = Channel.update c t.channels }, frags)

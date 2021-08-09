@@ -25,13 +25,13 @@ let hmac mac seq buf =
   Hmac.hmacv hmac ~key [ seqbuf; buf ]
 
 let peek_len cipher seq block_len buf =
-  assert (block_len <= Cstruct.len buf);
+  assert (block_len <= Cstruct.length buf);
   let buf = Cstruct.sub buf 0 block_len in
   Cipher.decrypt ~len:true seq cipher buf >>| fun (hdr, _) ->
   Ssh.get_pkt_hdr_pkt_len hdr |> Int32.to_int
 
 let partial buf =
-  if Cstruct.len buf < Ssh.max_pkt_len then
+  if Cstruct.length buf < Ssh.max_pkt_len then
     ok None
   else
     error "Buffer is too big"
@@ -48,18 +48,18 @@ let decrypt keys buf =
   let digest_len = Hmac.(digest_len mac.hmac)
   and mac_len = Cipher.(mac_len cipher.Cipher.cipher)
   in
-  if Cstruct.len buf < max sizeof_pkt_hdr (digest_len + mac_len + block_len) then
+  if Cstruct.length buf < max sizeof_pkt_hdr (digest_len + mac_len + block_len) then
     partial buf
   else
     peek_len cipher seq block_len buf >>= fun pkt_len ->
     guard (pkt_len > 0 && pkt_len < max_pkt_len) "decrypt: Bogus pkt len"
     >>= fun () ->
     (* 4 is pkt_len field itself *)
-    if Cstruct.len buf < pkt_len + 4 + digest_len + mac_len then
+    if Cstruct.length buf < pkt_len + 4 + digest_len + mac_len then
       partial buf
     else
       let pkt_enc, digest1 = Cstruct.split buf (pkt_len + 4 + mac_len) in
-      let tx_rx = Int64.(add keys.Kex.tx_rx (Cstruct.len pkt_enc - mac_len |> of_int)) in
+      let tx_rx = Int64.(add keys.Kex.tx_rx (Cstruct.length pkt_enc - mac_len |> of_int)) in
       Cipher.decrypt ~len:false seq cipher pkt_enc >>= fun (pkt_dec, cipher) ->
       let digest1 = Cstruct.sub digest1 0 digest_len in
       let digest2 = hmac mac seq pkt_dec in
@@ -88,13 +88,11 @@ let encrypt keys msg =
   in
   assert (padlen >= 4 && padlen <= 255);
   let pkt = Wire.put_random padlen buf |> Dbuf.to_cstruct in
-  Ssh.set_pkt_hdr_pkt_len pkt (Int32.of_int (Cstruct.len pkt - 4));
+  Ssh.set_pkt_hdr_pkt_len pkt (Int32.of_int (Cstruct.length pkt - 4));
   Ssh.set_pkt_hdr_pad_len pkt padlen;
   let digest = hmac mac seq pkt in
   let enc, cipher = Cipher.encrypt ~len:false seq cipher pkt in
   let packet = Cstruct.append enc digest in
-  let tx_rx = Int64.add keys.Kex.tx_rx
-      (Cstruct.len packet |> Int64.of_int)
-  in
+  let tx_rx = Int64.add keys.Kex.tx_rx (Cstruct.length packet |> Int64.of_int) in
   let keys = Kex.{ cipher; mac; seq = Int32.succ keys.Kex.seq; tx_rx } in
   packet, keys

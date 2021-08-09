@@ -129,7 +129,7 @@ let t_parsing () =
   guard_some r "decrypt gave no packet" >>= fun (pkt, rbuf) ->
   Packet.to_msg pkt >>= fun msg2 ->
   guard (msg = msg2) "decrypted msg differs from encrypted" >>= fun () ->
-  guard ((Cstruct.len rbuf) = 0) "buffer is not fully parsed" >>= fun () ->
+  guard (Cstruct.length rbuf = 0) "buffer is not fully parsed" >>= fun () ->
   (*
    * Case 2: 1 byte left
    *)
@@ -139,7 +139,7 @@ let t_parsing () =
   let pkt, rbuf = get_some @@ get_ok @@ decrypt_plain buf in
   let msg2 = get_ok @@ Packet.to_msg pkt in
   assert (msg = msg2);
-  assert ((Cstruct.len rbuf) = 1);
+  assert (Cstruct.length rbuf = 1);
 
   (* Case 3: Test a zero pkt_len *)
   let buf = Cstruct.create 64 in
@@ -152,7 +152,7 @@ let t_parsing () =
     let buf = encrypt_plain msg in
     let pkt, buf = get_some @@ get_ok @@ decrypt_plain buf in
     let msg2 = get_ok @@ Packet.to_msg pkt in
-    assert ((Cstruct.len buf) = 0);
+    assert (Cstruct.length buf = 0);
     match msg, msg2 with
     (* Can't compare Cstruct.t, must unpack and Cstruct.equal () *)
     | Msg_userauth_request (user_a, service_a, authmethod_a),
@@ -281,7 +281,7 @@ let t_key_exchange () =
 let t_namelist () =
   let s = ["The";"Conquest";"Of";"Bread"] in
   let buf = Dbuf.to_cstruct @@ Wire.put_nl s (Dbuf.create ()) in
-  assert (Cstruct.len buf = (4 + String.length (String.concat "," s)));
+  assert (Cstruct.length buf = 4 + String.length (String.concat "," s));
   assert (s = fst (get_ok (Wire.get_nl buf)));
   test_ok
 
@@ -299,10 +299,10 @@ let t_mpint () =
   Cstruct.set_uint8 data 1 0x00;
   Cstruct.set_uint8 data 2 0xff;
   Cstruct.set_uint8 data 3 0x02;
-  Cstruct.BE.set_uint32 head 0 (Int32.of_int (Cstruct.len data));
+  Cstruct.BE.set_uint32 head 0 (Int32.of_int (Cstruct.length data));
   let mpint = fst @@ get_ok @@ Wire.get_mpint (Cstruct.append head data) in
   let buf = Mirage_crypto_pk.Z_extra.to_cstruct_be mpint in
-  assert ((Cstruct.len buf) = 2); (* Cuts the first two zeros *)
+  assert (Cstruct.length buf = 2); (* Cuts the first two zeros *)
   assert_byte buf 0 0xff;
   assert_byte buf 1 0x02;
 
@@ -321,7 +321,7 @@ let t_mpint () =
    *)
   let buf = Dbuf.to_cstruct @@ Wire.put_mpint mpint (Dbuf.create ()) in
   (* 4 for header + 1 zero prepended + 2 data*)
-  assert ((Cstruct.len buf) = (4 + 1 + 2));
+  assert (Cstruct.length buf = 4 + 1 + 2);
   assert_byte buf 0 0x00;
   assert_byte buf 1 0x00;
   assert_byte buf 2 0x00;
@@ -345,7 +345,7 @@ let t_version () =
   fun (t, msg, input_buffer) ->
   match get_some msg with
   | Ssh.Msg_version v ->
-    assert ((Cstruct.len input_buffer) = 0);
+    assert (Cstruct.length input_buffer = 0);
     assert (v = "SSH-2.0-OpenSSH_6.9");
     let t, _, _ = get_ok (Server.input_msg t (Ssh.Msg_version v) now) in
     assert (t.Server.client_version = (Some "SSH-2.0-OpenSSH_6.9"));
@@ -366,7 +366,7 @@ let t_crypto () =
         assert (s = txt)
       | _ -> failwith "bad msg"
     in
-    assert ((Cstruct.len buf) = 0)
+    assert (Cstruct.length buf = 0)
     (* Side effect below ! *)
     (* Nocrypto.Cipher_block.Counter.add16 keys.Kex.iv 0 Int64.(succ one); *)
     (* assert (Cstruct.equal keys.Kex.iv keys_next.Kex.iv); *)
@@ -403,7 +403,7 @@ let t_signature () =
   let signed = Hostkey.sign alg priv unsigned in
   assert (Hostkey.verify alg pub ~signed ~unsigned);
   (* Corrupt every one byte in the signature, all should fail *)
-  for off = 0 to pred (Cstruct.len signed) do
+  for off = 0 to pred (Cstruct.length signed) do
     let evilbyte = Cstruct.get_uint8 signed off in
     Cstruct.set_uint8 signed off (succ evilbyte);
     assert_false (Hostkey.verify alg pub ~signed ~unsigned);
@@ -449,18 +449,18 @@ let t_channel_input () =
   (* Case 1: No adjustments, just window consumption *)
   let d' = Cstruct.sub d 0 32 in
   Channel.input_data c d' >>= fun (c', dn', adj') ->
-  assert ((Cstruct.len d') = 32);
+  assert (Cstruct.length d' = 32);
   assert (Cstruct.equal d' dn');
   assert (adj' = None);
   (* Make sure our window was drained by 32 bytes *)
   assert Channel.(c'.us.win = (Int32.sub c.them.win
-                                 ((Cstruct.len d') |> Int32.of_int)));
+                                 (Cstruct.length d' |> Int32.of_int)));
   (* Case 2, Input 2/3 of the window, adjustment must match full window  *)
-  let len' = ((Cstruct.len d) / 4) * 3 in
+  let len' = Cstruct.length d / 4 * 3 in
   let d' = Cstruct.sub d 0 len' in
   Channel.input_data c d' >>= fun (c', dn', adj') ->
   assert Channel.(c'.us.win = Ssh.channel_win_len);
-  assert ((Cstruct.len d') = len');
+  assert (Cstruct.length d' = len');
   assert (Cstruct.equal d' dn');
   let adj'' = Some (Ssh.Msg_channel_window_adjust
                       (Int32.zero, Int32.of_int len')) in
@@ -468,7 +468,7 @@ let t_channel_input () =
   (* Case 3, Make sure we discard data above our window *)
   Channel.input_data c d >>= fun (_c', dn', _adj') ->
   assert (not (Cstruct.equal d dn'));
-  assert ((Cstruct.len d) = ((Cstruct.len dn') + 1));
+  assert (Cstruct.length d = Cstruct.length dn' + 1);
   test_ok
 
 let t_channel_output () =
@@ -490,7 +490,7 @@ let t_channel_output () =
    | _ -> error "Unexpected msg'")
   >>= fun () ->
   (* Add data len back, see if we have the full window available *)
-  assert (Channel.(Int32.add c'.them.win (Int32.of_int (Cstruct.len d'))) =
+  assert (Channel.(Int32.add c'.them.win (Int32.of_int (Cstruct.length d'))) =
           Ssh.channel_win_len);
   (* Case 2: Enough output for 2 messages, first is 64, second 32 *)
   (* Make sure we didn't change defaults *)
@@ -518,9 +518,7 @@ let t_channel_output () =
   >>= fun () ->
   (* Case 3: See if peer window is respected, one byte will be outside the window *)
   Channel.output_data c d >>= fun (c', msgs') ->
-  let exp_nmsgs' = 1 + (Cstruct.len d) /
-                       (Int32.to_int Ssh.channel_max_pkt_len)
-  in
+  let exp_nmsgs' = 1 + Cstruct.length d / Int32.to_int Ssh.channel_max_pkt_len in
   (* printf "exp_nmsgs = %d (%d/%d) l=%d\n%!"
    *   exp_nmsgs'
    *   (Cstruct.len d)
@@ -537,17 +535,17 @@ let t_channel_output () =
       (Cstruct.create 0) bufs'
   in
   (* dwin is all of d that fit the window, one byte was out *)
-  let dwin' = Cstruct.sub d 0 ((Cstruct.len d) - 1) in
+  let dwin' = Cstruct.sub d 0 (Cstruct.length d - 1) in
   assert (Cstruct.equal rebuild' dwin');
   (* Now check if the byte outside of the window is there, and makes sense *)
-  assert ((Cstruct.len Channel.(c'.tosend)) = 1);
+  assert (Cstruct.length c'.Channel.tosend = 1);
   assert (Channel.(c'.them.win) = Int32.zero);
-  let d'' = Cstruct.shift d ((Cstruct.len d) - 1) in
+  let d'' = Cstruct.shift d (Cstruct.length d - 1) in
   assert (Cstruct.equal d'' Channel.(c'.tosend));
   (* Case 4: Widen the window, see if we get our byte back *)
   Channel.adjust_window c' (Int32.of_int 100) >>= fun (c'', msgs') ->
   assert ((List.length msgs') = 1);
-  assert (Cstruct.len c''.Channel.tosend = 0);
+  assert (Cstruct.length c''.Channel.tosend = 0);
   assert (Channel.(c''.them.win) = (Int32.of_int 99));
   test_ok
 

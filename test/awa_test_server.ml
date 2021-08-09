@@ -32,11 +32,11 @@ let read_cstruct fd () =
   else
     let cbuf = Cstruct.create n in
     Cstruct.blit_from_bytes buf 0 cbuf 0 n;
-    Format.printf "read %d bytes\n%!" (Cstruct.len cbuf);
+    Format.printf "read %d bytes\n%!" (Cstruct.length cbuf);
     cbuf
 
 let write_cstruct fd buf =
-  let len = Cstruct.len buf in
+  let len = Cstruct.length buf in
   let bytes = Bytes.create len in
   Cstruct.blit_to_bytes buf 0 bytes 0 len;
   let n = Unix.write fd bytes 0 len in
@@ -46,7 +46,7 @@ let echo t id data =
   Driver.send_channel_data t id data
 
 let bc t id data =
-  let len = Cstruct.len data in
+  let len = Cstruct.length data in
   let line = Cstruct.sub data 0 (len - 1) |> Cstruct.to_string in
   let args = String.split_on_char ' ' line in
   let reply =
@@ -72,7 +72,7 @@ let rec serve t cmd =
   | Disconnected s -> ok (printf "Disconnected: %s\n%!" s)
   | Channel_eof id -> ok (printf "Channel %ld EOF\n%!" id)
   | Channel_data (id, data) ->
-    printf "channel data %d\n%!" (Cstruct.len data);
+    printf "channel data %d\n%!" (Cstruct.length data);
     (match cmd with
      | None -> serve t cmd
      | Some "echo" ->

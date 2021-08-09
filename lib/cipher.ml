@@ -134,7 +134,10 @@ let enc_dec enc ~len seq cipher buf =
         if len then
           ok (c_len buf, cipher)
         else
-          let c, tag = Cstruct.split buf (Cstruct.len buf - Mirage_crypto.Poly1305.mac_size) in
+          let c, tag =
+            let off = Cstruct.length buf - Mirage_crypto.Poly1305.mac_size in
+            Cstruct.split buf off
+          in
           let ctag = mac c in
           let enc_len, enc_msg = Cstruct.split c 4 in
           let dec_len = c_len enc_len

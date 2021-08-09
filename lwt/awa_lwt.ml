@@ -57,9 +57,9 @@ let send_msg fd server msg =
   >>= fun (server, msg_buf) ->
   Lwt_io.printf ">>> %s\n%!" (Awa.Ssh.message_to_string msg)
   >>= fun () ->
-  Lwt_unix.write fd (Cstruct.to_bytes msg_buf) 0 (Cstruct.len msg_buf)
+  Lwt_unix.write fd (Cstruct.to_bytes msg_buf) 0 (Cstruct.length msg_buf)
   >>= fun n ->
-  assert (n = Cstruct.len msg_buf);
+  assert (n = Cstruct.length msg_buf);
   Lwt.return server
 
 let rec send_msgs fd server = function

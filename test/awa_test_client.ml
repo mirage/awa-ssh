@@ -28,11 +28,11 @@ let read_cstruct fd =
   else
     let cbuf = Cstruct.create n in
     Cstruct.blit_from_bytes buf 0 cbuf 0 n;
-    Logs.debug (fun m -> m "read %d bytes" (Cstruct.len cbuf));
+    Logs.debug (fun m -> m "read %d bytes" (Cstruct.length cbuf));
     cbuf
 
 let write_cstruct fd buf =
-  let len = Cstruct.len buf in
+  let len = Cstruct.length buf in
   let bytes = Bytes.create len in
   Cstruct.blit_to_bytes buf 0 bytes 0 len;
   let n = Unix.write fd bytes 0 len in

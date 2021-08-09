@@ -57,14 +57,14 @@ let get_cstring buf =
       Cstruct.split (Cstruct.shift buf 4) len)
 
 let put_cstring s t =
-  let len = Cstruct.len s in
+  let len = Cstruct.length s in
   let t = put_uint32 (Int32.of_int len) t in
   let t = Dbuf.guard_space len t in
   Cstruct.blit s 0 t.Dbuf.cbuf t.Dbuf.coff len;
   Dbuf.shift len t
 
 let put_raw buf t =
-  let len = Cstruct.len buf in
+  let len = Cstruct.length buf in
   let t = Dbuf.guard_space len t in
   Cstruct.blit buf 0 t.Dbuf.cbuf t.Dbuf.coff len;
   Dbuf.shift len t
@@ -89,7 +89,7 @@ let get_mpint ?(signed = true) buf =
 
 let put_mpint ?(signed = true) mpint t =
   let mpbuf = Mirage_crypto_pk.Z_extra.to_cstruct_be mpint in
-  let mplen = Cstruct.len mpbuf in
+  let mplen = Cstruct.length mpbuf in
   let t =
     if signed && mplen > 0 &&
        ((Cstruct.get_uint8 mpbuf 0) land 0x80) <> 0 then
@@ -211,7 +211,7 @@ let privkey_of_openssh buf =
    | [] -> Error "invalid OpenSSH private key") >>= fun data ->
   let cs = Cstruct.of_string data in
   let auth_magic = Cstruct.of_string "openssh-key-v1\000" in
-  let pre, cs = Cstruct.split cs (Cstruct.len auth_magic) in
+  let pre, cs = Cstruct.split cs (Cstruct.length auth_magic) in
   guard (Cstruct.equal pre auth_magic) "bad auth magic" >>= fun () ->
   get_string cs >>= fun (cipher, cs) ->
   guard (String.equal cipher "none") "only unencrypted private keys supported" >>= fun () ->
@@ -433,7 +433,7 @@ let get_message buf =
     >>= fun (global_request, _) ->
     ok (Msg_global_request (request, want_reply, global_request))
   | MSG_REQUEST_SUCCESS ->
-    let req_data = if Cstruct.len buf > 0 then Some buf else None in
+    let req_data = if Cstruct.length buf > 0 then Some buf else None in
     ok (Msg_request_success req_data)
   | MSG_REQUEST_FAILURE -> ok Msg_request_failure
   | MSG_CHANNEL_OPEN ->
@@ -877,12 +877,12 @@ let put_message msg buf =
 (* XXX Maybe move this to Packet *)
 let get_payload buf =
   let open Ssh in
-  guard (Cstruct.len buf >= 5) "Buf too short" >>= fun () ->
+  guard (Cstruct.length buf >= 5) "Buf too short" >>= fun () ->
   let pkt_len = get_pkt_hdr_pkt_len buf |> Int32.to_int in
   let pad_len = get_pkt_hdr_pad_len buf in
   guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len" >>= fun () ->
   guard (pad_len < pkt_len) "Bogus pad len" >>= fun () ->
-  guard (Cstruct.len buf = pkt_len + 4) "Bogus buf len" >>= fun () ->
+  guard (Cstruct.length buf = pkt_len + 4) "Bogus buf len" >>= fun () ->
   let payload_len = pkt_len - pad_len - 1 in
   guard (payload_len > 0) "Bogus payload_len" >>= fun () ->
   let payload = Cstruct.sub buf 5 payload_len in
@@ -891,7 +891,7 @@ let get_payload buf =
 let get_version buf =
   (* Fetches next line, returns maybe a string and the remainder of buf *)
   let fetchline buf =
-    if Cstruct.len buf < 1 then
+    if Cstruct.length buf < 1 then
       None
     else
       let s = Cstruct.to_string buf in
@@ -932,7 +932,7 @@ let get_version buf =
   (* Scan all lines until an error or SSH version is found *)
   let rec scan buf =
     match fetchline buf with
-    | None -> if Cstruct.len buf > 1024 then
+    | None -> if Cstruct.length buf > 1024 then
         error "Buffer is too big"
       else
         ok (None, buf)
@@ -940,7 +940,7 @@ let get_version buf =
       processline line >>= function
       | Some peer_version -> ok (Some peer_version, buf)
       | None ->
-        if Cstruct.len buf > 2 then
+        if Cstruct.length buf > 2 then
           scan buf
         else
           ok (None, buf)

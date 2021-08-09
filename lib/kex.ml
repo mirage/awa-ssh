@@ -271,7 +271,7 @@ let derive_keys digesti k h session_id neg now =
   let k = Wire.(Dbuf.to_cstruct @@ put_mpint k (Dbuf.create ())) in
   let hash ch need =
     let rec expand kn =
-      if (Cstruct.len kn) >= need then
+      if (Cstruct.length kn) >= need then
         kn
       else
         let kn' = digesti (fun f -> List.iter f [k; h; kn]) in
@@ -295,7 +295,7 @@ let derive_keys digesti k h session_id neg now =
       { cipher;
         cipher_key = Aes_cbc_key ((AES.CBC.of_secret secret), iv) }
     | Chacha20_poly1305 ->
-      assert (Cstruct.len secret = 64);
+      assert (Cstruct.length secret = 64);
       let d, l = Cstruct.split secret 32 in
       let lkey = Mirage_crypto.Chacha20.of_secret l
       and key = Mirage_crypto.Chacha20.of_secret d

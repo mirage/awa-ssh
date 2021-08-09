@@ -17,7 +17,7 @@ depends: [
   "ocaml" {>= "4.08.0"}
   "dune" {>= "1.0"}
   "awa" {= version}
-  "cstruct" {>= "3.2.0"}
+  "cstruct" {>= "6.0.0"}
   "mtime"
   "lwt"
   "cstruct-unix"

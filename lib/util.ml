@@ -42,9 +42,9 @@ let cs_safe_shift buf off =
 
 (* Smarter than Cstruct.append *)
 let cs_join b1 b2 =
-  if (Cstruct.len b1) = 0 then
+  if (Cstruct.length b1) = 0 then
     b2
-  else if (Cstruct.len b2) = 0 then
+  else if (Cstruct.length b2) = 0 then
     b1
   else
     Cstruct.append b1 b2

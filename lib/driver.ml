@@ -54,13 +54,14 @@ let rekey t =
   | Some (server, kexinit) -> send_msg { t with server } kexinit
 
 let rec poll t =
-  Printf.printf "poll called, input buffer %d\n%!" (Cstruct.len t.input_buffer);
+  Printf.printf "poll called, input buffer %d\n%!"
+    (Cstruct.length t.input_buffer);
   let now = t.time_cb () in
   let server = t.server in
   Server.pop_msg2 server t.input_buffer >>= fun (server, msg, input_buffer) ->
   match msg with
   | None ->
-    Printf.printf "no msg :/, input %d\n%!" (Cstruct.len input_buffer);
+    Printf.printf "no msg :/, input %d\n%!" (Cstruct.length input_buffer);
     let input_buffer = cs_join input_buffer (t.read_cb ()) in
     poll { t with server; input_buffer }
   | Some msg ->
