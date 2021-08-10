@@ -38,13 +38,25 @@ let write_cstruct fd buf =
   let n = Unix.write fd bytes 0 len in
   assert (n > 0)
 
-let jump _ user seed typ authenticator host port =
+let jump _ user seed typ keyfile authenticator host port =
   Mirage_crypto_rng_unix.initialize ();
   let fd = Unix.(socket PF_INET SOCK_STREAM 0) in
   Unix.(connect fd (ADDR_INET (inet_addr_of_string host, port)));
   match
+    (match keyfile with
+     | None -> Ok (Keys.of_seed typ seed)
+     | Some f ->
+       let fd = Unix.(openfile f [O_RDONLY] 0) in
+       let file_buf = Unix_cstruct.of_fd fd in
+       let r = match Wire.privkey_of_openssh file_buf, Wire.privkey_of_pem file_buf with
+         | Ok (k, _), _ -> Ok k
+         | _, Ok k -> Ok k
+         | Error m, _ -> Error m
+       in
+       Unix.close fd;
+       r) >>= fun key ->
     Keys.authenticator_of_string authenticator >>= fun authenticator ->
-    let t, out = Client.make ~authenticator ~user (Keys.of_seed typ seed) in
+    let t, out = Client.make ~authenticator ~user key in
     List.iter (write_cstruct fd) out;
     let rec read_react t =
       let data = read_cstruct fd in
@@ -93,6 +105,10 @@ let keytype =
   let doc = "private key type" in
   Arg.(value & opt (enum [ ("rsa", `Rsa) ; ("ed25519", `Ed25519) ]) `Rsa & info [ "keytype" ] ~doc)
 
+let keyfile =
+  let doc = "private key file" in
+  Arg.(value & opt (some file) None & info [ "key" ] ~doc)
+
 let authenticator =
   let doc = "authenticator" in
   Arg.(value & opt string "" & info [ "authenticator" ] ~doc)
@@ -111,7 +127,7 @@ let setup_log =
         $ Logs_cli.level ())
 
 let cmd =
-  Term.(term_result (const jump $ setup_log $ user $ seed $ keytype $ authenticator $ host $ port)),
+  Term.(term_result (const jump $ setup_log $ user $ seed $ keytype $ keyfile $ authenticator $ host $ port)),
   Term.info "awa_test_client" ~version:"%%VERSION_NUM"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
