@@ -86,7 +86,7 @@ let make host_key user_db =
 let of_new_keys_ctos t =
   let open Kex in
   guard_some t.new_keys_ctos "No new_keys_ctos" >>= fun new_keys_ctos ->
-  guard (is_keyed new_keys_ctos) "Plaintext new keys" >>= fun () ->
+  (*guard (is_keyed new_keys_ctos) "Plaintext new keys" >>= fun () ->*)
   let new_keys_ctos = { new_keys_ctos with seq = t.keys_ctos.seq } in
   ok { t with keys_ctos = new_keys_ctos; new_keys_ctos = None }
 
@@ -94,7 +94,7 @@ let of_new_keys_ctos t =
 let of_new_keys_stoc t =
   let open Kex in
   guard_some t.new_keys_stoc "No new_keys_stoc" >>= fun new_keys_stoc ->
-  guard (is_keyed new_keys_stoc) "Plaintext new keys" >>= fun () ->
+  (*guard (is_keyed new_keys_stoc) "Plaintext new keys" >>= fun () ->*)
   let new_keys_stoc = { new_keys_stoc with seq = t.keys_stoc.seq } in
   ok { t with keys_stoc = new_keys_stoc; new_keys_stoc = None; keying = false }
 
