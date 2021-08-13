@@ -29,8 +29,10 @@ let pub_of_priv = function
   | Ed25519_priv priv -> Ed25519_pub (Mirage_crypto_ec.Ed25519.pub_of_priv priv)
 
 let sexp_of_pub p =
-  let alg = match p with Rsa_pub _ -> "RSA" | Ed25519_pub _ -> "ED25519" in
-  Sexplib.Sexp.Atom ("Hostkey.sexp_of_pub " ^ alg ^ ": TODO")
+  match p with
+    Rsa_pub p -> Rsa.sexp_of_pub p
+    | Ed25519_pub _ -> Sexplib.Sexp.Atom ("Hostkey.sexp_of_pub ED25519: TODO")
+
 let pub_of_sexp _ = failwith "Hostkey.pub_of_sexp: TODO"
 
 let sshname = function
