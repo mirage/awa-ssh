@@ -312,7 +312,12 @@ let input_msg t msg now =
         guard_some t.client_kexinit "No client kex" >>= fun c ->
         Kex.(Dh.generate neg.kex_alg e) >>= fun (f, k) ->
         let pub_host_key = Hostkey.pub_of_priv t.host_key in
-        let h = Kex.Dh.compute_hash neg
+        Format.printf "client version is %s, server version is %s\n%!" client_version t.server_version;
+        (*
+         * awa_test_client use signed at true, otherwise key validation is not allways passed (?)
+         * this however does not works with classical ssh calls :(
+         *)
+        let h = Kex.Dh.compute_hash ~signed:true  neg
             ~v_c:client_version
             ~v_s:t.server_version
             ~i_c:c.rawkex
