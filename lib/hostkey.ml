@@ -39,6 +39,21 @@ let sshname = function
   | Rsa_pub _ -> "ssh-rsa"
   | Ed25519_pub _ -> "ssh-ed25519"
 
+let comptible_alg p a =
+  match p with
+  | Rsa_pub _ ->
+    begin match a with
+      | "ssh-rsa"
+      | "rsa-sha2-256"
+      | "rsa-sha2-512" -> true
+      | _ -> false
+    end
+  | Ed25519_pub _ ->
+    begin match a with
+      | "ssh-ed25519" -> true
+      | _ -> false
+    end
+
 type alg =
   | Rsa_sha1
   | Rsa_sha256

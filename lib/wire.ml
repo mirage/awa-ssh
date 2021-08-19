@@ -154,14 +154,10 @@ let get_pubkey_any buf =
   pubkey_of_blob blob >>= fun pubkey ->
   ok (pubkey, buf)
 
-let fake_get_pubkey _ buf =
-  get_pubkey_any buf >>= fun (pubkey, buf) ->
-  ok (pubkey, buf)
-
 (* Always use get_pubkey_alg since it returns Unknown if key_alg mismatches *)
 let get_pubkey key_alg buf =
   get_pubkey_any buf >>= fun (pubkey, buf) ->
-  if String.equal (Hostkey.sshname pubkey) key_alg then
+  if Hostkey.comptible_alg pubkey key_alg then
     ok (pubkey, buf)
   else
     Error ("public key algorithm not supported " ^ key_alg)
@@ -380,9 +376,7 @@ let get_message buf =
      | "publickey" ->
        get_bool buf >>= fun (has_sig, buf) ->
        get_string buf >>= fun (key_alg, buf) ->
-       (* what to do if a client give us a rsa-sha2-256 ? *)
-(*       get_pubkey key_alg buf >>= fun (pubkey, buf) ->*)
-       fake_get_pubkey key_alg buf >>= fun (pubkey, buf) ->
+       get_pubkey key_alg buf >>= fun (pubkey, buf) ->
        if has_sig then
          get_signature buf >>= fun key_sig ->
          ok (Pubkey (pubkey, Some key_sig), buf)
