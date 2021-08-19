@@ -50,7 +50,7 @@ let serve rsa fd addr =
   Lwt_io.printf "[%s] finished\n%!" addr >>= fun () ->
   Lwt_unix.close fd
 
-let rec wait_connection rsa listen_fd server_port =
+let rec wait_connection priv_key listen_fd server_port =
   Lwt_io.printf "Awa server waiting connections on port %d\n%!" server_port
   >>= fun () ->
   Lwt_unix.(accept listen_fd) >>= fun (client_fd, saddr) ->
@@ -59,13 +59,14 @@ let rec wait_connection rsa listen_fd server_port =
     | Lwt_unix.ADDR_INET (addr, port) ->
       Printf.sprintf "%s:%d" (Unix.string_of_inet_addr addr) port
   in
-  Lwt.ignore_result (serve rsa client_fd client_addr);
-  wait_connection rsa listen_fd server_port
+  Lwt.ignore_result (serve priv_key client_fd client_addr);
+  wait_connection priv_key listen_fd server_port
 
 let main =
   Mirage_crypto_rng_unix.initialize ();
   let g = Mirage_crypto_rng.(create ~seed:(Cstruct.of_string "180586") (module Fortuna)) in
-  let rsa = Awa.Hostkey.Rsa_priv (Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 ()) in
+  let (ec_priv,_) = Mirage_crypto_ec.Ed25519.generate ~g () in
+  let priv_key = Awa.Hostkey.Ed25519_priv (ec_priv) in
   let server_port = 18022 in
   let listen_fd = Lwt_unix.(socket PF_INET SOCK_STREAM 0) in
   Lwt_unix.(setsockopt listen_fd SO_REUSEADDR true);
@@ -73,7 +74,7 @@ let main =
                               (Unix.inet_addr_any, server_port)))
   >>= fun () ->
   Lwt_unix.listen listen_fd 1;
-  wait_connection rsa listen_fd server_port
+  wait_connection priv_key listen_fd server_port
 
 let () =
   Lwt_main.run main

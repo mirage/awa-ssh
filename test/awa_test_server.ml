@@ -107,11 +107,11 @@ let user_db =
   let awa = Auth.make_user "awa" [ key ] in
   [ foo; awa ]
 
-let rec wait_connection rsa listen_fd server_port =
+let rec wait_connection priv_key listen_fd server_port =
   printf "Awa server waiting connections on port %d\n%!" server_port;
   let client_fd, _ = Unix.(accept listen_fd) in
   printf "Client connected !\n%!";
-  let server, msgs = Server.make rsa user_db in
+  let server, msgs = Server.make priv_key user_db in
   Driver.of_server server msgs
     (write_cstruct client_fd)
     (read_cstruct client_fd)
@@ -122,17 +122,18 @@ let rec wait_connection rsa listen_fd server_port =
     | Error e -> printf "error: %s\n%!" e
   in
   Unix.close client_fd;
-  wait_connection rsa listen_fd server_port
+  wait_connection priv_key listen_fd server_port
 
 let () =
   Mirage_crypto_rng_unix.initialize ();
   let g = Mirage_crypto_rng.(create ~seed:(Cstruct.of_string "180586") (module Fortuna)) in
-  let rsa = Hostkey.Rsa_priv (Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 ()) in
+  let (ec_priv,_) = Mirage_crypto_ec.Ed25519.generate ~g () in
+  let priv_key = Awa.Hostkey.Ed25519_priv (ec_priv) in
   let server_port = 18022 in
   let listen_fd = Unix.(socket PF_INET SOCK_STREAM 0) in
   Unix.(setsockopt listen_fd SO_REUSEADDR true);
   Unix.(bind listen_fd (ADDR_INET (inet_addr_any, server_port)));
   Unix.listen listen_fd 1;
-  match wait_connection rsa listen_fd server_port with
+  match wait_connection priv_key listen_fd server_port with
   | Error e -> printf "error %s\n%!" e
   | Ok _ -> printf "ok\n%!\n"
