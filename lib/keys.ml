@@ -53,8 +53,8 @@ let authenticator_of_string str =
   if str = "" then
     Ok `No_authentication
   else
-    match Astring.String.cut ~sep:":" str with
-    | Some (y, fp) ->
+    match String.split_on_char ':' str with
+    | [ y ; fp ] ->
       (match y with
        | "SHA256" -> Ok `Rsa
        | y -> typ_of_string y) >>= fun t ->
