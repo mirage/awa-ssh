@@ -312,7 +312,7 @@ let input_msg t msg now =
         guard_some t.client_kexinit "No client kex" >>= fun c ->
         Kex.(Dh.generate neg.kex_alg e) >>= fun (f, k) ->
         let pub_host_key = Hostkey.pub_of_priv t.host_key in
-        let h = Kex.Dh.compute_hash ~signed:true  neg
+        let h = Kex.Dh.compute_hash ~signed:true neg
             ~v_c:client_version
             ~v_s:t.server_version
             ~i_c:c.rawkex

@@ -30,8 +30,13 @@ let pub_of_priv = function
 
 let sexp_of_pub p =
   match p with
-    Rsa_pub p -> Rsa.sexp_of_pub p
-    | Ed25519_pub _ -> Sexplib.Sexp.Atom ("Hostkey.sexp_of_pub ED25519: TODO")
+  | Rsa_pub p ->
+    Sexplib.Sexp.(List [ Atom "rsa" ; Rsa.sexp_of_pub p ])
+  | Ed25519_pub p ->
+    let data =
+      Cstruct_sexp.sexp_of_t (Mirage_crypto_ec.Ed25519.pub_to_cstruct p)
+    in
+    Sexplib.Sexp.(List [ Atom "ed25519" ; data ])
 
 let pub_of_sexp _ = failwith "Hostkey.pub_of_sexp: TODO"
 

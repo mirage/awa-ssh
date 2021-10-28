@@ -245,13 +245,13 @@ let is_plaintext keys =
   match cipher, hmac with
   | Cipher.Plaintext, Hmac.Plaintext -> true
   | Cipher.Plaintext, _ ->
-       invalid_arg "Cipher is plaintext, abort at all costs !"
+       invalid_arg "Cipher is plaintext, abort at all costs!"
   | cipher_alg, Hmac.Plaintext ->
     (* with AEAD it's ok to have Hmac.Plaintext, see func negotiate *)
-    (if Cipher.aead cipher_alg then
-       false
-     else
-       invalid_arg "Cipher is not AEAD and Hmac is plaintext, abort at all costs !")
+    if Cipher.aead cipher_alg then
+      false
+    else
+      invalid_arg "Cipher is not AEAD and Hmac is plaintext, abort at all costs!"
   | _, _ -> false
 
 let is_keyed keys = not (is_plaintext keys)
