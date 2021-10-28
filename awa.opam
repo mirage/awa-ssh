@@ -34,5 +34,6 @@ depends: [
   "base64" {>= "3.0.0"}
   "zarith"
 ]
+conflicts: [ "result" {< "1.5"} ]
 synopsis: "SSH implementation in OCaml"
 description: """The OpenSSH protocol implemented in OCaml."""
