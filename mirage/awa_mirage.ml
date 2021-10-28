@@ -221,9 +221,11 @@ module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) = struct
     | None -> (* No SSH msg *)
       Lwt.catch
         (fun () ->
+          let timeout = Mtime.timeout 2_000_000_000L >>= fun () -> Error (`Msg "DNS request timeout") in
            Lwt.pick [ Lwt_mvar.take t.nexus_mbox;
-                      net_read fd])
-        (function exn -> Lwt.fail exn)
+                      net_read fd;
+                      timeout ])
+      (function `Error -> Lwt.return Rekey | exn -> Lwt.fail exn)
       >>= fun nexus_msg ->
       (match nexus_msg with
        | Rekey ->
