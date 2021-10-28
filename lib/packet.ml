@@ -14,7 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Rresult.R
 open Util
 
 let hmac mac seq buf =
@@ -27,17 +26,17 @@ let hmac mac seq buf =
 let peek_len cipher seq block_len buf =
   assert (block_len <= Cstruct.length buf);
   let buf = Cstruct.sub buf 0 block_len in
-  Cipher.decrypt ~len:true seq cipher buf >>| fun (hdr, _) ->
-  Ssh.get_pkt_hdr_pkt_len hdr |> Int32.to_int
+  let* hdr, _ = Cipher.decrypt ~len:true seq cipher buf in
+  Ok (Ssh.get_pkt_hdr_pkt_len hdr |> Int32.to_int)
 
 let partial buf =
   if Cstruct.length buf < Ssh.max_pkt_len then
-    ok None
+    Ok None
   else
-    error "Buffer is too big"
+    Error "Buffer is too big"
 
 let to_msg pkt =
-  Wire.get_payload pkt >>= Wire.get_message
+  Result.bind (Wire.get_payload pkt) Wire.get_message
 
 let decrypt keys buf =
   let open Ssh in
@@ -51,26 +50,30 @@ let decrypt keys buf =
   if Cstruct.length buf < max sizeof_pkt_hdr (digest_len + mac_len + block_len) then
     partial buf
   else
-    peek_len cipher seq block_len buf >>= fun pkt_len ->
-    guard (pkt_len > 0 && pkt_len < max_pkt_len) "decrypt: Bogus pkt len"
-    >>= fun () ->
+    let* pkt_len = peek_len cipher seq block_len buf in
+    let* () =
+      guard (pkt_len > 0 && pkt_len < max_pkt_len) "decrypt: Bogus pkt len"
+    in
     (* 4 is pkt_len field itself *)
     if Cstruct.length buf < pkt_len + 4 + digest_len + mac_len then
       partial buf
     else
       let pkt_enc, digest1 = Cstruct.split buf (pkt_len + 4 + mac_len) in
       let tx_rx = Int64.(add keys.Kex.tx_rx (Cstruct.length pkt_enc - mac_len |> of_int)) in
-      Cipher.decrypt ~len:false seq cipher pkt_enc >>= fun (pkt_dec, cipher) ->
+      let* pkt_dec, cipher = Cipher.decrypt ~len:false seq cipher pkt_enc in
       let digest1 = Cstruct.sub digest1 0 digest_len in
       let digest2 = hmac mac seq pkt_dec in
-      guard (Cstruct.equal digest1 digest2)
-        "decrypt: Bad digest" >>= fun () ->
+      let* () =
+        guard (Cstruct.equal digest1 digest2) "decrypt: Bad digest"
+      in
       let pad_len = get_pkt_hdr_pad_len pkt_dec in
-      guard (pad_len >= 4 && pad_len <= 255 && pad_len < pkt_len)
-        "decrypt: Bogus pad len"  >>= fun () ->
+      let* () =
+        guard (pad_len >= 4 && pad_len <= 255 && pad_len < pkt_len)
+          "decrypt: Bogus pad len"
+      in
       let buf = Cstruct.shift buf (4 + pkt_len + mac_len + digest_len) in
       let keys = Kex.{ cipher; mac; seq = Int32.succ keys.Kex.seq; tx_rx } in
-      ok (Some (pkt_dec, buf, keys))
+      Ok (Some (pkt_dec, buf, keys))
 
 let encrypt keys msg =
   let cipher = keys.Kex.cipher in

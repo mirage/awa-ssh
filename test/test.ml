@@ -16,7 +16,6 @@
 
 let () = Printexc.record_backtrace true
 
-open Rresult.R
 open Awa
 open Printf
 open Util
@@ -31,11 +30,11 @@ let green fmt  = colored_or_not ("\027[32m"^^fmt^^"\027[m") fmt
 let yellow fmt = colored_or_not ("\027[33m"^^fmt^^"\027[m") fmt
 let blue fmt   = colored_or_not ("\027[36m"^^fmt^^"\027[m") fmt
 
-let test_ok = ok ()
+let test_ok = Ok ()
 
 let trap_exn f =
   try (f ()) with exn ->
-    error (sprintf "Caught exception: %s\n%s\n%!"
+    Error (sprintf "Caught exception: %s\n%s\n%!"
              (Printexc.to_string exn)
              (Printexc.get_backtrace ()))
 
@@ -63,13 +62,13 @@ let encrypt_plain msg =
 
 let decrypt_plain buf =
   match Packet.decrypt (Kex.make_plaintext ()) buf with
-  | Ok (Some (pkt, buf, _)) -> ok (Some (pkt, buf))
-  | Ok None -> ok None
-  | Error e -> error e
+  | Ok (Some (pkt, buf, _)) -> Ok (Some (pkt, buf))
+  | Ok None -> Ok None
+  | Error e -> Error e
 
 (* let assert_ok x = assert (is_ok x) *)
 
-let assert_error x = assert (is_error x)
+let assert_error x = assert (Result.is_error x)
 
 let assert_none = function None -> () | _ -> failwith "Expected None"
 
@@ -125,19 +124,19 @@ let t_parsing () =
    *)
   let msg = Msg_ignore "a" in
   let buf = encrypt_plain msg in
-  decrypt_plain buf >>= fun r  ->
-  guard_some r "decrypt gave no packet" >>= fun (pkt, rbuf) ->
-  Packet.to_msg pkt >>= fun msg2 ->
-  guard (msg = msg2) "decrypted msg differs from encrypted" >>= fun () ->
-  guard (Cstruct.length rbuf = 0) "buffer is not fully parsed" >>= fun () ->
+  let* r = decrypt_plain buf in
+  let* pkt, rbuf = guard_some r "decrypt gave no packet" in
+  let* msg2 = Packet.to_msg pkt in
+  let* () = guard (msg = msg2) "decrypted msg differs from encrypted" in
+  let* () = guard (Cstruct.length rbuf = 0) "buffer is not fully parsed" in
   (*
    * Case 2: 1 byte left
    *)
   let msg = Msg_ignore "a" in
   let buf, _ = Packet.encrypt (Kex.make_plaintext ()) msg in
   let buf = Cstruct.append buf (Cstruct.of_string "b") in
-  let pkt, rbuf = get_some @@ get_ok @@ decrypt_plain buf in
-  let msg2 = get_ok @@ Packet.to_msg pkt in
+  let pkt, rbuf = get_some @@ Result.get_ok @@ decrypt_plain buf in
+  let msg2 = Result.get_ok @@ Packet.to_msg pkt in
   assert (msg = msg2);
   assert (Cstruct.length rbuf = 1);
 
@@ -145,13 +144,13 @@ let t_parsing () =
   let buf = Cstruct.create 64 in
   set_pkt_hdr_pkt_len buf 0l;
   set_pkt_hdr_pad_len buf 0;
-  let e = get_error (decrypt_plain buf) in
+  let e = Result.get_error (decrypt_plain buf) in
   assert (e = "decrypt: Bogus pkt len");
 
   let id msg =
     let buf = encrypt_plain msg in
-    let pkt, buf = get_some @@ get_ok @@ decrypt_plain buf in
-    let msg2 = get_ok @@ Packet.to_msg pkt in
+    let pkt, buf = get_some @@ Result.get_ok @@ decrypt_plain buf in
+    let msg2 = Result.get_ok @@ Packet.to_msg pkt in
     assert (Cstruct.length buf = 0);
     match msg, msg2 with
     (* Can't compare Cstruct.t, must unpack and Cstruct.equal () *)
@@ -267,8 +266,8 @@ let t_key_exchange () =
   let file = "data/kex.packet" in
   let fd = Unix.(openfile file [O_RDONLY] 0) in
   let buf = Unix_cstruct.of_fd fd in
-  let pkt, _ = get_some @@ get_ok @@ decrypt_plain buf in
-  let msg = get_ok @@ Packet.to_msg pkt in
+  let pkt, _ = get_some @@ Result.get_ok @@ decrypt_plain buf in
+  let msg = Result.get_ok @@ Packet.to_msg pkt in
   let () = match msg with
     | Ssh.Msg_kexinit _ ->
       (* printf "%s\n%!" (Sexplib.Sexp.to_string_hum (Ssh.sexp_of_kex_pkt kex)); *)
@@ -282,7 +281,7 @@ let t_namelist () =
   let s = ["The";"Conquest";"Of";"Bread"] in
   let buf = Dbuf.to_cstruct @@ Wire.put_nl s (Dbuf.create ()) in
   assert (Cstruct.length buf = 4 + String.length (String.concat "," s));
-  assert (s = fst (get_ok (Wire.get_nl buf)));
+  assert (s = fst (Result.get_ok (Wire.get_nl buf)));
   test_ok
 
 let t_mpint () =
@@ -300,7 +299,7 @@ let t_mpint () =
   Cstruct.set_uint8 data 2 0xff;
   Cstruct.set_uint8 data 3 0x02;
   Cstruct.BE.set_uint32 head 0 (Int32.of_int (Cstruct.length data));
-  let mpint = fst @@ get_ok @@ Wire.get_mpint (Cstruct.append head data) in
+  let mpint = fst @@ Result.get_ok @@ Wire.get_mpint (Cstruct.append head data) in
   let buf = Mirage_crypto_pk.Z_extra.to_cstruct_be mpint in
   assert (Cstruct.length buf = 2); (* Cuts the first two zeros *)
   assert_byte buf 0 0xff;
@@ -310,7 +309,7 @@ let t_mpint () =
    * Case 2: Test identity
    *)
   assert (mpint =
-          (fst @@ get_ok
+          (fst @@ Result.get_ok
              (Wire.get_mpint
                 (Dbuf.to_cstruct @@
                       Wire.put_mpint mpint (Dbuf.create ())))));
@@ -334,23 +333,24 @@ let t_mpint () =
    * Case 4: Make sure negative are errors.
    *)
   Cstruct.set_uint8 buf 4 0x80;
-  let e = get_error (Wire.get_mpint buf) in
+  let e = Result.get_error (Wire.get_mpint buf) in
   assert (e = "Negative mpint");
   test_ok
 
 let t_version () =
   let t, _ = Server.make (Hostkey.Rsa_priv (Mirage_crypto_pk.Rsa.generate ~bits:2048 ())) [] in
   let client_version = "SSH-2.0-OpenSSH_6.9\r\n" in
-  Server.pop_msg2 t (Cstruct.of_string client_version) >>=
-  fun (t, msg, input_buffer) ->
+  let* t, msg, input_buffer =
+    Server.pop_msg2 t (Cstruct.of_string client_version)
+  in
   match get_some msg with
   | Ssh.Msg_version v ->
     assert (Cstruct.length input_buffer = 0);
     assert (v = "SSH-2.0-OpenSSH_6.9");
-    let t, _, _ = get_ok (Server.input_msg t (Ssh.Msg_version v) now) in
+    let t, _, _ = Result.get_ok (Server.input_msg t (Ssh.Msg_version v) now) in
     assert (t.Server.client_version = (Some "SSH-2.0-OpenSSH_6.9"));
     test_ok
-  | _ -> error "Expected Ssh_version"
+  | _ -> Error "Expected Ssh_version"
 
 let t_crypto () =
   let test keys =
@@ -358,9 +358,9 @@ let t_crypto () =
     let msg = Ssh.Msg_ignore txt in
     let buf_enc, _ = Packet.encrypt keys msg in
     let pkt, buf, _ =
-      get_some @@ get_ok @@ Packet.decrypt keys buf_enc
+      get_some @@ Result.get_ok @@ Packet.decrypt keys buf_enc
     in
-    let msg = get_ok @@ Packet.to_msg pkt in
+    let msg = Result.get_ok @@ Packet.to_msg pkt in
     let () = match msg with
       | Ssh.Msg_ignore s ->
         assert (s = txt)
@@ -389,7 +389,7 @@ let t_crypto () =
 let t_openssh_pub () =
   let fd = Unix.(openfile "data/awa_test_rsa.pub" [O_RDONLY] 0) in
   let file_buf = Unix_cstruct.of_fd fd in
-  let key = get_ok (Wire.pubkey_of_openssh file_buf) in
+  let key = Result.get_ok (Wire.pubkey_of_openssh file_buf) in
   let buf = Wire.openssh_of_pubkey key in
   assert (Cstruct.equal file_buf buf);
   Unix.close fd;
@@ -423,19 +423,19 @@ let t_ignore_next_packet () =
   (* Should set ignore_next_packet since the guess of the client is wrong *)
   let message = Ssh.Msg_kexinit kexinit in
   let buf = encrypt_plain message in
-  let t, message, _ = get_ok (Server.pop_msg2 t buf) in
+  let t, message, _ = Result.get_ok (Server.pop_msg2 t buf) in
   let message = get_some message in
-  let t, _, _ = get_ok (Server.input_msg t message now) in
+  let t, _, _ = Result.get_ok (Server.input_msg t message now) in
   assert (t.Server.ignore_next_packet = true);
   (* Should ignore the next packet since ignore_next_packet is true *)
   let message = Ssh.Msg_debug(true, "woop", "Look at me") in
   let buf = encrypt_plain message in
-  let t, msg, _ = get_ok (Server.pop_msg2 t buf) in
+  let t, msg, _ = Result.get_ok (Server.pop_msg2 t buf) in
   assert (t.Server.ignore_next_packet = false);
   assert (msg = None);
   (* Should not ignore the packet which follows after *)
   let buf = encrypt_plain message in
-  let t, msg, _ = get_ok (Server.pop_msg2 t buf) in
+  let t, msg, _ = Result.get_ok (Server.pop_msg2 t buf) in
   assert (t.Server.ignore_next_packet = false);
   assert (msg = Some message);
   test_ok
@@ -448,7 +448,7 @@ let t_channel_input () =
   in
   (* Case 1: No adjustments, just window consumption *)
   let d' = Cstruct.sub d 0 32 in
-  Channel.input_data c d' >>= fun (c', dn', adj') ->
+  let* c', dn', adj' = Channel.input_data c d' in
   assert (Cstruct.length d' = 32);
   assert (Cstruct.equal d' dn');
   assert (adj' = None);
@@ -458,7 +458,7 @@ let t_channel_input () =
   (* Case 2, Input 2/3 of the window, adjustment must match full window  *)
   let len' = Cstruct.length d / 4 * 3 in
   let d' = Cstruct.sub d 0 len' in
-  Channel.input_data c d' >>= fun (c', dn', adj') ->
+  let* c', dn', adj' = Channel.input_data c d' in
   assert Channel.(c'.us.win = Ssh.channel_win_len);
   assert (Cstruct.length d' = len');
   assert (Cstruct.equal d' dn');
@@ -466,7 +466,7 @@ let t_channel_input () =
                       (Int32.zero, Int32.of_int len')) in
   assert (adj' = adj'');
   (* Case 3, Make sure we discard data above our window *)
-  Channel.input_data c d >>= fun (_c', dn', _adj') ->
+  let* _c', dn', _adj' = Channel.input_data c d in
   assert (not (Cstruct.equal d dn'));
   assert (Cstruct.length d = Cstruct.length dn' + 1);
   test_ok
@@ -479,16 +479,17 @@ let t_channel_output () =
   in
   (* Case 1: Small output, single message *)
   let d' = Cstruct.sub d 0 32 in
-  Channel.output_data c d' >>= fun (c', msgs') ->
+  let* c', msgs' = Channel.output_data c d' in
   assert ((List.length msgs') = 1);
   let msg' = List.hd msgs' in
-  (match msg' with
-   | Ssh.Msg_channel_data (id, buf) ->
-     assert (id = Int32.zero);
-     assert (Cstruct.equal buf d');
-     ok ()
-   | _ -> error "Unexpected msg'")
-  >>= fun () ->
+  let* () =
+    match msg' with
+    | Ssh.Msg_channel_data (id, buf) ->
+      assert (id = Int32.zero);
+      assert (Cstruct.equal buf d');
+      Ok ()
+    | _ -> Error "Unexpected msg'"
+  in
   (* Add data len back, see if we have the full window available *)
   assert (Channel.(Int32.add c'.them.win (Int32.of_int (Cstruct.length d'))) =
           Ssh.channel_win_len);
@@ -496,28 +497,30 @@ let t_channel_output () =
   (* Make sure we didn't change defaults *)
   assert ((Int32.to_int Channel.(c.them.max_pkt)) = (64 * 1024));
   let d' = Cstruct.sub d 0 (96 * 1024) in
-  Channel.output_data c d' >>= fun (_c', msgs') ->
+  let* _c', msgs' = Channel.output_data c d' in
   assert ((List.length msgs') = 2);
   let msg1' = List.nth msgs' 0 in
   let msg2' = List.nth msgs' 1 in
-  (match msg1' with
-   | Ssh.Msg_channel_data (id, buf) ->
-     assert (id = Int32.zero);
-     assert (Cstruct.equal buf (Cstruct.sub d 0 (64 * 1024)));
-     ok ()
-   | _ -> error "unexpected msg1'")
-  >>= fun () ->
-  (match msg2' with
-   | Ssh.Msg_channel_data (id, buf) ->
-     assert (id = Int32.zero);
-     let d'' = Cstruct.shift d (64 * 1024) in
-     let d'' = Cstruct.sub d'' 0 (32 * 1024) in
-     assert (Cstruct.equal buf d'');
-     ok ()
-   | _ -> error "unexpected msg2'")
-  >>= fun () ->
+  let* () =
+    match msg1' with
+    | Ssh.Msg_channel_data (id, buf) ->
+      assert (id = Int32.zero);
+      assert (Cstruct.equal buf (Cstruct.sub d 0 (64 * 1024)));
+      Ok ()
+    | _ -> Error "unexpected msg1'"
+  in
+  let* () =
+    match msg2' with
+    | Ssh.Msg_channel_data (id, buf) ->
+      assert (id = Int32.zero);
+      let d'' = Cstruct.shift d (64 * 1024) in
+      let d'' = Cstruct.sub d'' 0 (32 * 1024) in
+      assert (Cstruct.equal buf d'');
+      Ok ()
+    | _ -> Error "unexpected msg2'"
+  in
   (* Case 3: See if peer window is respected, one byte will be outside the window *)
-  Channel.output_data c d >>= fun (c', msgs') ->
+  let* c', msgs' = Channel.output_data c d in
   let exp_nmsgs' = 1 + Cstruct.length d / Int32.to_int Ssh.channel_max_pkt_len in
   (* printf "exp_nmsgs = %d (%d/%d) l=%d\n%!"
    *   exp_nmsgs'
@@ -543,7 +546,7 @@ let t_channel_output () =
   let d'' = Cstruct.shift d (Cstruct.length d - 1) in
   assert (Cstruct.equal d'' Channel.(c'.tosend));
   (* Case 4: Widen the window, see if we get our byte back *)
-  Channel.adjust_window c' (Int32.of_int 100) >>= fun (c'', msgs') ->
+  let* c'', msgs' = Channel.adjust_window c' (Int32.of_int 100) in
   assert ((List.length msgs') = 1);
   assert (Cstruct.length c''.Channel.tosend = 0);
   assert (Channel.(c''.them.win) = (Int32.of_int 99));

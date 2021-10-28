@@ -14,18 +14,18 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Rresult.R
-
 let trap_error f =
-  try return (f ()) with
-  | Invalid_argument e -> error e
-  | Failure e -> error e
+  try Ok (f ()) with
+  | Invalid_argument e -> Error e
+  | Failure e -> Error e
 
-let guard p e = if p then ok () else error e
+let ( let* ) = Result.bind
 
-let guard_some x e = match x with Some x -> ok x | None -> error e
+let guard p e = if p then Ok () else Error e
 
-let guard_none x e = match x with None -> ok () | Some _ -> error e
+let guard_some x e = match x with Some x -> Ok x | None -> Error e
+
+let guard_none x e = match x with None -> Ok () | Some _ -> Error e
 
 let is_none x = match x with None -> true | _ -> false
 

@@ -14,7 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Rresult.R
 open Util
 
 let service = "ssh-connection"
@@ -140,7 +139,7 @@ let make ?(authenticator = `No_authentication) ~user key =
   output_msgs t [ banner_msg ; kex_msg ]
 
 let handle_kexinit t c_v ckex s_v skex =
-  Kex.negotiate ~s:skex ~c:ckex >>= fun neg ->
+  let* neg = Kex.negotiate ~s:skex ~c:ckex in
   Log.info (fun m -> m "negotiated: %a" Kex.pp_negotiation neg);
   (* two cases: directly send the kexdh_init, or RFC 4419 and negotiate group *)
   let state, msg =
@@ -169,7 +168,7 @@ let handle_kexinit t c_v ckex s_v skex =
     let s = List.filter (fun a -> List.mem a s) Hostkey.preferred_algs in
     List.filter Hostkey.(alg_matches (priv_to_typ t.key)) s
   in
-  ok ({ t with state ; sig_algs }, [ msg ], [])
+  Ok ({ t with state ; sig_algs }, [ msg ], [])
 
 let dh_reply ~ec t now v_c ckex v_s skex neg shared my_pub k_s theirs (alg, signed) =
   let h =
@@ -180,27 +179,30 @@ let dh_reply ~ec t now v_c ckex v_s skex neg shared my_pub k_s theirs (alg, sign
   if Keys.hostkey_matches t.authenticator k_s && alg = neg.server_host_key_alg && Hostkey.verify alg k_s ~unsigned:h ~signed then begin
     Log.info (fun m -> m "verified kexdh_reply!");
     let session_id = match t.session_id with None -> h | Some x -> x in
-    Kex.Dh.derive_keys shared h session_id neg now
-    >>| fun (new_keys_ctos, new_keys_stoc, key_eol) ->
-    { t with
-      state = Newkeys_before_auth (new_keys_ctos, new_keys_stoc) ;
-      session_id = Some session_id ; key_eol = Some key_eol },
-    [ Ssh.Msg_newkeys ], []
+    let* new_keys_ctos, new_keys_stoc, key_eol =
+      Kex.Dh.derive_keys shared h session_id neg now
+    in
+    Ok ({ t with
+          state = Newkeys_before_auth (new_keys_ctos, new_keys_stoc) ;
+          session_id = Some session_id ; key_eol = Some key_eol },
+        [ Ssh.Msg_newkeys ], [])
   end else
     Error "couldn't verify kex"
 
 let handle_kexdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs p =
-  Kex.Dh.shared secret theirs >>= fun shared ->
+  let* shared = Kex.Dh.shared secret theirs in
   dh_reply ~ec:false t now v_c ckex v_s skex neg shared my_pub k_s theirs p
 
 let handle_kexecdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs p =
-  Kex.Dh.ecdh_shared secret theirs >>= fun shared ->
+  let* shared = Kex.Dh.ecdh_shared secret theirs in
   dh_reply ~ec:true t now v_c ckex v_s skex neg shared my_pub k_s theirs p
 
 let handle_kexdh_gex_group t v_c ckex v_s skex neg min n max p gg =
   (* min <= |p| <= max *)
   let open Mirage_crypto_pk.Dh in
-  reword_error (function `Msg m -> m) (group ~p ~gg ()) >>= fun group ->
+  let* group =
+    Result.map_error (function `Msg m -> m) (group ~p ~gg ())
+  in
   let bits = modulus_size group in
   if Int32.to_int min <= bits && bits <= Int32.to_int max then
     let secret, shared = gen_key group in
@@ -211,7 +213,7 @@ let handle_kexdh_gex_group t v_c ckex v_s skex neg min n max p gg =
     Error "DH group not between min and max"
 
 let handle_kexdh_gex_reply t now v_c ckex v_s skex neg min n max p g secret my_pub k_s theirs (alg, signed) =
-  Kex.Dh.shared secret theirs >>= fun shared ->
+  let* shared = Kex.Dh.shared secret theirs in
   let h =
     Kex.Dh.compute_hash_gex neg
       ~v_c ~v_s ~i_c:(Wire.blob_of_kexinit ckex) ~i_s:skex.Ssh.rawkex
@@ -220,12 +222,13 @@ let handle_kexdh_gex_reply t now v_c ckex v_s skex neg min n max p g secret my_p
   if Keys.hostkey_matches t.authenticator k_s && alg = neg.server_host_key_alg && Hostkey.verify alg k_s ~unsigned:h ~signed then begin
     Log.info (fun m -> m "verified kexdh_reply!");
     let session_id = match t.session_id with None -> h | Some x -> x in
-    Kex.Dh.derive_keys shared h session_id neg now
-    >>| fun (new_keys_ctos, new_keys_stoc, key_eol) ->
-    { t with
-      state = Newkeys_before_auth (new_keys_ctos, new_keys_stoc) ;
-      session_id = Some session_id ; key_eol = Some key_eol },
-    [ Ssh.Msg_newkeys ], []
+    let* new_keys_ctos, new_keys_stoc, key_eol =
+      Kex.Dh.derive_keys shared h session_id neg now
+    in
+    Ok ({ t with
+          state = Newkeys_before_auth (new_keys_ctos, new_keys_stoc) ;
+          session_id = Some session_id ; key_eol = Some key_eol },
+        [ Ssh.Msg_newkeys ], [])
   end else
     Error "couldn't verify kex"
 
@@ -255,9 +258,11 @@ let handle_auth_failure t _ = function
 
 let handle_pk_auth t pk =
   let session_id = match t.session_id with None -> assert false | Some x -> x in
-  (match t.sig_algs with
-   | [] -> Error "no more signature algorithms available"
-   | a :: rt -> Ok (a, rt)) >>= fun (alg, sig_algs) ->
+  let* alg, sig_algs =
+    match t.sig_algs with
+    | [] -> Error "no more signature algorithms available"
+    | a :: rt -> Ok (a, rt)
+  in
   let signed = Auth.sign t.user alg t.key session_id service in
   let met = Ssh.Pubkey (Hostkey.pub_of_priv t.key, Some (alg, signed)) in
   Ok ({ t with state = Userauth_requested (Some pk) ; sig_algs },
@@ -302,7 +307,8 @@ let input_msg t msg now =
   | Kex (Negotiated_kex (cv, ckex, sv, skex, neg, sec, mypub)),
     Msg_kex (i, d) ->
     begin
-      Wire.dh_kexdh_of_kex i d >>= function
+      let* m = Wire.dh_kexdh_of_kex i d in
+      match m with
       | Msg_kexdh_reply (pub, theirs, signed) ->
         handle_kexdh_reply t now cv ckex sv skex neg sec mypub pub theirs signed
       | _ ->
@@ -311,7 +317,8 @@ let input_msg t msg now =
   | Eckex (Negotiated_eckex (cv, ckex, sv, skex, neg, sec, mypub)),
     Msg_kex (i, d) ->
     begin
-      Wire.dh_kexecdh_of_kex i d >>= function
+      let* m = Wire.dh_kexecdh_of_kex i d in
+      match m with
       | Msg_kexecdh_reply (pub, theirs, signed) ->
         handle_kexecdh_reply t now cv ckex sv skex neg sec mypub pub theirs signed
       | _ ->
@@ -319,7 +326,7 @@ let input_msg t msg now =
     end
   | Gex sub, Msg_kex (i, d) ->
     begin
-      Wire.dh_kexdh_gex_of_kex i d >>= fun msg ->
+      let* msg = Wire.dh_kexdh_gex_of_kex i d in
       match sub, msg with
       | Requested_gex (cv, ckex, sv, skex, neg, min, n, max),
         Msg_kexdh_gex_group (p, g) ->
@@ -350,66 +357,68 @@ let input_msg t msg now =
     Log.info (fun m -> m "ignoring debug %s (lang %s)" msg lang);
     Ok (t, [], [])
   | Established, Msg_channel_data (id, data) ->
-    guard_some (Channel.lookup id t.channels) "no such channel" >>= fun c ->
-    Channel.input_data c data >>| fun (c, data, adjust) ->
+    let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
+    let* c, data, adjust = Channel.input_data c data in
     let channels = Channel.update c t.channels in
     let out = match adjust with None -> [] | Some e -> [ e ] in
-    { t with channels }, out, [ `Channel_data (Channel.id c, data) ]
+    Ok ({ t with channels }, out, [ `Channel_data (Channel.id c, data) ])
   | Established, Msg_channel_window_adjust (id, len) ->
-    guard_some (Channel.lookup id t.channels) "no such channel" >>= fun c ->
-    Channel.adjust_window c len >>| fun (c, msgs) ->
+    let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
+    let* c, msgs = Channel.adjust_window c len in
     let channels = Channel.update c t.channels in
-    { t with channels }, msgs, []
+    Ok ({ t with channels }, msgs, [])
   | Established, Msg_channel_eof id ->
-    guard_some (Channel.lookup id t.channels) "no such channel" >>| fun c ->
-    t, [], [ `Channel_eof (Channel.id c) ]
+    let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
+    Ok (t, [], [ `Channel_eof (Channel.id c) ])
   | Established, Msg_channel_request (id, false, Exit_status r) ->
-    guard_some (Channel.lookup id t.channels) "no such channel" >>| fun c ->
-    t, [], [ `Channel_exit_status (Channel.id c, r) ]
+    let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
+    Ok (t, [], [ `Channel_exit_status (Channel.id c, r) ])
   | Established, Msg_channel_success id ->
-    guard_some (Channel.lookup id t.channels) "no such channel" >>| fun _c ->
+    let* _c = guard_some (Channel.lookup id t.channels) "no such channel" in
     Log.info (fun m -> m "channel success %lu" id);
-    t, [], []
+    Ok (t, [], [])
   | Established, Msg_channel_close id ->
-    guard_some (Channel.lookup id t.channels) "no such channel" >>| fun c ->
+    let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
     let channels = Channel.remove (Channel.id c) t.channels in
     let msg = "all the channels are closed now, nothing left to do here" in
-    { t with channels },
-    [ Msg_channel_close (Channel.id c) ;
-      Msg_disconnect (DISCONNECT_BY_APPLICATION, msg, "") ],
-    [ `Disconnected ]
+    Ok ({ t with channels },
+        [ Msg_channel_close (Channel.id c) ;
+          Msg_disconnect (DISCONNECT_BY_APPLICATION, msg, "") ],
+        [ `Disconnected ])
   | _, _ ->
     debug_msg "unexpected" msg;
     Error "unexpected state and message"
 
 let rec incoming t now buf =
   let buf = Cstruct.append t.linger buf in
-  (match t.state with
-   | Init _ ->
-     Common.version buf >>| fun (msg, buf) ->
-     { t with linger = buf }, msg
-   | _ ->
-     Common.decrypt t.keys_stoc buf >>| fun (keys_stoc, msg, buf) ->
-     { t with keys_stoc ; linger = buf }, msg) >>= fun (t, msg) ->
+  let* t, msg =
+    match t.state with
+    | Init _ ->
+      let* msg, buf = Common.version buf in
+      Ok ({ t with linger = buf }, msg)
+    | _ ->
+      let* keys_stoc, msg, buf = Common.decrypt t.keys_stoc buf in
+      Ok ({ t with keys_stoc ; linger = buf }, msg)
+  in
   match msg with
   | None -> Ok (t, [], [])
   | Some msg ->
     debug_msg "<<<" msg;
-    input_msg t msg now >>= fun (t', replies, events) ->
+    let* t', replies, events = input_msg t msg now in
     let t'', replies = output_msgs t' replies in
-    incoming t'' now Cstruct.empty >>| fun (t''', replies', events') ->
-    t''', replies @ replies', events @ events'
+    let* t''', replies', events' = incoming t'' now Cstruct.empty in
+    Ok (t''', replies @ replies', events @ events')
 
 let outgoing_request t ?(id = 0l) ?(want_reply = false) req =
-  guard (established t) "not yet established" >>= fun () ->
-  guard_some (Channel.lookup id t.channels) "no such channel" >>| fun c ->
+  let* () = guard (established t) "not yet established" in
+  let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
   let msg = Ssh.Msg_channel_request (c.them.id, want_reply, req) in
-  output_msg t msg
+  Ok (output_msg t msg)
 
 let outgoing_data t ?(id = 0l) data =
-  guard (established t) "not yet established" >>= fun () ->
-  guard (Cstruct.length data > 0) "empty data" >>= fun () ->
-  guard_some (Channel.lookup id t.channels) "no such channel" >>= fun c ->
-  Channel.output_data c data >>| fun (c, frags) ->
+  let* () = guard (established t) "not yet established" in
+  let* () = guard (Cstruct.length data > 0) "empty data" in
+  let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
+  let* c, frags = Channel.output_data c data in
   let t' = { t with channels = Channel.update c t.channels } in
-  output_msgs t' frags
+  Ok (output_msgs t' frags)

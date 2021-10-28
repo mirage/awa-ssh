@@ -14,7 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Rresult.R
 open Util
 
 (*
@@ -30,14 +29,16 @@ type t = {
 }
 
 let send_msg t msg =
-  Server.output_msg t.server msg >>= fun (server, msg_buf) ->
+  let* server, msg_buf = Server.output_msg t.server msg in
   Printf.printf ">>> %s\n%!" (Ssh.message_to_string msg);
   t.write_cb msg_buf;
-  ok { t with server }
+  Ok { t with server }
 
 let rec send_msgs t = function
-  | msg :: msgs -> send_msg t msg >>= fun t -> send_msgs t msgs
-  | [] -> ok t
+  | msg :: msgs ->
+    let* t = send_msg t msg in
+    send_msgs t msgs
+  | [] -> Ok t
 
 let of_server server msgs write_cb read_cb time_cb =
   let t = { server;
@@ -50,7 +51,7 @@ let of_server server msgs write_cb read_cb time_cb =
 
 let rekey t =
   match Server.rekey t.server with
-  | None -> ok t
+  | None -> Ok t
   | Some (server, kexinit) -> send_msg { t with server } kexinit
 
 let rec poll t =
@@ -58,7 +59,7 @@ let rec poll t =
     (Cstruct.length t.input_buffer);
   let now = t.time_cb () in
   let server = t.server in
-  Server.pop_msg2 server t.input_buffer >>= fun (server, msg, input_buffer) ->
+  let* server, msg, input_buffer = Server.pop_msg2 server t.input_buffer in
   match msg with
   | None ->
     Printf.printf "no msg :/, input %d\n%!" (Cstruct.length input_buffer);
@@ -66,15 +67,15 @@ let rec poll t =
     poll { t with server; input_buffer }
   | Some msg ->
     Printf.printf "<<< %s\n%!" (Ssh.message_to_string msg);
-    Server.input_msg server msg now >>= fun (server, replies, event) ->
+    let* server, replies, event = Server.input_msg server msg now in
     let t = { t with server; input_buffer } in
-    send_msgs t replies >>= fun t ->
-    (match event with
-      | None -> poll t
-      | Some event -> ok (t, event))
+    let* t = send_msgs t replies in
+    match event with
+    | None -> poll t
+    | Some event -> Ok (t, event)
 
 let send_channel_data t id data =
-  Server.output_channel_data t.server id data >>= fun (server, msgs) ->
+  let* server, msgs = Server.output_channel_data t.server id data in
   send_msgs { t with server } msgs
 
 let disconnect t =
