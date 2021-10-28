@@ -1,8 +1,10 @@
 open Lwt
+open Lwt.Infix
 
 module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) = struct
 
   module FLOW = F
+  module MCLOCK = M
 
   type error  = [ `Msg of string
                 | `Read of F.error
@@ -35,6 +37,9 @@ module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) = struct
         | Ok () -> write_flow t d)
       (Ok ()) bufs
 
+  let now () =
+    Mtime.of_uint64_ns (M.elapsed_ns ())
+
   let read_react t =
     match t.state with
     | `Eof | `Error _ -> Lwt.return (Error ())
@@ -45,7 +50,7 @@ module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) = struct
       | Ok (`Data data) ->
         match t.state with
         | `Active ssh ->
-          begin match Awa.Client.incoming ssh (Mtime.of_uint64_ns (M.elapsed_ns ())) data with
+            begin match Awa.Client.incoming ssh (now ()) data with
             | Error msg -> t.state <- `Error (`Msg msg) ; Lwt.return (Error ())
             | Ok (ssh', out, events) ->
               let state' = if List.mem `Disconnected events then `Eof else `Active ssh' in
@@ -134,4 +139,150 @@ module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) = struct
      | Error msg -> t.state <- `Error (`Msg msg) ; Lwt.return (Error (`Msg msg))
      | Ok (ssh', data) -> t.state <- `Active ssh' ; write_flow t data) >|= fun () ->
     t
+
+(* copy from awa_lwt.ml and unix references removed in favor to FLOW *)
+  type nexus_msg =
+    | Rekey
+    | Net_eof
+    | Net_io of Cstruct.t
+    | Sshout of (int32 * Cstruct.t)
+    | Ssherr of (int32 * Cstruct.t)
+
+  type sshin_msg = [
+    | `Data of Cstruct.t
+    | `Eof
+  ]
+
+  type channel = {
+    cmd         : string;
+    id          : int32;
+    sshin_mbox  : sshin_msg Lwt_mvar.t;
+    exec_thread : unit Lwt.t;
+  }
+
+  type exec_callback =
+    string ->                     (* cmd *)
+    (unit -> sshin_msg Lwt.t) ->  (* sshin *)
+    (Cstruct.t -> unit Lwt.t) ->  (* sshout *)
+    (Cstruct.t -> unit Lwt.t) ->  (* ssherr *)
+    unit Lwt.t
+
+  type t = {
+    exec_callback  : exec_callback;       (* callback to run on exec *)
+    channels       : channel list;        (* Opened channels *)
+    nexus_mbox     : nexus_msg Lwt_mvar.t;(* Nexus mailbox *)
+  }
+
+  let wrapr = function
+    | Ok x -> Lwt.return x
+    | Error e -> Lwt.fail_invalid_arg e
+
+  let send_msg flow server msg =
+    wrapr (Awa.Server.output_msg server msg)
+    >>= fun (server, msg_buf) ->
+    FLOW.write flow msg_buf >>= function
+      | Ok () -> Lwt.return server
+      | Error w ->
+        Logs.err (fun m -> m "error %a while writing" FLOW.pp_write_error w);
+        Lwt.return server
+
+  let rec send_msgs fd server = function
+    | msg :: msgs ->
+      send_msg fd server msg
+      >>= fun server ->
+      send_msgs fd server msgs
+    | [] -> Lwt.return server
+
+  let net_read flow =
+    FLOW.read flow >>= function
+    | Error e ->
+      Logs.err (fun m -> m "read error %a" FLOW.pp_error e);
+      Lwt.return Net_eof
+    | Ok `Eof ->
+      Lwt.return Net_eof
+    | Ok (`Data data) ->
+      let n = Cstruct.length data in
+      assert (n >= 0); (* handle exception ! ! *)
+      let () = assert (n > 0) in          (* XXX *)
+      Lwt.return (Net_io data)
+
+  let sshin_eof c =
+    Lwt_mvar.put c.sshin_mbox `Eof
+
+  let sshin_data c data =
+    Lwt_mvar.put c.sshin_mbox (`Data data)
+
+  let lookup_channel t id =
+    List.find_opt (fun c -> id = c.id) t.channels
+
+  let rec nexus t fd server input_buffer =
+    wrapr (Awa.Server.pop_msg2 server input_buffer)
+    >>= fun (server, msg, input_buffer) ->
+    match msg with
+    | None -> (* No SSH msg *)
+      Lwt.catch
+        (fun () ->
+           Lwt.pick [ Lwt_mvar.take t.nexus_mbox;
+                      net_read fd])
+        (function exn -> Lwt.fail exn)
+      >>= fun nexus_msg ->
+      (match nexus_msg with
+       | Rekey ->
+          (match Awa.Server.maybe_rekey server (now ()) with
+          | None -> nexus t fd server input_buffer
+          | Some (server, kexinit) ->
+            send_msg fd server kexinit
+            >>= fun server ->
+            nexus t fd server input_buffer)
+       | Net_eof ->
+         Lwt.return t
+       | Net_io buf -> nexus t fd server (Awa.Util.cs_join input_buffer buf)
+       | Sshout (id, buf) | Ssherr (id, buf) ->
+         wrapr (Awa.Server.output_channel_data server id buf)
+         >>= fun (server, msgs) ->
+         send_msgs fd server msgs >>= fun server ->
+         nexus t fd server input_buffer)
+    | Some msg -> (* SSH msg *)
+      wrapr (Awa.Server.input_msg server msg (now ()))
+      >>= fun (server, replies, event) ->
+      send_msgs fd server replies
+      >>= fun server ->
+      match event with
+      | None -> nexus t fd server input_buffer
+      | Some Awa.Server.Disconnected s ->
+        Lwt_list.iter_p sshin_eof t.channels
+        >>= fun () ->
+        Lwt.return t
+      | Some Awa.Server.Channel_eof id ->
+        (match lookup_channel t id with
+         | Some c -> sshin_eof c >>= fun () -> Lwt.return t
+         | None -> Lwt.return t)
+      | Some Awa.Server.Channel_data (id, data) ->
+        (match lookup_channel t id with
+         | Some c -> sshin_data c data
+         | None -> Lwt.return_unit)
+        >>= fun () ->
+        nexus t fd server input_buffer
+      | Some Awa.Server.Channel_subsystem (id, cmd) (* same as exec *)
+      | Some Awa.Server.Channel_exec (id, cmd) ->
+        (* Create an input box *)
+        let sshin_mbox = Lwt_mvar.create_empty () in
+        (* Create a callback for each mbox *)
+        let sshin () = Lwt_mvar.take sshin_mbox in
+        let sshout id buf = Lwt_mvar.put t.nexus_mbox (Sshout (id, buf)) in
+        let ssherr id buf = Lwt_mvar.put t.nexus_mbox (Ssherr (id, buf)) in
+        (* Create the execution thread *)
+        let exec_thread = t.exec_callback cmd sshin (sshout id) (ssherr id) in
+        let c = { cmd; id; sshin_mbox; exec_thread } in
+        let t = { t with channels = c :: t.channels } in
+        nexus t fd server input_buffer
+
+  let spawn_server server msgs fd exec_callback =
+    let t = { exec_callback;
+              channels = [];
+              nexus_mbox = Lwt_mvar.create_empty () }
+    in
+    send_msgs fd server msgs >>= fun server ->
+    nexus t fd server (Cstruct.create 0)
+
 end

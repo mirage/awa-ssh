@@ -26,5 +26,22 @@ module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) : sig
     Awa.Hostkey.priv -> Awa.Ssh.channel_request -> FLOW.flow ->
     (flow, error) result Lwt.t
 
+ type t
+
+  type sshin_msg = [
+    | `Data of Cstruct.t
+    | `Eof
+  ]
+
+  type exec_callback =
+    string ->                     (* cmd *)
+    (unit -> sshin_msg Lwt.t) ->  (* sshin *)
+    (Cstruct.t -> unit Lwt.t) ->  (* sshout *)
+    (Cstruct.t -> unit Lwt.t) ->  (* ssherr *)
+    unit Lwt.t
+
+  val spawn_server : Awa.Server.t -> Awa.Ssh.message list -> F.flow ->
+    exec_callback -> t Lwt.t
+
 end
   with module FLOW = F
