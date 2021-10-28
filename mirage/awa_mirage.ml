@@ -1,4 +1,3 @@
-open Lwt
 open Lwt.Infix
 
 module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) = struct
@@ -249,7 +248,7 @@ module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) = struct
       >>= fun server ->
       match event with
       | None -> nexus t fd server input_buffer
-      | Some Awa.Server.Disconnected s ->
+      | Some Awa.Server.Disconnected _ ->
         Lwt_list.iter_p sshin_eof t.channels
         >>= fun () ->
         Lwt.return t
