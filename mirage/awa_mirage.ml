@@ -1,4 +1,3 @@
-open Lwt
 open Lwt.Infix
 
 module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) = struct
@@ -222,9 +221,11 @@ module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) = struct
     | None -> (* No SSH msg *)
       Lwt.catch
         (fun () ->
+          let timeout = Mtime.timeout 2_000_000_000L >>= fun () -> Error (`Msg "DNS request timeout") in
            Lwt.pick [ Lwt_mvar.take t.nexus_mbox;
-                      net_read fd])
-        (function exn -> Lwt.fail exn)
+                      net_read fd;
+                      timeout ])
+      (function `Error -> Lwt.return Rekey | exn -> Lwt.fail exn)
       >>= fun nexus_msg ->
       (match nexus_msg with
        | Rekey ->
@@ -249,7 +250,7 @@ module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) = struct
       >>= fun server ->
       match event with
       | None -> nexus t fd server input_buffer
-      | Some Awa.Server.Disconnected s ->
+      | Some Awa.Server.Disconnected _ ->
         Lwt_list.iter_p sshin_eof t.channels
         >>= fun () ->
         Lwt.return t

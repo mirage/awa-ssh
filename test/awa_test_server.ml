@@ -87,6 +87,7 @@ let rec serve t cmd =
        let* t = bc t id data in
        serve t cmd
      | _ -> Error "Unexpected cmd")
+  | Channel_subsystem (id, exec) (* same as exec *)
   | Channel_exec (id, exec) ->
     printf "channel exec %s\n%!" exec;
     match exec with
