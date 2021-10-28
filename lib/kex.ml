@@ -14,7 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Rresult.R
 open Util
 open Ssh
 
@@ -22,8 +21,8 @@ type compression_alg =
   | Nothing                        (* Can't use None :-D *)
 
 let compression_alg_of_string = function
-  | "none" -> ok Nothing
-  | s -> error ("Unknown compression algorithm " ^ s)
+  | "none" -> Ok Nothing
+  | s -> Error ("Unknown compression algorithm " ^ s)
 
 let compression_alg_to_string = function
   | Nothing -> "none"
@@ -53,13 +52,13 @@ let is_finite_field = function
   | Curve25519_sha256 -> false
 
 let alg_of_string = function
-  | "diffie-hellman-group-exchange-sha256" -> ok Diffie_hellman_group_exchange_sha256
-  | "diffie-hellman-group-exchange-sha1" -> ok Diffie_hellman_group_exchange_sha1
-  | "diffie-hellman-group14-sha256" -> ok Diffie_hellman_group14_sha256
-  | "diffie-hellman-group14-sha1" -> ok Diffie_hellman_group14_sha1
-  | "diffie-hellman-group1-sha1" -> ok Diffie_hellman_group1_sha1
-  | "curve25519-sha256" -> ok Curve25519_sha256
-  | s -> error ("Unknown kex_alg " ^ s)
+  | "diffie-hellman-group-exchange-sha256" -> Ok Diffie_hellman_group_exchange_sha256
+  | "diffie-hellman-group-exchange-sha1" -> Ok Diffie_hellman_group_exchange_sha1
+  | "diffie-hellman-group14-sha256" -> Ok Diffie_hellman_group14_sha256
+  | "diffie-hellman-group14-sha1" -> Ok Diffie_hellman_group14_sha1
+  | "diffie-hellman-group1-sha1" -> Ok Diffie_hellman_group1_sha1
+  | "curve25519-sha256" -> Ok Curve25519_sha256
+  | s -> Error ("Unknown kex_alg " ^ s)
 
 let alg_to_string = function
   | Diffie_hellman_group_exchange_sha256 -> "diffie-hellman-group-exchange-sha256"
@@ -157,64 +156,72 @@ let negotiate ~s ~c =
     try
       f (List.find (fun x -> List.mem x s) c)
     with
-      Not_found -> error e
+      Not_found -> Error e
   in
-  pick_common
-    alg_of_string
-    ~s:s.kex_algs
-    ~c:c.kex_algs
-    "Can't agree on kex algorithm"
-  >>= fun kex_alg ->
-  pick_common
-    Hostkey.alg_of_string
-    ~s:s.server_host_key_algs
-    ~c:c.server_host_key_algs
-    "Can't agree on server host key algorithm"
-  >>= fun server_host_key_alg ->
-  pick_common
-    Cipher.of_string
-    ~s:s.encryption_algs_ctos
-    ~c:c.encryption_algs_ctos
-    "Can't agree on encryption algorithm client to server"
-  >>= fun encryption_alg_ctos ->
-  pick_common
-    Cipher.of_string
-    ~s:s.encryption_algs_stoc
-    ~c:c.encryption_algs_stoc
-    "Can't agree on encryption algorithm server to client"
-  >>= fun encryption_alg_stoc ->
-  (if Cipher.aead encryption_alg_ctos then
-     ok Hmac.Plaintext
-   else
-     pick_common
-       Hmac.of_string
-       ~s:s.mac_algs_ctos
-       ~c:c.mac_algs_ctos
-       "Can't agree on mac algorithm client to server")
-  >>= fun mac_alg_ctos ->
-  (if Cipher.aead encryption_alg_stoc then
-     ok Hmac.Plaintext
-   else
-     pick_common
-       Hmac.of_string
-       ~s:s.mac_algs_stoc
-       ~c:c.mac_algs_stoc
-       "Can't agree on mac algorithm server to client")
-  >>= fun mac_alg_stoc ->
-  pick_common
-    compression_alg_of_string
-    ~s:s.compression_algs_ctos
-    ~c:c.compression_algs_ctos
-    "Can't agree on compression algorithm client to server"
-  >>= fun compression_alg_ctos ->
-  pick_common
-    compression_alg_of_string
-    ~s:s.compression_algs_stoc
-    ~c:c.compression_algs_stoc
-    "Can't agree on compression algorithm server to client"
-  >>= fun compression_alg_stoc ->
+  let* kex_alg =
+    pick_common
+      alg_of_string
+      ~s:s.kex_algs
+      ~c:c.kex_algs
+      "Can't agree on kex algorithm"
+  in
+  let* server_host_key_alg =
+    pick_common
+      Hostkey.alg_of_string
+      ~s:s.server_host_key_algs
+      ~c:c.server_host_key_algs
+      "Can't agree on server host key algorithm"
+  in
+  let* encryption_alg_ctos =
+    pick_common
+      Cipher.of_string
+      ~s:s.encryption_algs_ctos
+      ~c:c.encryption_algs_ctos
+      "Can't agree on encryption algorithm client to server"
+  in
+  let* encryption_alg_stoc =
+    pick_common
+      Cipher.of_string
+      ~s:s.encryption_algs_stoc
+      ~c:c.encryption_algs_stoc
+      "Can't agree on encryption algorithm server to client"
+  in
+  let* mac_alg_ctos =
+    if Cipher.aead encryption_alg_ctos then
+      Ok Hmac.Plaintext
+    else
+      pick_common
+        Hmac.of_string
+        ~s:s.mac_algs_ctos
+        ~c:c.mac_algs_ctos
+        "Can't agree on mac algorithm client to server"
+  in
+  let* mac_alg_stoc =
+    if Cipher.aead encryption_alg_stoc then
+      Ok Hmac.Plaintext
+    else
+      pick_common
+        Hmac.of_string
+        ~s:s.mac_algs_stoc
+        ~c:c.mac_algs_stoc
+        "Can't agree on mac algorithm server to client"
+  in
+  let* compression_alg_ctos =
+    pick_common
+      compression_alg_of_string
+      ~s:s.compression_algs_ctos
+      ~c:c.compression_algs_ctos
+      "Can't agree on compression algorithm client to server"
+  in
+  let* compression_alg_stoc =
+    pick_common
+      compression_alg_of_string
+      ~s:s.compression_algs_stoc
+      ~c:c.compression_algs_stoc
+      "Can't agree on compression algorithm server to client"
+  in
   (* XXX make sure it's not plaintext here *)
-  ok { kex_alg;
+  Ok { kex_alg;
        server_host_key_alg;
        encryption_alg_ctos;
        encryption_alg_stoc;
@@ -326,9 +333,8 @@ let derive_keys digesti k h session_id neg now =
                seq = Int32.zero;
                tx_rx = Int64.zero }
   in
-  guard_some (Mtime.add_span now keys_lifespan) "key eol overflow"
-  >>= fun eol ->
-  ok (ctos, stoc, eol)
+  let* eol = guard_some (Mtime.add_span now keys_lifespan) "key eol overflow" in
+  Ok (ctos, stoc, eol)
 
 module Dh = struct
 
@@ -375,9 +381,11 @@ module Dh = struct
 
   let shared secret recv =
     let r = Mirage_crypto_pk.Z_extra.to_cstruct_be recv in
-    guard_some (Mirage_crypto_pk.Dh.shared secret r)
-      "Can't compute shared secret" >>= fun shared ->
-    ok (Mirage_crypto_pk.Z_extra.of_cstruct_be shared)
+    let* shared =
+      guard_some (Mirage_crypto_pk.Dh.shared secret r)
+        "Can't compute shared secret"
+    in
+    Ok (Mirage_crypto_pk.Z_extra.of_cstruct_be shared)
 
   let ecdh_secret_pub = function
     | Curve25519_sha256 ->
@@ -387,14 +395,17 @@ module Dh = struct
 
   let ecdh_shared secret recv =
     let r = Mirage_crypto_pk.Z_extra.to_cstruct_be recv in
-    Rresult.R.(reword_error (Fmt.to_to_string Mirage_crypto_ec.pp_error)
-                 (Mirage_crypto_ec.X25519.key_exchange secret r)) >>= fun shared ->
-    ok (Mirage_crypto_pk.Z_extra.of_cstruct_be shared)
+    let* shared =
+      Result.map_error
+        (Fmt.to_to_string Mirage_crypto_ec.pp_error)
+        (Mirage_crypto_ec.X25519.key_exchange secret r)
+    in
+    Ok (Mirage_crypto_pk.Z_extra.of_cstruct_be shared)
 
   let generate alg peer_pub =
     let secret, my_pub = secret_pub alg in
-    shared secret peer_pub >>= fun shared ->
+    let* shared = shared secret peer_pub in
     (* my_pub is f or e, shared is k *)
-    ok (my_pub, shared)
+    Ok (my_pub, shared)
 
 end

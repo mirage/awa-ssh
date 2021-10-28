@@ -1,5 +1,4 @@
-
-open Rresult.R.Infix
+open Util
 
 let src = Logs.Src.create "awa.authenticator" ~doc:"AWA authenticator"
 module Log = (val Logs.src_log src : Logs.LOG)
@@ -55,9 +54,11 @@ let authenticator_of_string str =
   else
     match String.split_on_char ':' str with
     | [ y ; fp ] ->
-      (match y with
-       | "SHA256" -> Ok `Rsa
-       | y -> typ_of_string y) >>= fun t ->
+      let* t =
+        match y with
+        | "SHA256" -> Ok `Rsa
+        | y -> typ_of_string y
+      in
       begin match Base64.decode ~pad:false fp with
         | Error (`Msg m) ->
           Error ("invalid authenticator (bad b64 in fingerprint): " ^ m)
@@ -66,8 +67,8 @@ let authenticator_of_string str =
     | _ ->
       match Base64.decode ~pad:false str with
       | Ok k ->
-        (Wire.pubkey_of_blob (Cstruct.of_string k) >>| fun key ->
-         `Key key)
+        let* key = Wire.pubkey_of_blob (Cstruct.of_string k) in
+        Ok (`Key key)
       | Error (`Msg msg) ->
         Error (str ^ " is invalid or unsupported authenticator, b64 failed: " ^ msg)
 

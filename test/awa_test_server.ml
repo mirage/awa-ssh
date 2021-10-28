@@ -16,8 +16,9 @@
 
 let () = Printexc.record_backtrace true
 
-open Rresult.R
 open Awa
+
+let ( let* ) = Result.bind
 
 let printf = Printf.printf
 let sprintf = Printf.sprintf
@@ -67,34 +68,42 @@ let bc t id data =
 
 let rec serve t cmd =
   let open Server in
-  Driver.poll t >>= fun (t, poll_result) ->
+  let* t, poll_result = Driver.poll t in
   match poll_result with
-  | Disconnected s -> ok (printf "Disconnected: %s\n%!" s)
-  | Channel_eof id -> ok (printf "Channel %ld EOF\n%!" id)
+  | Disconnected s -> Ok (printf "Disconnected: %s\n%!" s)
+  | Channel_eof id -> Ok (printf "Channel %ld EOF\n%!" id)
   | Channel_data (id, data) ->
     printf "channel data %d\n%!" (Cstruct.length data);
     (match cmd with
      | None -> serve t cmd
      | Some "echo" ->
        if (Cstruct.to_string data) = "rekey\n" then
-         Driver.rekey t >>= fun t -> serve t cmd
+         let* t = Driver.rekey t in
+         serve t cmd
        else
-         echo t id data >>= fun t -> serve t cmd
-     | Some "bc" -> bc t id data >>= fun t -> serve t cmd
-     | _ -> error "Unexpected cmd")
+         let* t = echo t id data in
+         serve t cmd
+     | Some "bc" ->
+       let* t = bc t id data in
+       serve t cmd
+     | _ -> Error "Unexpected cmd")
   | Channel_exec (id, exec) ->
     printf "channel exec %s\n%!" exec;
     match exec with
-    | "suicide" -> Driver.disconnect t >>= fun _ -> ok ()
+    | "suicide" ->
+      let* _ = Driver.disconnect t in
+      Ok ()
     | "ping" ->
-      Driver.send_channel_data t id (Cstruct.of_string "pong\n") >>= fun t ->
-      Driver.disconnect t >>= fun _ -> ok (printf "sent pong\n%!")
+      let* t = Driver.send_channel_data t id (Cstruct.of_string "pong\n") in
+      let* _ = Driver.disconnect t in
+      Ok (printf "sent pong\n%!")
     | "echo" | "bc" as c -> serve t (Some c)
     | _ ->
       let m = sprintf "Unknown command %s\n%!" exec in
-      Driver.send_channel_data t id (Cstruct.of_string m) >>= fun t ->
+      let* t = Driver.send_channel_data t id (Cstruct.of_string m) in
       printf "%s\n%!" m;
-      Driver.disconnect t >>= fun t -> serve t cmd
+      let* t = Driver.disconnect t in
+      serve t cmd
 
 let user_db =
   (* User foo auths by passoword *)
@@ -102,7 +111,7 @@ let user_db =
   (* User awa auths by pubkey *)
   let fd = Unix.(openfile "test/data/awa_test_rsa.pub" [O_RDONLY] 0) in
   let file_buf = Unix_cstruct.of_fd fd in
-  let key = get_ok (Wire.pubkey_of_openssh file_buf) in
+  let key = Result.get_ok (Wire.pubkey_of_openssh file_buf) in
   Unix.close fd;
   let awa = Auth.make_user "awa" [ key ] in
   [ foo; awa ]
@@ -112,11 +121,12 @@ let rec wait_connection priv_key listen_fd server_port =
   let client_fd, _ = Unix.(accept listen_fd) in
   printf "Client connected !\n%!";
   let server, msgs = Server.make priv_key user_db in
-  Driver.of_server server msgs
-    (write_cstruct client_fd)
-    (read_cstruct client_fd)
-    Mtime_clock.now
-  >>= fun t ->
+  let* t =
+    Driver.of_server server msgs
+      (write_cstruct client_fd)
+      (read_cstruct client_fd)
+      Mtime_clock.now
+  in
   let () = match serve t None with
     | Ok _ -> printf "Client finished\n%!"
     | Error e -> printf "error: %s\n%!" e

@@ -14,7 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Rresult.R
 open Mirage_crypto.Cipher_block.AES
 
 type t =
@@ -53,15 +52,15 @@ let to_string = function
   | Chacha20_poly1305 -> "chacha20-poly1305@openssh.com"
 
 let of_string = function
-  | "none"       -> ok Plaintext
-  | "aes128-ctr" -> ok Aes128_ctr
-  | "aes192-ctr" -> ok Aes192_ctr
-  | "aes256-ctr" -> ok Aes256_ctr
-  | "aes128-cbc" -> ok Aes128_cbc
-  | "aes192-cbc" -> ok Aes192_cbc
-  | "aes256-cbc" -> ok Aes256_cbc
-  | "chacha20-poly1305@openssh.com" -> ok Chacha20_poly1305
-  | s -> error ("Unknown cipher " ^ s)
+  | "none"       -> Ok Plaintext
+  | "aes128-ctr" -> Ok Aes128_ctr
+  | "aes192-ctr" -> Ok Aes192_ctr
+  | "aes256-ctr" -> Ok Aes256_ctr
+  | "aes128-cbc" -> Ok Aes128_cbc
+  | "aes192-cbc" -> Ok Aes192_cbc
+  | "aes256-cbc" -> Ok Aes256_cbc
+  | "chacha20-poly1305@openssh.com" -> Ok Chacha20_poly1305
+  | s -> Error ("Unknown cipher " ^ s)
 
 let key_len = function
   | Plaintext  -> 0
@@ -89,27 +88,27 @@ let mac_len = function
   | Chacha20_poly1305 -> Mirage_crypto.Poly1305.mac_size
   | _ -> 0
 
-let known s = is_ok (of_string s)
+let known s = Result.is_ok (of_string s)
 
 (* For some reason Nocrypto CTR modifies ctr in place, CBC returns next *)
 let enc_dec enc ~len seq cipher buf =
   let open Mirage_crypto.Cipher_block in
   match cipher.cipher_key with
-  | Plaintext_key -> ok (buf, cipher)
+  | Plaintext_key -> Ok (buf, cipher)
   | Aes_ctr_key (key, iv) ->
     let f = if enc then AES.CTR.encrypt else AES.CTR.decrypt in
     let buf = f ~key ~ctr:iv buf in
     let next_iv = AES.CTR.next_ctr ~ctr:iv buf in
     let cipher_key = Aes_ctr_key (key, next_iv) in
     let key = { cipher with cipher_key } in
-    ok (buf, key)
+    Ok (buf, key)
   | Aes_cbc_key (key, iv) ->
     let f = if enc then AES.CBC.encrypt else AES.CBC.decrypt in
     let buf = f ~key ~iv buf in
     let next_iv = AES.CBC.next_iv ~iv buf in
     let cipher_key = Aes_cbc_key (key, next_iv) in
     let cipher = { cipher with cipher_key } in
-    ok (buf, cipher)
+    Ok (buf, cipher)
   | Chacha20_poly1305_key (len_key, key) ->
     let nonce =
       let b = Cstruct.create 8 in
@@ -128,11 +127,11 @@ let enc_dec enc ~len seq cipher buf =
       let enc_msg = c_data msg in
       let out = Cstruct.append enc_len enc_msg in
       let tag = mac out in
-      ok (Cstruct.append out tag, cipher)
+      Ok (Cstruct.append out tag, cipher)
     else
       begin
         if len then
-          ok (c_len buf, cipher)
+          Ok (c_len buf, cipher)
         else
           let c, tag =
             let off = Cstruct.length buf - Mirage_crypto.Poly1305.mac_size in
@@ -144,9 +143,9 @@ let enc_dec enc ~len seq cipher buf =
           and dec_msg = c_data enc_msg
           in
           if Cstruct.equal ctag tag then
-            ok (Cstruct.append dec_len dec_msg, cipher)
+            Ok (Cstruct.append dec_len dec_msg, cipher)
           else
-            error "tag verification failed"
+            Error "tag verification failed"
       end
 
 let encrypt ~len seq cipher buf =

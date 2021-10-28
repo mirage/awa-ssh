@@ -27,7 +27,6 @@ depends: [
   "cstruct-unix"
   "cstruct-sexp"
   "sexplib"
-  "rresult"
   "mtime"
   "logs"
   "fmt"

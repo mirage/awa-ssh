@@ -14,7 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Rresult.R
 open Util
 
 type event =
@@ -47,10 +46,10 @@ type t = {
 let guard_msg t msg =
   let open Ssh in
   match t.expect with
-  | None -> ok ()
-  | Some MSG_DISCONNECT -> ok ()
-  | Some MSG_IGNORE -> ok ()
-  | Some MSG_DEBUG -> ok ()
+  | None -> Ok ()
+  | Some MSG_DISCONNECT -> Ok ()
+  | Some MSG_IGNORE -> Ok ()
+  | Some MSG_DEBUG -> Ok ()
   | Some id ->
     let msgid = message_to_id msg in
     guard (id = msgid) ("Unexpected message " ^ (message_id_to_string msgid))
@@ -85,18 +84,18 @@ let make host_key user_db =
 (* t with updated keys from new_keys_ctos *)
 let of_new_keys_ctos t =
   let open Kex in
-  guard_some t.new_keys_ctos "No new_keys_ctos" >>= fun new_keys_ctos ->
-  guard (is_keyed new_keys_ctos) "Plaintext new keys" >>= fun () ->
+  let* new_keys_ctos = guard_some t.new_keys_ctos "No new_keys_ctos" in
+  let* () = guard (is_keyed new_keys_ctos) "Plaintext new keys" in
   let new_keys_ctos = { new_keys_ctos with seq = t.keys_ctos.seq } in
-  ok { t with keys_ctos = new_keys_ctos; new_keys_ctos = None }
+  Ok { t with keys_ctos = new_keys_ctos; new_keys_ctos = None }
 
 (* t with updated keys from new_keys_stoc *)
 let of_new_keys_stoc t =
   let open Kex in
-  guard_some t.new_keys_stoc "No new_keys_stoc" >>= fun new_keys_stoc ->
-  guard (is_keyed new_keys_stoc) "Plaintext new keys" >>= fun () ->
+  let* new_keys_stoc = guard_some t.new_keys_stoc "No new_keys_stoc" in
+  let* () = guard (is_keyed new_keys_stoc) "Plaintext new keys" in
   let new_keys_stoc = { new_keys_stoc with seq = t.keys_stoc.seq } in
-  ok { t with keys_stoc = new_keys_stoc; new_keys_stoc = None; keying = false }
+  Ok { t with keys_stoc = new_keys_stoc; new_keys_stoc = None; keying = false }
 
 let rekey t =
   match t.keying, (Kex.is_keyed t.keys_stoc) with
@@ -119,40 +118,42 @@ let maybe_rekey t now = if should_rekey t now then rekey t else None
 
 let pop_msg2 t buf =
   let version t buf =
-    Common.version buf >>| fun (v, i) ->
-    (t, v, i)
+    let* v, i = Common.version buf in
+    Ok (t, v, i)
   in
   let decrypt t buf =
-    Common.decrypt ~ignore_packet:t.ignore_next_packet t.keys_ctos buf >>| fun (keys_ctos, msg, buf) ->
-    { t with keys_ctos; ignore_next_packet = false }, msg, buf
+    let* keys_ctos, msg, buf =
+      Common.decrypt ~ignore_packet:t.ignore_next_packet t.keys_ctos buf
+    in
+    Ok ({ t with keys_ctos; ignore_next_packet = false }, msg, buf)
   in
   match t.client_version with
   | None -> version t buf
   | Some _ -> decrypt t buf
 
-let make_noreply t = ok (t, [], None)
-let make_reply t msg = ok (t, [ msg ], None)
-let make_replies t msgs = ok (t,  msgs, None)
-let make_event t e = ok (t, [], Some e)
-let make_reply_with_event t msg e = ok (t, [ msg ], Some e)
+let make_noreply t = Ok (t, [], None)
+let make_reply t msg = Ok (t, [ msg ], None)
+let make_replies t msgs = Ok (t,  msgs, None)
+let make_event t e = Ok (t, [], Some e)
+let make_reply_with_event t msg e = Ok (t, [ msg ], Some e)
 let make_disconnect t code s =
-  ok (t, [ Ssh.disconnect_msg code s ], Some (Disconnected s))
+  Ok (t, [ Ssh.disconnect_msg code s ], Some (Disconnected s))
 
 let rec input_userauth_request t username service auth_method =
   let open Ssh in
   let open Auth in
   let inc_nfailed t =
     match t.auth_state with
-    | Preauth | Done -> error "Unexpected auth_state"
+    | Preauth | Done -> Error "Unexpected auth_state"
     | Inprogress (u, s, nfailed) ->
-      ok ({ t with auth_state = Inprogress (u, s, succ nfailed) })
+      Ok ({ t with auth_state = Inprogress (u, s, succ nfailed) })
   in
   let disconnect t code s =
-    inc_nfailed t >>= fun t ->
+    let* t = inc_nfailed t in
     make_disconnect t code s
   in
   let failure t =
-    inc_nfailed t >>= fun t ->
+    let* t = inc_nfailed t in
     make_reply t (Msg_userauth_failure ([ "publickey"; "password" ], false))
   in
   let discard t = make_noreply t in
@@ -165,8 +166,8 @@ let rec input_userauth_request t username service auth_method =
   let try_auth t b = if b then success t else failure t in
   let handle_auth t =
     (* XXX verify all fail cases, what should we do and so on *)
-    guard_some t.session_id "No session_id" >>= fun session_id ->
-    guard (service = "ssh-connection") "Bad service" >>= fun () ->
+    let* session_id = guard_some t.session_id "No session_id" in
+    let* () = guard (service = "ssh-connection") "Bad service" in
     match auth_method with
     | Pubkey (pubkey, None) ->        (* Public key probing *)
       try_probe t pubkey
@@ -194,7 +195,7 @@ let rec input_userauth_request t username service auth_method =
       disconnect t DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE
         "Maximum authentication attempts reached"
     else if nfailed > 10 then
-      error "Maximum authentication attempts reached, already sent disconnect"
+      Error "Maximum authentication attempts reached, already sent disconnect"
     else
       handle_auth t
 
@@ -284,11 +285,10 @@ let input_channel_request t recp_channel want_reply data =
 
 let input_msg t msg now =
   let open Ssh in
-  guard_msg t msg >>= fun () ->
+  let* () = guard_msg t msg in
   match msg with
   | Msg_kexinit kex ->
-    Kex.negotiate ~s:t.server_kexinit ~c:kex
-    >>= fun neg ->
+    let* neg = Kex.negotiate ~s:t.server_kexinit ~c:kex in
     let ignore_next_packet =
       kex.first_kex_packet_follows &&
       not (Kex.guessed_right ~s:t.server_kexinit ~c:kex)
@@ -303,14 +303,15 @@ let input_msg t msg now =
      | Some (t, kexinit) -> make_reply t kexinit)
   | Msg_kex (id, data) ->
     begin
-      Wire.dh_kexdh_of_kex id data >>= function
+      let* m = Wire.dh_kexdh_of_kex id data in
+      match m with
       | Msg_kexdh_init e ->
-        guard_some t.neg_kex "No negotiated kex" >>= fun neg ->
-        guard_some t.client_version "No client version" >>= fun client_version ->
-        guard_none t.new_keys_stoc "Already got new_keys_stoc" >>= fun () ->
-        guard_none t.new_keys_ctos "Already got new_keys_ctos" >>= fun () ->
-        guard_some t.client_kexinit "No client kex" >>= fun c ->
-        Kex.(Dh.generate neg.kex_alg e) >>= fun (f, k) ->
+        let* neg = guard_some t.neg_kex "No negotiated kex" in
+        let* client_version = guard_some t.client_version "No client version" in
+        let* () = guard_none t.new_keys_stoc "Already got new_keys_stoc" in
+        let* () = guard_none t.new_keys_ctos "Already got new_keys_ctos" in
+        let* c = guard_some t.client_kexinit "No client kex" in
+        let* f, k = Kex.(Dh.generate neg.kex_alg e) in
         let pub_host_key = Hostkey.pub_of_priv t.host_key in
         let h = Kex.Dh.compute_hash ~signed:true neg
             ~v_c:client_version
@@ -325,8 +326,9 @@ let input_msg t msg now =
           Cstruct.hexdump_pp (Mirage_crypto_pk.Z_extra.to_cstruct_be f)
           Cstruct.hexdump_pp signature Cstruct.hexdump_pp h;
         let session_id = match t.session_id with None -> h | Some x -> x in
-        Kex.Dh.derive_keys k h session_id neg now
-        >>= fun (new_keys_ctos, new_keys_stoc, key_eol) ->
+        let* new_keys_ctos, new_keys_stoc, key_eol =
+          Kex.Dh.derive_keys k h session_id neg now
+        in
         let signature = neg.server_host_key_alg, signature in
         make_replies { t with session_id = Some session_id;
                               new_keys_ctos = Some new_keys_ctos;
@@ -335,7 +337,7 @@ let input_msg t msg now =
                               expect = Some MSG_NEWKEYS }
           [ Msg_kexdh_reply (pub_host_key, f, signature); Msg_newkeys ]
       | _ ->
-        error "unexpected KEX message"
+        Error "unexpected KEX message"
     end
   | Msg_newkeys ->
     (* If this is the first time we keyed, we must take a service request *)
@@ -345,7 +347,8 @@ let input_msg t msg now =
         None
     in
     (* Update keys *)
-    of_new_keys_ctos t >>= fun t -> make_noreply { t with expect }
+    let* t = of_new_keys_ctos t in
+    make_noreply { t with expect }
   | Msg_service_request service ->
     if service = "ssh-userauth" then
       make_reply { t with expect = Some MSG_USERAUTH_REQUEST }
@@ -370,9 +373,10 @@ let input_msg t msg now =
                     t (Msg_channel_close c.them.id) (Channel_eof recp_channel)
         | Sent_close -> make_noreply t))
   | Msg_channel_data (recp_channel, data) ->
-    guard_some (Channel.lookup recp_channel t.channels) "no such channel"
-    >>= fun c ->
-    Channel.input_data c data >>= fun (c, data, adjust) ->
+    let* c =
+      guard_some (Channel.lookup recp_channel t.channels) "no such channel"
+    in
+    let* c, data, adjust = Channel.input_data c data in
     let channels = Channel.update c t.channels in
     let t = { t with channels } in
     let e = (Channel_data (Channel.id c, data)) in
@@ -380,30 +384,34 @@ let input_msg t msg now =
      | None -> make_event t (Channel_data (Channel.id c, data))
      | Some adjust -> make_reply_with_event t adjust e)
   | Msg_channel_window_adjust (recp_channel, len) ->
-    guard_some (Channel.lookup recp_channel t.channels) "no such channel"
-    >>= fun c ->
-    Channel.adjust_window c len >>= fun (c, msgs) ->
+    let* c =
+      guard_some (Channel.lookup recp_channel t.channels) "no such channel"
+    in
+    let* c, msgs = Channel.adjust_window c len in
     let channels = Channel.update c t.channels in
     make_replies { t with channels } msgs
   | Msg_channel_eof recp_channel ->
-    guard_some (Channel.lookup recp_channel t.channels) "no such channel"
-    >>= fun c ->
+    let* c =
+      guard_some (Channel.lookup recp_channel t.channels) "no such channel"
+    in
     make_event t (Channel_eof (Channel.id c))
   | Msg_disconnect (_, s, _) -> make_event t (Disconnected s)
   | Msg_version v -> make_noreply { t with client_version = Some v;
                                            expect = Some MSG_KEXINIT }
-  | msg -> error ("unhandled msg: " ^ (message_to_string msg))
+  | msg -> Error ("unhandled msg: " ^ (message_to_string msg))
 
 let output_msg t msg =
   let buf, keys_stoc = Common.output_msg t.keys_stoc msg in
   let t = { t with keys_stoc } in
   (* Do state transitions *)
   match msg with
-  | Ssh.Msg_newkeys -> of_new_keys_stoc t >>= fun t -> ok (t, buf)
-  | _ -> ok (t, buf)
+  | Ssh.Msg_newkeys ->
+    let* t = of_new_keys_stoc t in
+    Ok (t, buf)
+  | _ -> Ok (t, buf)
 
 let output_channel_data t id data =
-  guard (Cstruct.length data > 0) "empty data" >>= fun () ->
-  guard_some (Channel.lookup id t.channels) "no such channel" >>= fun c ->
-  Channel.output_data c data >>= fun (c, frags) ->
-  ok ({ t with channels = Channel.update c t.channels }, frags)
+  let* () = guard (Cstruct.length data > 0) "empty data" in
+  let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
+  let* c, frags = Channel.output_data c data in
+  Ok ({ t with channels = Channel.update c t.channels }, frags)

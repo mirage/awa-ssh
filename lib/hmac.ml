@@ -14,8 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Rresult.R
-
 open Mirage_crypto.Hash
 
 type t =
@@ -42,14 +40,14 @@ let to_string = function
   | Sha2_512 -> "hmac-sha2-512"
 
 let of_string = function
- | "none"          -> ok Plaintext
- | "hmac-md5"      -> ok Md5
- | "hmac-md5-96"   -> ok Md5_96
- | "hmac-sha1"     -> ok Sha1
- | "hmac-sha1-96"  -> ok Sha1_96
- | "hmac-sha2-256" -> ok Sha2_256
- | "hmac-sha2-512" -> ok Sha2_512
- | s -> error ("Unknown mac " ^ s)
+ | "none"          -> Ok Plaintext
+ | "hmac-md5"      -> Ok Md5
+ | "hmac-md5-96"   -> Ok Md5_96
+ | "hmac-sha1"     -> Ok Sha1
+ | "hmac-sha1-96"  -> Ok Sha1_96
+ | "hmac-sha2-256" -> Ok Sha2_256
+ | "hmac-sha2-512" -> Ok Sha2_512
+ | s -> Error ("Unknown mac " ^ s)
 
 let digest_len = function
   | Plaintext-> 0
@@ -69,7 +67,7 @@ let key_len = function
   | Sha2_256 -> SHA256.digest_size
   | Sha2_512 -> SHA512.digest_size
 
-let known s = is_ok (of_string s)
+let known s = Result.is_ok (of_string s)
 
 let preferred = [ Md5; Sha1; Sha2_256;
                   Sha2_512; Sha1_96; Md5_96 ]

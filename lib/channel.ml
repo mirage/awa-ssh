@@ -14,8 +14,9 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Rresult.R
 open Sexplib.Conv
+
+open Util
 
 (*
  * Channel entry
@@ -62,14 +63,14 @@ let input_data t data =
     Printf.printf "channel input_data: discarding %d bytes (window size)\n%!"
       (Cstruct.length left);
   let new_win = Int32.sub t.us.win len in
-  Util.guard Int32.(new_win >= zero) "window underflow" >>= fun () ->
+  let* () = guard Int32.(new_win >= zero) "window underflow" in
   let win, adjust =
     if new_win < Ssh.channel_win_adj_threshold then
       Ssh.channel_win_len, Int32.sub Ssh.channel_win_len new_win
     else
       new_win, Int32.zero
   in
-  Util.guard (Int32.(adjust >= zero)) "adjust underflow" >>= fun () ->
+  let* () = guard (Int32.(adjust >= zero)) "adjust underflow" in
   assert Int32.(adjust >= zero);
   let t = { t with us = { t.us with win } } in
   let msg = if adjust <> Int32.zero then
@@ -77,7 +78,7 @@ let input_data t data =
     else
       None
   in
-  ok (t, data, msg)
+  Ok (t, data, msg)
 
 let output_data t data =
   let fragment data =
@@ -96,18 +97,18 @@ let output_data t data =
         Ssh.Msg_channel_data (t.them.id, frag) :: frags)
       i [] |> List.rev
   in
-  let tosend = Util.cs_join t.tosend data in
+  let tosend = cs_join t.tosend data in
   let len = min (Cstruct.length tosend) (Int32.to_int t.them.win) in
   let data, tosend = Cstruct.split tosend len in
   let win = Int32.sub t.them.win (Int32.of_int len) in
-  Util.guard Int32.(win >= zero) "window underflow" >>= fun () ->
+  let* () = guard Int32.(win >= zero) "window underflow" in
   let t = { t with tosend; them = { t.them with win } } in
-  ok (t, fragment data)
+  Ok (t, fragment data)
 
 let adjust_window t len =
   let win = Int32.add t.them.win len in
   (* XXX this does not handle up to 4GB correctly. *)
-  Util.guard Int32.(win > zero) "window overflow" >>= fun () ->
+  let* () = guard Int32.(win > zero) "window overflow" in
   let data = t.tosend in
   let t = { t with tosend = Cstruct.create 0; them = { t.them with win } } in
   output_data t data
@@ -148,12 +149,12 @@ let next_free db =
 let add ~id ~win ~max_pkt db =
   (* Find the next available free channel *)
   match next_free db with
-  | None -> error `No_channels_left
+  | None -> Error `No_channels_left
   | Some key ->
     let them = make_end id win max_pkt in
     let us = make_end key Ssh.channel_win_len Ssh.channel_max_pkt_len in
     let c = make ~us ~them in
-    ok (c, Channel_map.add key c db)
+    Ok (c, Channel_map.add key c db)
 
 let update c db = Channel_map.add c.us.id c db
 

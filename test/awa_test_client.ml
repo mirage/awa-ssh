@@ -16,7 +16,6 @@
 
 let () = Printexc.record_backtrace true
 
-open Rresult.R
 open Awa
 
 let read_cstruct fd =
@@ -39,29 +38,32 @@ let write_cstruct fd buf =
   assert (n > 0)
 
 let jump _ user seed typ keyfile authenticator host port =
+  let ( let* ) = Result.bind in
   Mirage_crypto_rng_unix.initialize ();
   let fd = Unix.(socket PF_INET SOCK_STREAM 0) in
   Unix.(connect fd (ADDR_INET (inet_addr_of_string host, port)));
   match
-    (match keyfile with
-     | None -> Ok (Keys.of_seed typ seed)
-     | Some f ->
-       let fd = Unix.(openfile f [O_RDONLY] 0) in
-       let file_buf = Unix_cstruct.of_fd fd in
-       let r = match Wire.privkey_of_openssh file_buf, Wire.privkey_of_pem file_buf with
-         | Ok (k, _), _ -> Ok k
-         | _, Ok k -> Ok k
-         | Error m, _ -> Error m
-       in
-       Unix.close fd;
-       r) >>= fun key ->
-    Keys.authenticator_of_string authenticator >>= fun authenticator ->
+    let* key =
+      match keyfile with
+      | None -> Ok (Keys.of_seed typ seed)
+      | Some f ->
+        let fd = Unix.(openfile f [O_RDONLY] 0) in
+        let file_buf = Unix_cstruct.of_fd fd in
+        let r = match Wire.privkey_of_openssh file_buf, Wire.privkey_of_pem file_buf with
+          | Ok (k, _), _ -> Ok k
+          | _, Ok k -> Ok k
+          | Error m, _ -> Error m
+        in
+        Unix.close fd;
+        r
+    in
+    let* authenticator = Keys.authenticator_of_string authenticator in
     let t, out = Client.make ~authenticator ~user key in
     List.iter (write_cstruct fd) out;
     let rec read_react t =
       let data = read_cstruct fd in
       let now = Mtime_clock.now () in
-      Client.incoming t now data >>= fun (t, replies, events) ->
+      let* t, replies, events = Client.incoming t now data in
       List.iter (write_cstruct fd) replies;
       let t, cont = List.fold_left (fun (t, cont) -> function
           | `Established id ->

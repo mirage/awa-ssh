@@ -14,7 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Rresult.R
 open Util
 
 let get_uint32 buf =
@@ -30,8 +29,8 @@ let get_uint8 buf =
 let put_uint8 = Dbuf.put_uint8
 
 let get_bool buf =
-  get_uint8 buf >>= fun (b, buf) ->
-  ok (b <> 0, buf)
+  let* b, buf = get_uint8 buf in
+  Ok (b <> 0, buf)
 
 let put_bool b t =
   let x = if b then 1 else 0 in
@@ -111,8 +110,8 @@ let put_message_id id buf =
   put_uint8 (Ssh.message_id_to_int id) buf
 
 let get_nl buf =
-  get_string buf >>= fun (s, buf) ->
-  ok ((String.split_on_char ',' s), buf)
+  let* s, buf = get_string buf in
+  Ok ((String.split_on_char ',' s), buf)
 
 let put_nl nl t =
   put_string (String.concat "," nl) t
@@ -132,33 +131,38 @@ let blob_of_pubkey pk =
   Dbuf.to_cstruct buf'
 
 let pubkey_of_blob blob =
-  get_string blob >>= fun (key_alg, blob) ->
+  let* key_alg, blob = get_string blob in
   match key_alg with
   | "ssh-rsa" ->
-    get_mpint blob >>= fun (e, blob) ->
-    get_mpint blob >>= fun (n, _) ->
-    reword_error (function `Msg m -> m)
-      (Mirage_crypto_pk.Rsa.pub ~e ~n) >>= fun pub ->
-    ok (Hostkey.Rsa_pub pub)
+    let* e, blob = get_mpint blob in
+    let* n, _ = get_mpint blob in
+    let* pub =
+      Result.map_error (function `Msg m -> m)
+        (Mirage_crypto_pk.Rsa.pub ~e ~n)
+    in
+    Ok (Hostkey.Rsa_pub pub)
   | "ssh-ed25519" ->
-    get_string blob >>= fun (pub, _) ->
+    let* pub, _ = get_string blob in
     let cs = Cstruct.of_string pub in
-    reword_error (Fmt.to_to_string Mirage_crypto_ec.pp_error)
-      (Mirage_crypto_ec.Ed25519.pub_of_cstruct cs) >>= fun pubkey ->
-    ok (Hostkey.Ed25519_pub pubkey)
+    let* pubkey =
+      Result.map_error
+        (Fmt.to_to_string Mirage_crypto_ec.pp_error)
+        (Mirage_crypto_ec.Ed25519.pub_of_cstruct cs)
+    in
+    Ok (Hostkey.Ed25519_pub pubkey)
   | k -> Error ("unsupported key algorithm: " ^ k)
 
 (* Prefer using get_pubkey_alg always *)
 let get_pubkey_any buf =
-  get_cstring buf >>= fun (blob, buf) ->
-  pubkey_of_blob blob >>= fun pubkey ->
-  ok (pubkey, buf)
+  let* blob, buf = get_cstring buf in
+  let* pubkey = pubkey_of_blob blob in
+  Ok (pubkey, buf)
 
 (* Always use get_pubkey_alg since it returns Unknown if key_alg mismatches *)
 let get_pubkey key_alg buf =
-  get_pubkey_any buf >>= fun (pubkey, buf) ->
+  let* pubkey, buf = get_pubkey_any buf in
   if Hostkey.comptible_alg pubkey key_alg then
-    ok (pubkey, buf)
+    Ok (pubkey, buf)
   else
     Error ("public key algorithm not supported " ^ key_alg)
 
@@ -168,16 +172,19 @@ let put_pubkey pubkey t =
 let pubkey_of_openssh buf =
   let s = Cstruct.to_string buf in
   let tokens = String.split_on_char ' ' s in
-  guard (List.length tokens = 3) "Invalid format" >>= fun () ->
+  let* () = guard (List.length tokens = 3) "Invalid format" in
   let key_type = List.nth tokens 0 in
   let key_buf = List.nth tokens 1 in
   (* let key_comment = List.nth tokens 2 in *)
-  reword_error (function `Msg m -> m)
-    (Base64.decode key_buf) >>= fun blob ->
+  let* blob =
+    Result.map_error
+      (function `Msg m -> m)
+      (Base64.decode key_buf)
+  in
   (* NOTE: can't use get_pubkey here, there is no string blob *)
-  pubkey_of_blob (Cstruct.of_string blob) >>= fun key ->
-  guard (Hostkey.sshname key = key_type) "Key type mismatch" >>= fun () ->
-  ok key
+  let* key = pubkey_of_blob (Cstruct.of_string blob) in
+  let* () = guard (Hostkey.sshname key = key_type) "Key type mismatch" in
+  Ok key
 
 let openssh_of_pubkey key =
   let key_buf = blob_of_pubkey key |> Cstruct.to_string |> Base64.encode_string in
@@ -185,7 +192,8 @@ let openssh_of_pubkey key =
   |> Cstruct.of_string
 
 let privkey_of_pem buf =
-  X509.Private_key.decode_pem buf >>= function
+  let* p = X509.Private_key.decode_pem buf in
+  match p with
   | `RSA key -> Ok (Hostkey.Rsa_priv key)
   | `ED25519 key -> Ok (Hostkey.Ed25519_priv key)
   | _ -> Error (`Msg "unsupported private key")
@@ -197,54 +205,62 @@ let privkey_of_openssh buf =
     dash ^ (if s then "BEGIN" else "END") ^ " OPENSSH PRIVATE KEY" ^ dash
   in
   let data = Cstruct.to_string buf in
-  (match String.split_on_char '\n' data with
-   | hd :: data ->
-     begin match List.rev data with
-       | "" :: last :: data' | last :: data' ->
-         let data = String.concat "" (List.rev data') in
-         if String.equal hd (id true) && String.equal last (id false) then
-           Rresult.R.reword_error (function `Msg m -> m ) (Base64.decode data)
-         else
-           Error "not an OpenSSH private key"
-       | [] -> Error "not a valid OpenSSH private key"
-     end
-   | [] -> Error "invalid OpenSSH private key") >>= fun data ->
+  let* data =
+    match String.split_on_char '\n' data with
+    | hd :: data ->
+      begin match List.rev data with
+        | "" :: last :: data' | last :: data' ->
+          let data = String.concat "" (List.rev data') in
+          if String.equal hd (id true) && String.equal last (id false) then
+            Result.map_error (function `Msg m -> m ) (Base64.decode data)
+          else
+            Error "not an OpenSSH private key"
+        | [] -> Error "not a valid OpenSSH private key"
+      end
+    | [] -> Error "invalid OpenSSH private key"
+  in
   let cs = Cstruct.of_string data in
   let auth_magic = Cstruct.of_string "openssh-key-v1\000" in
   let pre, cs = Cstruct.split cs (Cstruct.length auth_magic) in
-  guard (Cstruct.equal pre auth_magic) "bad auth magic" >>= fun () ->
-  get_string cs >>= fun (cipher, cs) ->
-  guard (String.equal cipher "none") "only unencrypted private keys supported" >>= fun () ->
-  get_string cs >>= fun (kdf, cs) ->
-  guard (String.equal kdf "none") "only unencrypted private keys supported" >>= fun () ->
-  get_string cs >>= fun (kdfopts, cs) ->
-  guard (String.equal kdfopts "") "only no kdfoptions supported" >>= fun () ->
-  get_uint32 cs >>= fun (keys, cs) ->
-  guard (keys = 1l) "only one key supported" >>= fun () ->
-  get_uint32 cs >>= fun (pklen, cs) ->
-  get_uint32 (Cstruct.shift cs (Int32.to_int pklen)) >>= fun (_plen, priv) ->
+  let* () = guard (Cstruct.equal pre auth_magic) "bad auth magic" in
+  let* cipher, cs = get_string cs in
+  let* () = guard (String.equal cipher "none") "only unencrypted private keys supported" in
+  let* kdf, cs = get_string cs in
+  let* () = guard (String.equal kdf "none") "only unencrypted private keys supported" in
+  let* kdfopts, cs = get_string cs in
+  let* () = guard (String.equal kdfopts "") "only no kdfoptions supported" in
+  let* keys, cs = get_uint32 cs in
+  let* () = guard (keys = 1l) "only one key supported" in
+  let* pklen, cs = get_uint32 cs in
+  let* _plen, priv = get_uint32 (Cstruct.shift cs (Int32.to_int pklen)) in
   (* 64 bit checkint - useful when crypted *)
-  get_string (Cstruct.shift priv 8) >>= fun (keytype, cs) ->
+  let* keytype, cs = get_string (Cstruct.shift priv 8) in
   match keytype with
   | "ssh-ed25519" ->
-    get_cstring cs >>= fun (_pub, cs) ->
-    get_cstring cs >>= fun (priv, cs) ->
-    get_string cs >>= fun (comment, _padding) ->
+    let* _pub, cs = get_cstring cs in
+    let* priv, cs = get_cstring cs in
+    let* comment, _padding = get_string cs in
     let priv = Cstruct.sub priv 0 32 in
-    reword_error (Fmt.to_to_string Mirage_crypto_ec.pp_error)
-      (Mirage_crypto_ec.Ed25519.priv_of_cstruct priv) >>= fun priv_key ->
+    let* priv_key =
+      Result.map_error
+        (Fmt.to_to_string Mirage_crypto_ec.pp_error)
+        (Mirage_crypto_ec.Ed25519.priv_of_cstruct priv)
+    in
     Ok (Hostkey.Ed25519_priv priv_key, comment)
   | "ssh-rsa" ->
-    get_mpint cs >>= fun (n, cs) ->
-    get_mpint cs >>= fun (e, cs) ->
-    get_mpint cs >>= fun (d, cs) ->
-    get_mpint cs >>= fun (q', cs) ->
-    get_mpint cs >>= fun (p, cs) ->
-    get_mpint cs >>= fun (q, cs) ->
-    get_string cs >>= fun (comment, _padding) ->
+    let* n, cs = get_mpint cs in
+    let* e, cs = get_mpint cs in
+    let* d, cs = get_mpint cs in
+    let* q', cs = get_mpint cs in
+    let* p, cs = get_mpint cs in
+    let* q, cs = get_mpint cs in
+    let* comment, _padding = get_string cs in
     let dp = Z.(d mod (pred p)) and dq = Z.(d mod (pred q)) in
-    Rresult.R.reword_error (function `Msg m -> m)
-      (Mirage_crypto_pk.Rsa.priv ~e ~d ~n ~p ~q ~dp ~dq ~q') >>= fun p ->
+    let* p =
+      Result.map_error
+        (function `Msg m -> m)
+        (Mirage_crypto_pk.Rsa.priv ~e ~d ~n ~p ~q ~dp ~dq ~q')
+    in
     Ok (Hostkey.Rsa_priv p, comment)
   | x -> Error ("unsupported key type " ^ x)
 
@@ -271,11 +287,11 @@ let blob_of_kexinit kex =
   put_kexinit kex |> Dbuf.to_cstruct
 
 let get_signature buf =
-  get_cstring buf >>= fun (blob, _) ->
-  get_string blob >>= fun (key_alg, blob) ->
-  Hostkey.alg_of_string key_alg >>= fun key_alg ->
-  get_cstring blob >>= fun (key_sig, _) ->
-  ok (key_alg, key_sig)
+  let* blob, _ = get_cstring buf in
+  let* key_alg, blob = get_string blob in
+  let* key_alg = Hostkey.alg_of_string key_alg in
+  let* key_sig, _ = get_cstring blob in
+  Ok (key_alg, key_sig)
 
 let put_signature (alg, signature) t =
   let blob =
@@ -311,46 +327,46 @@ let blob_of_channel_data channel_data =
 let get_message buf =
   let open Ssh in
   let msgbuf = buf in
-  get_message_id buf >>= fun (msgid, buf) ->
+  let* msgid, buf = get_message_id buf in
   match msgid with
   | MSG_DISCONNECT ->
-    get_uint32 buf >>= fun (code, buf) ->
-    get_string buf >>= fun (desc, buf) ->
-    get_string buf >>= fun (lang, _) ->
-    ok (Msg_disconnect (int_to_disconnect_code code, desc, lang))
+    let* code, buf = get_uint32 buf in
+    let* desc, buf = get_string buf in
+    let* lang, _ = get_string buf in
+    Ok (Msg_disconnect (int_to_disconnect_code code, desc, lang))
   | MSG_IGNORE ->
-    get_string buf >>= fun (x, _) ->
-    ok (Msg_ignore x)
+    let* x, _ = get_string buf in
+    Ok (Msg_ignore x)
   | MSG_UNIMPLEMENTED ->
-    get_uint32 buf >>= fun (x, _) ->
-    ok (Msg_unimplemented x)
+    let* x, _ = get_uint32 buf in
+    Ok (Msg_unimplemented x)
   | MSG_DEBUG ->
-    get_bool buf >>= fun (always_display, buf) ->
-    get_string buf >>= fun (message, buf) ->
-    get_string buf >>= fun (lang, _) ->
-    ok (Msg_debug (always_display, message, lang))
+    let* always_display, buf = get_bool buf in
+    let* message, buf = get_string buf in
+    let* lang, _ = get_string buf in
+    Ok (Msg_debug (always_display, message, lang))
   | MSG_SERVICE_REQUEST ->
-    get_string buf >>= fun (x, _) ->
-    ok (Msg_service_request x)
+    let* x, _ = get_string buf in
+    Ok (Msg_service_request x)
   | MSG_SERVICE_ACCEPT ->
-    get_string buf >>= fun (x, _) ->
-    ok (Msg_service_accept x)
+    let* x, _ = get_string buf in
+    Ok (Msg_service_accept x)
   | MSG_KEXINIT ->
     let cookiebegin = buf in
     (* Jump over cookie *)
-    cs_safe_shift buf 16 >>= fun buf ->
-    get_nl buf >>= fun (kex_algs, buf) ->
-    get_nl buf >>= fun (server_host_key_algs, buf) ->
-    get_nl buf >>= fun (encryption_algs_ctos, buf) ->
-    get_nl buf >>= fun (encryption_algs_stoc, buf) ->
-    get_nl buf >>= fun (mac_algs_ctos, buf) ->
-    get_nl buf >>= fun (mac_algs_stoc, buf) ->
-    get_nl buf >>= fun (compression_algs_ctos, buf) ->
-    get_nl buf >>= fun (compression_algs_stoc, buf) ->
-    get_nl buf >>= fun (languages_ctos, buf) ->
-    get_nl buf >>= fun (languages_stoc, buf) ->
-    get_bool buf >>= fun (first_kex_packet_follows, _) ->
-    ok (Msg_kexinit
+    let* buf = cs_safe_shift buf 16 in
+    let* kex_algs, buf = get_nl buf in
+    let* server_host_key_algs, buf = get_nl buf in
+    let* encryption_algs_ctos, buf = get_nl buf in
+    let* encryption_algs_stoc, buf = get_nl buf in
+    let* mac_algs_ctos, buf = get_nl buf in
+    let* mac_algs_stoc, buf = get_nl buf in
+    let* compression_algs_ctos, buf = get_nl buf in
+    let* compression_algs_stoc, buf = get_nl buf in
+    let* languages_ctos, buf = get_nl buf in
+    let* languages_stoc, buf = get_nl buf in
+    let* first_kex_packet_follows, _ = get_bool buf in
+    Ok (Msg_kexinit
           { cookie = Cstruct.sub cookiebegin 0 16;
             kex_algs;
             server_host_key_algs;
@@ -365,265 +381,267 @@ let get_message buf =
             first_kex_packet_follows;
             rawkex = msgbuf })
   | MSG_NEWKEYS ->
-    ok Msg_newkeys
+    Ok Msg_newkeys
   | MSG_KEX_0 | MSG_KEX_1 | MSG_KEX_2 | MSG_KEX_3 | MSG_KEX_4 ->
-    ok (Msg_kex (msgid, buf))
+    Ok (Msg_kex (msgid, buf))
   | MSG_USERAUTH_REQUEST ->
-    get_string buf >>= fun (user, buf) ->
-    get_string buf >>= fun (service, buf) ->
-    get_string buf >>= fun (auth_method, buf) ->
-    (match auth_method with
-     | "publickey" ->
-       get_bool buf >>= fun (has_sig, buf) ->
-       get_string buf >>= fun (key_alg, buf) ->
-       get_pubkey key_alg buf >>= fun (pubkey, buf) ->
-       if has_sig then
-         get_signature buf >>= fun key_sig ->
-         ok (Pubkey (pubkey, Some key_sig), buf)
-       else
-         ok (Pubkey (pubkey, None), buf)
-     | "password" ->
-       get_bool buf >>= fun (has_old, buf) ->
-       if has_old then
-         get_string buf >>= fun (oldpassword, buf) ->
-         get_string buf >>= fun (password, buf) ->
-         ok (Password (password, Some oldpassword), buf)
-       else
-         get_string buf >>= fun (password, buf) ->
-         ok (Password (password, None), buf)
-     | "hostbased" ->
-       get_string buf >>= fun (key_alg, buf) ->
-       get_cstring buf >>= fun (key_blob, buf) ->
-       get_string buf >>= fun (hostname, buf) ->
-       get_string buf >>= fun (hostuser, buf) ->
-       get_cstring buf >>= fun (hostsig, buf) ->
-       ok (Hostbased (key_alg, key_blob, hostname, hostuser, hostsig), buf)
-     | "none" -> ok (Authnone, buf)
-     | _ -> error ("Unknown method " ^ auth_method))
-    >>= fun (auth_method, _) ->
-    ok (Msg_userauth_request (user, service, auth_method))
+    let* user, buf = get_string buf in
+    let* service, buf = get_string buf in
+    let* auth_method, buf = get_string buf in
+    let* auth_method, _ =
+      match auth_method with
+      | "publickey" ->
+        let* has_sig, buf = get_bool buf in
+        let* key_alg, buf = get_string buf in
+        let* pubkey, buf = get_pubkey key_alg buf in
+        if has_sig then
+          let* key_sig = get_signature buf in
+          Ok (Pubkey (pubkey, Some key_sig), buf)
+        else
+          Ok (Pubkey (pubkey, None), buf)
+      | "password" ->
+        let* has_old, buf = get_bool buf in
+        if has_old then
+          let* oldpassword, buf = get_string buf in
+          let* password, buf = get_string buf in
+          Ok (Password (password, Some oldpassword), buf)
+        else
+          let* password, buf = get_string buf in
+          Ok (Password (password, None), buf)
+      | "hostbased" ->
+        let* key_alg, buf = get_string buf in
+        let* key_blob, buf = get_cstring buf in
+        let* hostname, buf = get_string buf in
+        let* hostuser, buf = get_string buf in
+        let* hostsig, buf = get_cstring buf in
+        Ok (Hostbased (key_alg, key_blob, hostname, hostuser, hostsig), buf)
+      | "none" -> Ok (Authnone, buf)
+      | _ -> Error ("Unknown method " ^ auth_method)
+    in
+    Ok (Msg_userauth_request (user, service, auth_method))
   | MSG_USERAUTH_FAILURE ->
-    get_nl buf >>= fun (nl, buf) ->
-    get_bool buf >>= fun (psucc, _) ->
-    ok (Msg_userauth_failure (nl, psucc))
-  | MSG_USERAUTH_SUCCESS -> ok Msg_userauth_success
+    let* nl, buf = get_nl buf in
+    let* psucc, _ = get_bool buf in
+    Ok (Msg_userauth_failure (nl, psucc))
+  | MSG_USERAUTH_SUCCESS -> Ok Msg_userauth_success
   | MSG_USERAUTH_PK_OK ->
-    get_string buf >>= fun (key_alg, buf) ->
-    get_pubkey key_alg buf >>= fun (pubkey, _) ->
-    ok (Msg_userauth_pk_ok pubkey)
+    let* key_alg, buf = get_string buf in
+    let* pubkey, _ = get_pubkey key_alg buf in
+    Ok (Msg_userauth_pk_ok pubkey)
   | MSG_USERAUTH_BANNER ->
-    get_string buf >>= fun (s1, buf) ->
-    get_string buf >>= fun (s2, _) ->
-    ok (Msg_userauth_banner (s1, s2))
+    let* s1, buf = get_string buf in
+    let* s2, _ = get_string buf in
+    Ok (Msg_userauth_banner (s1, s2))
   | MSG_GLOBAL_REQUEST ->
-    get_string buf >>= fun (request, buf) ->
-    get_bool buf >>= fun (want_reply, buf) ->
-    (match request with
-     | "tcpip-forward" ->
-       get_string buf >>= fun (address, buf) ->
-       get_uint32 buf >>= fun (port, buf) ->
-       ok (Tcpip_forward (address, port), buf)
-     | "cancel-tcpip-forward" ->
-       get_string buf >>= fun (address, buf) ->
-       get_uint32 buf >>= fun (port, buf) ->
-       ok (Cancel_tcpip_forward (address, port), buf)
-     | _ ->
-       get_string buf >>= fun (data, buf) ->
-       ok (Unknown_request data, buf))
-    >>= fun (global_request, _) ->
-    ok (Msg_global_request (request, want_reply, global_request))
+    let* request, buf = get_string buf in
+    let* want_reply, buf = get_bool buf in
+    let* global_request, _ =
+      match request with
+      | "tcpip-forward" ->
+        let* address, buf = get_string buf in
+        let* port, buf = get_uint32 buf in
+        Ok (Tcpip_forward (address, port), buf)
+      | "cancel-tcpip-forward" ->
+        let* address, buf = get_string buf in
+        let* port, buf = get_uint32 buf in
+        Ok (Cancel_tcpip_forward (address, port), buf)
+      | _ ->
+        let* data, buf = get_string buf in
+        Ok (Unknown_request data, buf)
+    in
+    Ok (Msg_global_request (request, want_reply, global_request))
   | MSG_REQUEST_SUCCESS ->
     let req_data = if Cstruct.length buf > 0 then Some buf else None in
-    ok (Msg_request_success req_data)
-  | MSG_REQUEST_FAILURE -> ok Msg_request_failure
+    Ok (Msg_request_success req_data)
+  | MSG_REQUEST_FAILURE -> Ok Msg_request_failure
   | MSG_CHANNEL_OPEN ->
-    get_string buf >>= fun (request, buf) ->
-    get_uint32 buf >>= fun (send_channel, buf) ->
-    get_uint32 buf >>= fun (init_win, buf) ->
-    get_uint32 buf >>= fun (max_pkt, buf) ->
+    let* request, buf = get_string buf in
+    let* send_channel, buf = get_uint32 buf in
+    let* init_win, buf = get_uint32 buf in
+    let* max_pkt, buf = get_uint32 buf in
     (match request with
      | "session" ->
-       ok (Msg_channel_open
+       Ok (Msg_channel_open
              (send_channel, init_win, max_pkt, Session))
      | "x11" ->
-       get_string buf >>= fun (address, buf) ->
-       get_uint32 buf >>= fun (port, _) ->
-       ok (Msg_channel_open
+       let* address, buf = get_string buf in
+       let* port, _ = get_uint32 buf in
+       Ok (Msg_channel_open
              (send_channel, init_win, max_pkt,
               (X11 (address, port))))
      | "forwarded-tcpip" ->
-       get_string buf >>= fun (con_address, buf) ->
-       get_uint32 buf >>= fun (con_port, buf) ->
-       get_string buf >>= fun (origin_address, buf) ->
-       get_uint32 buf >>= fun (origin_port, _) ->
-       ok (Msg_channel_open
+       let* con_address, buf = get_string buf in
+       let* con_port, buf = get_uint32 buf in
+       let* origin_address, buf = get_string buf in
+       let* origin_port, _ = get_uint32 buf in
+       Ok (Msg_channel_open
              (send_channel, init_win, max_pkt,
               Forwarded_tcpip (con_address, con_port, origin_address,
                                origin_port)))
-     | _ -> error ("Unknown channel open " ^ request))
+     | _ -> Error ("Unknown channel open " ^ request))
   | MSG_CHANNEL_OPEN_CONFIRMATION ->
-    get_uint32 buf >>= fun (recp_channel, buf) ->
-    get_uint32 buf >>= fun (send_channel, buf) ->
-    get_uint32 buf >>= fun (init_win, buf) ->
-    get_uint32 buf >>= fun (max_pkt, buf) ->
+    let* recp_channel, buf = get_uint32 buf in
+    let* send_channel, buf = get_uint32 buf in
+    let* init_win, buf = get_uint32 buf in
+    let* max_pkt, buf = get_uint32 buf in
     (*
      * The protocol does not tell us which channel type this is, so we can't
      * give the caller a good type for channel open and must return Raw_data.
      * We must provide the caller a function to make the conversion.
      *)
-    ok (Msg_channel_open_confirmation
+    Ok (Msg_channel_open_confirmation
           (recp_channel, send_channel,
            init_win, max_pkt,
            buf))
   | MSG_CHANNEL_OPEN_FAILURE ->
-    get_uint32 buf >>= fun (recp_channel, buf) ->
-    get_uint32 buf >>= fun (reason, buf) ->
-    get_string buf >>= fun (desc, buf) ->
-    get_string buf >>= fun (lang, _) ->
-    ok (Msg_channel_open_failure (recp_channel, reason, desc, lang))
+    let* recp_channel, buf = get_uint32 buf in
+    let* reason, buf = get_uint32 buf in
+    let* desc, buf = get_string buf in
+    let* lang, _ = get_string buf in
+    Ok (Msg_channel_open_failure (recp_channel, reason, desc, lang))
   | MSG_CHANNEL_WINDOW_ADJUST ->
-    get_uint32 buf >>= fun (channel, buf) ->
-    get_uint32 buf >>= fun (n, _) ->
-    ok (Msg_channel_window_adjust (channel, n))
+    let* channel, buf = get_uint32 buf in
+    let* n, _ = get_uint32 buf in
+    Ok (Msg_channel_window_adjust (channel, n))
   | MSG_CHANNEL_DATA ->
-    get_uint32 buf >>= fun (channel, buf) ->
-    get_cstring buf >>= fun (data, _) ->
-    ok (Msg_channel_data (channel, data))
+    let* channel, buf = get_uint32 buf in
+    let* data, _ = get_cstring buf in
+    Ok (Msg_channel_data (channel, data))
   | MSG_CHANNEL_EXTENDED_DATA ->
-    get_uint32 buf >>= fun (channel, buf) ->
-    get_uint32 buf >>= fun (data_type, buf) ->
-    get_cstring buf >>= fun (data, _) ->
-    ok (Msg_channel_extended_data (channel, data_type, data))
+    let* channel, buf = get_uint32 buf in
+    let* data_type, buf = get_uint32 buf in
+    let* data, _ = get_cstring buf in
+    Ok (Msg_channel_extended_data (channel, data_type, data))
   | MSG_CHANNEL_EOF ->
-    get_uint32 buf >>= fun (channel, _) ->
-    ok (Msg_channel_eof channel)
+    let* channel, _ = get_uint32 buf in
+    Ok (Msg_channel_eof channel)
   | MSG_CHANNEL_CLOSE ->
-    get_uint32 buf >>= fun (channel, _) ->
-    ok (Msg_channel_close channel)
+    let* channel, _ = get_uint32 buf in
+    Ok (Msg_channel_close channel)
   | MSG_CHANNEL_REQUEST ->
-    get_uint32 buf >>= fun (channel, buf) ->
-    get_string buf >>= fun (request, buf) ->
-    get_bool buf >>= fun (want_reply, buf) ->
+    let* channel, buf = get_uint32 buf in
+    let* request, buf = get_string buf in
+    let* want_reply, buf = get_bool buf in
     (match request with
      | "pty-req" ->
-       get_string buf >>= fun (term_env, buf) ->
-       get_uint32 buf >>= fun (width_char, buf) ->
-       get_uint32 buf >>= fun (height_row, buf) ->
-       get_uint32 buf >>= fun (width_px, buf) ->
-       get_uint32 buf >>= fun (height_px, buf) ->
-       get_string buf >>= fun (term_modes, _) ->
-       ok (Msg_channel_request (channel, want_reply,
+       let* term_env, buf = get_string buf in
+       let* width_char, buf = get_uint32 buf in
+       let* height_row, buf = get_uint32 buf in
+       let* width_px, buf = get_uint32 buf in
+       let* height_px, buf = get_uint32 buf in
+       let* term_modes, _ = get_string buf in
+       Ok (Msg_channel_request (channel, want_reply,
                                 Pty_req (term_env, width_char, height_row,
                                          width_px, height_px, term_modes)))
      | "x11-req" ->
-       get_bool buf >>= fun (single_con, buf) ->
-       get_string buf >>= fun (x11_auth_proto, buf) ->
-       get_string buf >>= fun (x11_auth_cookie, buf) ->
-       get_uint32 buf >>= fun (x11_screen_nr, _) ->
-       ok (Msg_channel_request (channel, want_reply,
+       let* single_con, buf = get_bool buf in
+       let* x11_auth_proto, buf = get_string buf in
+       let* x11_auth_cookie, buf = get_string buf in
+       let* x11_screen_nr, _ = get_uint32 buf in
+       Ok (Msg_channel_request (channel, want_reply,
                                 X11_req (single_con, x11_auth_proto,
                                          x11_auth_cookie, x11_screen_nr)))
      | "env" ->
-       get_string buf >>= fun (name, buf) ->
-       get_string buf >>= fun (value, _) ->
-       ok (Msg_channel_request (channel, want_reply,
+       let* name, buf = get_string buf in
+       let* value, _ = get_string buf in
+       Ok (Msg_channel_request (channel, want_reply,
                                 Env (name, value)))
      | "exec" ->
-       get_string buf >>= fun (command, _) ->
-       ok (Msg_channel_request (channel, want_reply,
+       let* command, _ = get_string buf in
+       Ok (Msg_channel_request (channel, want_reply,
                                 Exec (command)))
-     | "shell" -> ok (Msg_channel_request (channel, want_reply, Shell))
+     | "shell" -> Ok (Msg_channel_request (channel, want_reply, Shell))
      | "subsystem" ->
-       get_string buf >>= fun (name, _) ->
-       ok (Msg_channel_request (channel, want_reply,
+       let* name, _ = get_string buf in
+       Ok (Msg_channel_request (channel, want_reply,
                                 Subsystem (name)))
      | "window-change" ->
-       get_uint32 buf >>= fun (width_char, buf) ->
-       get_uint32 buf >>= fun (height_row, buf) ->
-       get_uint32 buf >>= fun (width_px, buf) ->
-       get_uint32 buf >>= fun (height_px, _) ->
-       ok (Msg_channel_request (channel, want_reply,
+       let* width_char, buf = get_uint32 buf in
+       let* height_row, buf = get_uint32 buf in
+       let* width_px, buf = get_uint32 buf in
+       let* height_px, _ = get_uint32 buf in
+       Ok (Msg_channel_request (channel, want_reply,
                                 Window_change (width_char, height_row,
                                                width_px, height_px)))
      | "xon-xoff" ->
-       get_bool buf >>= fun (client_can_do, _) ->
-       ok (Msg_channel_request (channel, want_reply,
+       let* client_can_do, _ = get_bool buf in
+       Ok (Msg_channel_request (channel, want_reply,
                                 Xon_xoff (client_can_do)))
      | "signal" ->
-       get_string buf >>= fun (name, _) ->
-       ok (Msg_channel_request (channel, want_reply,
+       let* name, _ = get_string buf in
+       Ok (Msg_channel_request (channel, want_reply,
                                 Signal (name)))
      | "exit-status" ->
-       get_uint32 buf >>= fun (status, _) ->
-       ok (Msg_channel_request (channel, want_reply,
+       let* status, _ = get_uint32 buf in
+       Ok (Msg_channel_request (channel, want_reply,
                                 Exit_status (status)))
      | "exit-signal" ->
-       get_string buf >>= fun (name, buf) ->
-       get_bool buf >>= fun (core_dumped, buf) ->
-       get_string buf >>= fun (message, buf) ->
-       get_string buf >>= fun (lang, _) ->
-       ok (Msg_channel_request (channel, want_reply,
+       let* name, buf = get_string buf in
+       let* core_dumped, buf = get_bool buf in
+       let* message, buf = get_string buf in
+       let* lang, _ = get_string buf in
+       Ok (Msg_channel_request (channel, want_reply,
                                 Exit_signal (name, core_dumped, message, lang)))
-     | _ -> error ("Unknown channel request " ^ request))
+     | _ -> Error ("Unknown channel request " ^ request))
   | MSG_CHANNEL_SUCCESS ->
-    get_uint32 buf >>= fun (channel, _) ->
-    ok (Msg_channel_success channel)
+    let* channel, _ = get_uint32 buf in
+    Ok (Msg_channel_success channel)
   | MSG_CHANNEL_FAILURE ->
-    get_uint32 buf >>= fun (channel, _) ->
-    ok (Msg_channel_failure channel)
+    let* channel, _ = get_uint32 buf in
+    Ok (Msg_channel_failure channel)
   | MSG_VERSION ->
-    error "got MSG_VERSION"
+    Error "got MSG_VERSION"
 
 let dh_kexdh_of_kex id buf =
   (* for common DH KEX *)
   let open Ssh in
   match id with
   | MSG_KEX_0 ->
-    get_mpint buf >>= fun (e, _) ->
-    ok (Msg_kexdh_init e)
+    let* e, _ = get_mpint buf in
+    Ok (Msg_kexdh_init e)
   | MSG_KEX_1 ->
-    get_pubkey_any buf >>= fun (k_s, buf) ->
-    get_mpint buf >>= fun (f, buf) ->
-    get_signature buf >>= fun key_sig ->
-    ok (Msg_kexdh_reply (k_s, f, key_sig))
-  | _ -> error "unsupported KEX message"
+    let* k_s, buf = get_pubkey_any buf in
+    let* f, buf = get_mpint buf in
+    let* key_sig = get_signature buf in
+    Ok (Msg_kexdh_reply (k_s, f, key_sig))
+  | _ -> Error "unsupported KEX message"
 
 let dh_kexecdh_of_kex id buf =
   (* for ECDH KEX *)
   let open Ssh in
   match id with
   | MSG_KEX_0 ->
-    get_mpint ~signed:false buf >>= fun (e, _) ->
-    ok (Msg_kexecdh_init e)
+    let* e, _ = get_mpint ~signed:false buf in
+    Ok (Msg_kexecdh_init e)
   | MSG_KEX_1 ->
-    get_pubkey_any buf >>= fun (k_s, buf) ->
-    get_mpint ~signed:false buf >>= fun (f, buf) ->
-    get_signature buf >>= fun key_sig ->
-    ok (Msg_kexecdh_reply (k_s, f, key_sig))
-  | _ -> error "unsupported KEX message"
+    let* k_s, buf = get_pubkey_any buf in
+    let* f, buf = get_mpint ~signed:false buf in
+    let* key_sig = get_signature buf in
+    Ok (Msg_kexecdh_reply (k_s, f, key_sig))
+  | _ -> Error "unsupported KEX message"
 
 let dh_kexdh_gex_of_kex id buf =
   (* for RFC 4419 GEX *)
   let open Ssh in
   match id with
   | MSG_KEX_4 ->
-    get_uint32 buf >>= fun (min, buf) ->
-    get_uint32 buf >>= fun (n, buf) ->
-    get_uint32 buf >>= fun (max, _) ->
-    ok (Msg_kexdh_gex_request (min, n, max))
+    let* min, buf = get_uint32 buf in
+    let* n, buf = get_uint32 buf in
+    let* max, _ = get_uint32 buf in
+    Ok (Msg_kexdh_gex_request (min, n, max))
   | MSG_KEX_1 ->
-    get_mpint buf >>= fun (p, buf) ->
-    get_mpint buf >>= fun (g, _) ->
-    ok (Msg_kexdh_gex_group (p, g))
+    let* p, buf = get_mpint buf in
+    let* g, _ = get_mpint buf in
+    Ok (Msg_kexdh_gex_group (p, g))
   | MSG_KEX_2 ->
-    get_mpint buf >>= fun (e, _) ->
-    ok (Msg_kexdh_gex_init e)
+    let* e, _ = get_mpint buf in
+    Ok (Msg_kexdh_gex_init e)
   | MSG_KEX_3 ->
-    get_pubkey_any buf >>= fun (k_s, buf) ->
-    get_mpint buf >>= fun (f, buf) ->
-    get_signature buf >>= fun key_sig ->
-    ok (Msg_kexdh_gex_reply (k_s, f, key_sig))
-  | _ -> error "unsupported KEX message"
+    let* k_s, buf = get_pubkey_any buf in
+    let* f, buf = get_mpint buf in
+    let* key_sig = get_signature buf in
+    Ok (Msg_kexdh_gex_reply (k_s, f, key_sig))
+  | _ -> Error "unsupported KEX message"
 
 let put_message msg buf =
   let open Ssh in
@@ -877,16 +895,16 @@ let put_message msg buf =
 (* XXX Maybe move this to Packet *)
 let get_payload buf =
   let open Ssh in
-  guard (Cstruct.length buf >= 5) "Buf too short" >>= fun () ->
+  let* () = guard (Cstruct.length buf >= 5) "Buf too short" in
   let pkt_len = get_pkt_hdr_pkt_len buf |> Int32.to_int in
   let pad_len = get_pkt_hdr_pad_len buf in
-  guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len" >>= fun () ->
-  guard (pad_len < pkt_len) "Bogus pad len" >>= fun () ->
-  guard (Cstruct.length buf = pkt_len + 4) "Bogus buf len" >>= fun () ->
+  let* () = guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len" in
+  let* () = guard (pad_len < pkt_len) "Bogus pad len" in
+  let* () = guard (Cstruct.length buf = pkt_len + 4) "Bogus buf len" in
   let payload_len = pkt_len - pad_len - 1 in
-  guard (payload_len > 0) "Bogus payload_len" >>= fun () ->
+  let* () = guard (payload_len > 0) "Bogus payload_len" in
   let payload = Cstruct.sub buf 5 payload_len in
-  ok payload
+  Ok payload
 
 let get_version buf =
   (* Fetches next line, returns maybe a string and the remainder of buf *)
@@ -909,9 +927,9 @@ let get_version buf =
   let processline line =
     let line_len = String.length line in
     if line_len < 4 || not String.(equal (sub line 0 4) "SSH-") then
-      ok None
+      Ok None
     else if line_len < 9 then
-      error "Version line is too short"
+      Error "Version line is too short"
     else
       (* Strip the comments *)
       let version_line =
@@ -921,29 +939,30 @@ let get_version buf =
       in
       let tokens = String.split_on_char '-' version_line in
       if List.length tokens < 3 then
-        error ("Can't parse version line: " ^ version_line)
+        Error ("Can't parse version line: " ^ version_line)
       else
         let version = List.nth tokens 1 in
         if String.equal version "2.0" then
-          ok (Some line)
+          Ok (Some line)
         else
-          error ("Bad version " ^ version)
+          Error ("Bad version " ^ version)
   in
   (* Scan all lines until an error or SSH version is found *)
   let rec scan buf =
     match fetchline buf with
     | None -> if Cstruct.length buf > 1024 then
-        error "Buffer is too big"
+        Error "Buffer is too big"
       else
-        ok (None, buf)
+        Ok (None, buf)
     | Some (line, buf) ->
-      processline line >>= function
-      | Some peer_version -> ok (Some peer_version, buf)
+      let* v = processline line in
+      match v with
+      | Some peer_version -> Ok (Some peer_version, buf)
       | None ->
         if Cstruct.length buf > 2 then
           scan buf
         else
-          ok (None, buf)
+          Ok (None, buf)
   in
   scan buf
 
