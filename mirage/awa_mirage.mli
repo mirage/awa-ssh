@@ -1,7 +1,7 @@
 (** Effectful operations using Mirage for pure SSH. *)
 
 (** SSH module given a flow *)
-module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) : sig
+module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) : sig
 
   module FLOW : Mirage_flow.S
 

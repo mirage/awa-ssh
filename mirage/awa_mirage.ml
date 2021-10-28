@@ -1,6 +1,6 @@
 open Lwt.Infix
 
-module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) = struct
+module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = struct
 
   module FLOW = F
   module MCLOCK = M
@@ -141,7 +141,7 @@ module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) = struct
 
 (* copy from awa_lwt.ml and unix references removed in favor to FLOW *)
   type nexus_msg =
-    (*| Rekey*)
+    | Rekey
     | Net_eof
     | Net_io of Cstruct.t
     | Sshout of (int32 * Cstruct.t)
@@ -221,19 +221,20 @@ module Make (F : Mirage_flow.S) (M : Mirage_clock.MCLOCK) = struct
     | None -> (* No SSH msg *)
       Lwt.catch
         (fun () ->
-           Lwt.pick [ Lwt_mvar.take t.nexus_mbox;
-                      net_read fd (* ;
-                      some_way_to_timeout 2_sec *) ])
-      (function (*`Error -> Lwt.return Rekey | *)exn -> Lwt.fail exn)
+          let timeout = T.sleep_ns 2000000L >>= fun () -> Lwt.return Rekey in
+          Lwt.pick [ Lwt_mvar.take t.nexus_mbox;
+                      net_read fd ;
+                      timeout])
+      (function exn -> Lwt.fail exn)
       >>= fun nexus_msg ->
       (match nexus_msg with
-        (*| Rekey ->
+        | Rekey ->
           (match Awa.Server.maybe_rekey server (now ()) with
           | None -> nexus t fd server input_buffer
           | Some (server, kexinit) ->
             send_msg fd server kexinit
             >>= fun server ->
-            nexus t fd server input_buffer)*)
+            nexus t fd server input_buffer)
        | Net_eof ->
          Lwt.return t
        | Net_io buf -> nexus t fd server (Awa.Util.cs_join input_buffer buf)
