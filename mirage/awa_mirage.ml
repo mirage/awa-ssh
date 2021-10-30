@@ -221,10 +221,10 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
     | None -> (* No SSH msg *)
       Lwt.catch
         (fun () ->
-          let timeout = T.sleep_ns 2000000L >>= fun () -> Lwt.return Rekey in
-          Lwt.pick [ Lwt_mvar.take t.nexus_mbox;
+          let timeout = T.sleep_ns 2000000000L >>= fun () -> Lwt.return Rekey in
+          Lwt.pick [ Lwt_mvar.take t.nexus_mbox ;
                       net_read fd ;
-                      timeout])
+                      timeout ])
       (function exn -> Lwt.fail exn)
       >>= fun nexus_msg ->
       (match nexus_msg with
