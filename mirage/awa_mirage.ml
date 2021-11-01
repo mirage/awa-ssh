@@ -214,7 +214,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
   let lookup_channel t id =
     List.find_opt (fun c -> id = c.id) t.channels
 
-  let rec nexus t fd server input_buffer =
+  let rec nexus t fd server input_buffer pending_promises =
     wrapr (Awa.Server.pop_msg2 server input_buffer)
     >>= fun (server, msg, input_buffer) ->
     match msg with
@@ -222,38 +222,62 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
       Lwt.catch
         (fun () ->
           let timeout = T.sleep_ns 2000000000L >>= fun () -> Lwt.return Rekey in
-          Lwt.pick [ Lwt_mvar.take t.nexus_mbox ;
-                      net_read fd ;
-                      timeout ])
+          (* We will listen from two incomming messages sources, from the net interface with
+           * 'net_read', and from the ssh server with 'Lwt_mvar.take'. To let the promises
+           * to be resolved, we use Lwt.choose to not add another of these until we know
+           * that it was fullfiled.
+           *)
+          Lwt.nchoose_split (List.append pending_promises [ timeout ])
+        )
       (function exn -> Lwt.fail exn)
-      >>= fun nexus_msg ->
-      (match nexus_msg with
-        | Rekey ->
-          (match Awa.Server.maybe_rekey server (now ()) with
-          | None -> nexus t fd server input_buffer
-          | Some (server, kexinit) ->
-            send_msg fd server kexinit
-            >>= fun server ->
-            nexus t fd server input_buffer)
-       | Net_eof ->
-         Lwt.return t
-       | Net_io buf -> nexus t fd server (Awa.Util.cs_join input_buffer buf)
-       | Sshout (id, buf) | Ssherr (id, buf) ->
-         wrapr (Awa.Server.output_channel_data server id buf)
-         >>= fun (server, msgs) ->
-         send_msgs fd server msgs >>= fun server ->
-         nexus t fd server input_buffer)
+      >>= fun (nexus_msg_fullfiled, pending_promises) ->
+      (* We need to keep track of the "not fullfiled" promises and only Lwt.nchoose_split
+       * allows us to have this information. This function also gives us a list of
+       * "already fullfiled" promises. Here we consume this list and add the relevant new
+       * promises to watch.
+       *)
+      let rec loop t fd server input_buffer fullfiled_promises pending_promises =
+        if (List.length fullfiled_promises == 0) then
+          nexus t fd server input_buffer pending_promises
+        else begin
+          let remaining_fullfiled_promises = List.tl(fullfiled_promises) in
+          (match List.hd(fullfiled_promises) with
+          (* Here we have the timeout fullfiled, we can let the net_read + Lwt_mvar.take continue *)
+          | Rekey ->
+            (match Awa.Server.maybe_rekey server (now ()) with
+            | None -> loop t fd server input_buffer remaining_fullfiled_promises pending_promises
+            | Some (server, kexinit) ->
+              send_msg fd server kexinit
+              >>= fun server ->
+              loop t fd server input_buffer remaining_fullfiled_promises pending_promises
+            )
+          (* Here we have the net_read tells us to stop the communication... *)
+          | Net_eof -> Lwt.return t
+          (* Here we have the net_read fullfiled, we can let the timeout + Lwt_mvar.take continue and add a new net_read *)
+          | Net_io buf ->
+            loop t fd server (Awa.Util.cs_join input_buffer buf) remaining_fullfiled_promises (List.append pending_promises [net_read fd])
+          (* Here we have the Lwt_mvar.take fullfiled, we can let the timeout + net_read continue and add a new Lwt_mvar.take *)
+          | Sshout (id, buf) | Ssherr (id, buf) ->
+            wrapr (Awa.Server.output_channel_data server id buf)
+            >>= fun (server, msgs) ->
+            send_msgs fd server msgs >>= fun server ->
+            loop t fd server input_buffer remaining_fullfiled_promises (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
+          )
+        end
+      in
+      loop t fd server input_buffer nexus_msg_fullfiled pending_promises
+    (* In all of the following we have the Lwt_mvar.take fullfiled, we can let the timeout + net_read continue
+     * and add a new Lwt_mvar.take *)
     | Some msg -> (* SSH msg *)
       wrapr (Awa.Server.input_msg server msg (now ()))
       >>= fun (server, replies, event) ->
       send_msgs fd server replies
       >>= fun server ->
       match event with
-      | None -> nexus t fd server input_buffer
+      | None -> nexus t fd server input_buffer (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
       | Some Awa.Server.Disconnected _ ->
         Lwt_list.iter_p sshin_eof t.channels
-        >>= fun () ->
-        Lwt.return t
+        >>= fun () -> Lwt.return t
       | Some Awa.Server.Channel_eof id ->
         (match lookup_channel t id with
          | Some c -> sshin_eof c >>= fun () -> Lwt.return t
@@ -263,7 +287,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
          | Some c -> sshin_data c data
          | None -> Lwt.return_unit)
         >>= fun () ->
-        nexus t fd server input_buffer
+        nexus t fd server input_buffer (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
       | Some Awa.Server.Channel_subsystem (id, cmd) (* same as exec *)
       | Some Awa.Server.Channel_exec (id, cmd) ->
         (* Create an input box *)
@@ -276,14 +300,18 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
         let exec_thread = t.exec_callback cmd sshin (sshout id) (ssherr id) in
         let c = { cmd; id; sshin_mbox; exec_thread } in
         let t = { t with channels = c :: t.channels } in
-        nexus t fd server input_buffer
+        nexus t fd server input_buffer (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
 
   let spawn_server server msgs fd exec_callback =
     let t = { exec_callback;
               channels = [];
-              nexus_mbox = Lwt_mvar.create_empty () }
+              nexus_mbox = Lwt_mvar.create_empty ()
+            }
     in
     send_msgs fd server msgs >>= fun server ->
-    nexus t fd server (Cstruct.create 0)
+    (* the ssh communication will start with 'net_read' and can only add a 'Lwt.take' promise when
+     * one Awa.Server.Channel_{exec,subsystem} is received
+     *)
+    nexus t fd server (Cstruct.create 0) [ net_read fd ]
 
 end
