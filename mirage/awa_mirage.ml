@@ -221,52 +221,48 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
     | None -> (* No SSH msg *)
       Lwt.catch
         (fun () ->
-          let timeout = T.sleep_ns 2000000000L >>= fun () -> Lwt.return Rekey in
+          let timeout = T.sleep_ns (Duration.of_sec 2) >>= fun () -> Lwt.return Rekey in
           (* We will listen from two incomming messages sources, from the net interface with
            * 'net_read', and from the ssh server with 'Lwt_mvar.take'. To let the promises
            * to be resolved, we use Lwt.choose to not add another of these until we know
-           * that it was fullfiled.
+           * that it was fulfiled.
            *)
           Lwt.nchoose_split (List.append pending_promises [ timeout ])
         )
       (function exn -> Lwt.fail exn)
-      >>= fun (nexus_msg_fullfiled, pending_promises) ->
-      (* We need to keep track of the "not fullfiled" promises and only Lwt.nchoose_split
+      >>= fun (nexus_msg_fulfiled, pending_promises) ->
+      (* We need to keep track of the "not fulfiled" promises and only Lwt.nchoose_split
        * allows us to have this information. This function also gives us a list of
-       * "already fullfiled" promises. Here we consume this list and add the relevant new
+       * "already fulfiled" promises. Here we consume this list and add the relevant new
        * promises to watch.
        *)
-      let rec loop t fd server input_buffer fullfiled_promises pending_promises =
-        if (List.length fullfiled_promises == 0) then
-          nexus t fd server input_buffer pending_promises
-        else begin
-          let remaining_fullfiled_promises = List.tl(fullfiled_promises) in
-          (match List.hd(fullfiled_promises) with
-          (* Here we have the timeout fullfiled, we can let the net_read + Lwt_mvar.take continue *)
-          | Rekey ->
-            (match Awa.Server.maybe_rekey server (now ()) with
-            | None -> loop t fd server input_buffer remaining_fullfiled_promises pending_promises
-            | Some (server, kexinit) ->
-              send_msg fd server kexinit
-              >>= fun server ->
-              loop t fd server input_buffer remaining_fullfiled_promises pending_promises
-            )
-          (* Here we have the net_read tells us to stop the communication... *)
-          | Net_eof -> Lwt.return t
-          (* Here we have the net_read fullfiled, we can let the timeout + Lwt_mvar.take continue and add a new net_read *)
-          | Net_io buf ->
-            loop t fd server (Awa.Util.cs_join input_buffer buf) remaining_fullfiled_promises (List.append pending_promises [net_read fd])
-          (* Here we have the Lwt_mvar.take fullfiled, we can let the timeout + net_read continue and add a new Lwt_mvar.take *)
-          | Sshout (id, buf) | Ssherr (id, buf) ->
-            wrapr (Awa.Server.output_channel_data server id buf)
-            >>= fun (server, msgs) ->
-            send_msgs fd server msgs >>= fun server ->
-            loop t fd server input_buffer remaining_fullfiled_promises (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
+      let rec loop t fd server input_buffer fulfiled_promises pending_promises =
+        match fulfiled_promises with
+        | [] -> nexus t fd server input_buffer pending_promises
+        (* Here we have the timeout fulfiled, we can let the net_read + Lwt_mvar.take continue *)
+        | Rekey :: remaining_fulfiled_promises ->
+          (match Awa.Server.maybe_rekey server (now ()) with
+          | None -> loop t fd server input_buffer remaining_fulfiled_promises pending_promises
+          | Some (server, kexinit) ->
+            send_msg fd server kexinit
+            >>= fun server ->
+            loop t fd server input_buffer remaining_fulfiled_promises pending_promises
           )
-        end
+        (* Here we have the net_read tells us to stop the communication... *)
+        | Net_eof :: _ -> Lwt.return t
+        (* Here we have the net_read fulfiled, we can let the timeout + Lwt_mvar.take continue and add a new net_read *)
+        | Net_io buf :: remaining_fulfiled_promises ->
+          loop t fd server (Awa.Util.cs_join input_buffer buf) remaining_fulfiled_promises (List.append pending_promises [net_read fd])
+        (* Here we have the Lwt_mvar.take fulfiled, we can let the timeout + net_read continue and add a new Lwt_mvar.take *)
+        | Sshout (id, buf) :: remaining_fulfiled_promises
+        | Ssherr (id, buf) :: remaining_fulfiled_promises ->
+          wrapr (Awa.Server.output_channel_data server id buf)
+          >>= fun (server, msgs) ->
+          send_msgs fd server msgs >>= fun server ->
+          loop t fd server input_buffer remaining_fulfiled_promises (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
       in
-      loop t fd server input_buffer nexus_msg_fullfiled pending_promises
-    (* In all of the following we have the Lwt_mvar.take fullfiled, we can let the timeout + net_read continue
+      loop t fd server input_buffer nexus_msg_fulfiled pending_promises
+    (* In all of the following we have the Lwt_mvar.take fulfiled, we can let the timeout + net_read continue
      * and add a new Lwt_mvar.take *)
     | Some msg -> (* SSH msg *)
       wrapr (Awa.Server.input_msg server msg (now ()))
