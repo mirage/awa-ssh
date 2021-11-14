@@ -91,3 +91,12 @@ let of_seed typ seed =
     Log.info (fun m -> m "using ssh-ed25519 %s"
                  (Cstruct.to_string pubkey |> Base64.encode_string));
     Hostkey.Ed25519_priv priv
+
+let of_string str =
+  match String.split_on_char ':' str with
+  | [ typ; seed; ] ->
+    ( match typ_of_string typ, Base64.decode seed with
+    | Ok ty, Ok seed -> Ok (of_seed ty seed)
+    | Error _, _ -> Error (`Msg "Invalid type of SSH key")
+    | _, Error _ -> Error (`Msg "Invalid b64 key seed") )
+  | _ -> Error (`Msg "Invalid SSH key format (type:b64-seed)")
