@@ -91,3 +91,16 @@ let of_seed typ seed =
     Log.info (fun m -> m "using ssh-ed25519 %s"
                  (Cstruct.to_string pubkey |> Base64.encode_string));
     Hostkey.Ed25519_priv priv
+
+let of_string str =
+  match String.split_on_char ':' str with
+  | [ typ; data; ] ->
+    ( match typ_of_string typ, Base64.decode data with
+    | Ok `Rsa, Ok seed -> Ok (of_seed `Rsa seed)
+    | Ok `Ed25519, Ok key ->
+      ( match Mirage_crypto_ec.Ed25519.priv_of_cstruct (Cstruct.of_string key) with
+      | Ok key -> Ok (Hostkey.Ed25519_priv key)
+      | Error err -> Error (`Msg (Fmt.str "%a" Mirage_crypto_ec.pp_error err)) )
+    | Error _, _ -> Error (`Msg "Invalid type of SSH key")
+    | _, Error _ -> Error (`Msg "Invalid b64 key seed") )
+  | _ -> Error (`Msg "Invalid SSH key format (type:b64-seed)")
