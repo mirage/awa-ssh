@@ -96,7 +96,7 @@ let of_string str =
   match String.split_on_char ':' str with
   | [ typ; data; ] ->
     ( match typ_of_string typ, Base64.decode data with
-    | Ok `Rsa, Ok seed -> Ok (of_seed `Rsa seed)
+    | Ok `Rsa, Ok _seed -> Ok (of_seed `Rsa data)
     | Ok `Ed25519, Ok key ->
       ( match Mirage_crypto_ec.Ed25519.priv_of_cstruct (Cstruct.of_string key) with
       | Ok key -> Ok (Hostkey.Ed25519_priv key)
