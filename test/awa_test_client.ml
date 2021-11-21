@@ -45,7 +45,10 @@ let jump _ user seed typ keyfile authenticator host port =
   match
     let* key =
       match keyfile with
-      | None -> Ok (Keys.of_seed typ seed)
+      | None ->
+        ( match Keys.of_seed typ seed with
+        | Ok v -> Ok v
+        | Error (`Msg msg) -> Error msg )
       | Some f ->
         let fd = Unix.(openfile f [O_RDONLY] 0) in
         let file_buf = Unix_cstruct.of_fd fd in
