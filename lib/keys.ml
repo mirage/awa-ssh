@@ -72,35 +72,31 @@ let authenticator_of_string str =
       | Error (`Msg msg) ->
         Error (str ^ " is invalid or unsupported authenticator, b64 failed: " ^ msg)
 
-let of_seed typ seed =
-  let g =
-    let seed = Cstruct.of_string seed in
-    Mirage_crypto_rng.(create ~seed (module Fortuna))
-  in
-  match typ with
-  | `Rsa ->
-    let key = Mirage_crypto_pk.Rsa.generate ~g ~bits:2048 () in
-    let public = Mirage_crypto_pk.Rsa.pub_of_priv key in
-    let pubkey = Wire.blob_of_pubkey (Hostkey.Rsa_pub public) in
+let of_seed ?bits typ seed =
+  let typ = match typ with `Rsa -> `RSA | `Ed25519 -> `ED25519 in
+  match X509.Private_key.generate ~seed:(Cstruct.of_string seed) ?bits typ with
+  | `RSA k ->
+    let pub = Mirage_crypto_pk.Rsa.pub_of_priv k in
+    let pubkey = Wire.blob_of_pubkey (Hostkey.Rsa_pub pub) in
     Log.info (fun m -> m "using ssh-rsa %s"
                  (Cstruct.to_string pubkey |> Base64.encode_string));
-    Hostkey.Rsa_priv key
-  | `Ed25519 ->
-    let priv, pub = Mirage_crypto_ec.Ed25519.generate ~g () in
+    Hostkey.Rsa_priv k
+  | `ED25519 k ->
+    let pub = Mirage_crypto_ec.Ed25519.pub_of_priv k in
     let pubkey = Wire.blob_of_pubkey (Hostkey.Ed25519_pub pub) in
     Log.info (fun m -> m "using ssh-ed25519 %s"
                  (Cstruct.to_string pubkey |> Base64.encode_string));
-    Hostkey.Ed25519_priv priv
+    Hostkey.Ed25519_priv k
+  | _ -> assert false (* XXX(dinosaure): should never occur, may be a GADT is needed here! *)
 
 let of_string str =
   match String.split_on_char ':' str with
   | [ typ; data; ] ->
-    ( match typ_of_string typ, Base64.decode data with
-    | Ok `Rsa, Ok seed -> Ok (of_seed `Rsa seed)
-    | Ok `Ed25519, Ok key ->
-      ( match Mirage_crypto_ec.Ed25519.priv_of_cstruct (Cstruct.of_string key) with
-      | Ok key -> Ok (Hostkey.Ed25519_priv key)
-      | Error err -> Error (`Msg (Fmt.str "%a" Mirage_crypto_ec.pp_error err)) )
-    | Error _, _ -> Error (`Msg "Invalid type of SSH key")
-    | _, Error _ -> Error (`Msg "Invalid b64 key seed") )
-  | _ -> Error (`Msg "Invalid SSH key format (type:b64-seed)")
+    let* typ = Result.map_error (fun m -> `Msg m) (typ_of_string typ) in
+    let typ = match typ with `Rsa -> `RSA | `Ed25519 -> `ED25519 in
+    let* res = X509.Private_key.of_string typ data in
+    (match res with
+     | `RSA k -> Ok (Hostkey.Rsa_priv k)
+     | `ED25519 k -> Ok (Hostkey.Ed25519_priv k)
+     | _ -> assert false)
+  | _ -> Error (`Msg "Invalid SSH key format (type:key)")
