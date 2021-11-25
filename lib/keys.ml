@@ -72,23 +72,31 @@ let authenticator_of_string str =
       | Error (`Msg msg) ->
         Error (str ^ " is invalid or unsupported authenticator, b64 failed: " ^ msg)
 
-let of_seed ?(bits= 2048) typ seed =
+let of_seed ?bits typ seed =
   let typ = match typ with `Rsa -> `RSA | `Ed25519 -> `ED25519 in
-  match X509.Private_key.of_string ~seed_or_data:`Seed ~bits typ seed with
-  | Ok (`RSA k) -> Ok (Hostkey.Rsa_priv k)
-  | Ok (`ED25519 k) -> Ok (Hostkey.Ed25519_priv k)
-  | Ok _ -> assert false (* XXX(dinosaure): should never occur, may be a GADT is needed here! *)
-  | Error _ as err -> err
+  match X509.Private_key.generate ~seed:(Cstruct.of_string seed) ?bits typ with
+  | `RSA k ->
+    let pub = Mirage_crypto_pk.Rsa.pub_of_priv k in
+    let pubkey = Wire.blob_of_pubkey (Hostkey.Rsa_pub pub) in
+    Log.info (fun m -> m "using ssh-rsa %s"
+                 (Cstruct.to_string pubkey |> Base64.encode_string));
+    Hostkey.Rsa_priv k
+  | `ED25519 k ->
+    let pub = Mirage_crypto_ec.Ed25519.pub_of_priv k in
+    let pubkey = Wire.blob_of_pubkey (Hostkey.Ed25519_pub pub) in
+    Log.info (fun m -> m "using ssh-ed25519 %s"
+                 (Cstruct.to_string pubkey |> Base64.encode_string));
+    Hostkey.Ed25519_priv k
+  | _ -> assert false (* XXX(dinosaure): should never occur, may be a GADT is needed here! *)
 
 let of_string str =
   match String.split_on_char ':' str with
   | [ typ; data; ] ->
-    ( match typ_of_string typ with
-    | Ok `Rsa ->
-      let res = X509.Private_key.of_string ~seed_or_data:`Seed `RSA data in
-      Result.map (function `RSA k -> Hostkey.Rsa_priv k | _ -> assert false) res
-    | Ok `Ed25519 ->
-      let res = X509.Private_key.of_string ~seed_or_data:`Data `ED25519 data in
-      Result.map (function `ED25519 k -> Hostkey.Ed25519_priv k | _ -> assert false) res
-    | Error _ -> Error (`Msg "Invalid type of SSH key") )
+    let* typ = Result.map_error (fun m -> `Msg m) (typ_of_string typ) in
+    let typ = match typ with `Rsa -> `RSA | `Ed25519 -> `ED25519 in
+    let* res = X509.Private_key.of_string typ data in
+    (match res with
+     | `RSA k -> Ok (Hostkey.Rsa_priv k)
+     | `ED25519 k -> Ok (Hostkey.Ed25519_priv k)
+     | _ -> assert false)
   | _ -> Error (`Msg "Invalid SSH key format (type:key)")
