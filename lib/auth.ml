@@ -46,7 +46,12 @@ let lookup_user_key user key db =
 let by_password name password db =
   match lookup_user name db with
   | None -> false
-  | Some user -> user.password = Some password
+  | Some user -> match user.password with
+    | Some password' ->
+      let a = Mirage_crypto.Hash.digest `SHA256 (Cstruct.of_string password')
+      and b = Mirage_crypto.Hash.digest `SHA256 (Cstruct.of_string password) in
+      Eqaf_cstruct.equal a b
+    | None -> false
 
 let to_hash name alg pubkey session_id service =
   let open Wire in
