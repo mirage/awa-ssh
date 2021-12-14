@@ -1,3 +1,10 @@
+## v0.0.5 (2021-12-14)
+
+* use `eqaf` and hash to test the password (@dinosaure, @hannesm, #41)
+* fix isomorphism between `of_seed`/`of_string` and `awa_gen_key` tool (@dinosaure, @hannesm, #40)
+* provide `Keys.of_string` (@dinosaure, @hannesm, #37)
+* conflict `awa` with `result < 1.5` (@hannesm, 1c3d2eb)
+
 ## v0.0.4 (2021-10-28)
 
 * support rsa-sha2 and ed25519 in server code (#29 #30 @palainp)
