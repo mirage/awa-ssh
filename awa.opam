@@ -33,6 +33,7 @@ depends: [
   "cmdliner"
   "base64" {>= "3.0.0"}
   "zarith"
+  "eqaf" {>= "0.8"}
 ]
 conflicts: [ "result" {< "1.5"} ]
 synopsis: "SSH implementation in OCaml"
