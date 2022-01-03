@@ -24,6 +24,7 @@ module Log = (val Logs.src_log src : Logs.LOG)
 type event = [
   | `Established of int32
   | `Channel_data of int32 * Cstruct.t
+  | `Channel_stderr of int32 * Cstruct.t
   | `Channel_eof of int32
   | `Channel_exit_status of int32 * int32
   | `Disconnected
@@ -33,6 +34,8 @@ let pp_event ppf = function
   | `Established id -> Format.fprintf ppf "established id %lu" id
   | `Channel_data (id, data) ->
     Format.fprintf ppf "data %lu: %s" id (Cstruct.to_string data)
+  | `Channel_stderr (id, data) ->
+    Format.fprintf ppf "stderr %lu: %s" id (Cstruct.to_string data)
   | `Channel_eof id -> Format.fprintf ppf "eof %lu" id
   | `Channel_exit_status (id, r) -> Format.fprintf ppf "exit %lu with %lu" id r
   | `Disconnected -> Format.fprintf ppf "disconnected"
@@ -297,6 +300,13 @@ let open_channel_success t us our_id their_id win max_pkt _data =
     Error (Printf.sprintf "channel ids do not match (our %lu their %lu)"
              us.Channel.id our_id)
 
+let channel_data t id data =
+  let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
+  let* c, data, adjust = Channel.input_data c data in
+  let channels = Channel.update c t.channels in
+  let out = match adjust with None -> [] | Some e -> [ e ] in
+  Ok ({ t with channels }, out, Channel.id c, data)
+
 let input_msg t msg now =
   let open Ssh in
   match t.state, msg with
@@ -357,11 +367,11 @@ let input_msg t msg now =
     Log.info (fun m -> m "ignoring debug %s (lang %s)" msg lang);
     Ok (t, [], [])
   | Established, Msg_channel_data (id, data) ->
-    let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
-    let* c, data, adjust = Channel.input_data c data in
-    let channels = Channel.update c t.channels in
-    let out = match adjust with None -> [] | Some e -> [ e ] in
-    Ok ({ t with channels }, out, [ `Channel_data (Channel.id c, data) ])
+    let* t, out, id, data = channel_data t id data in
+    Ok (t, out, [ `Channel_data (id, data) ])
+  | Established, Msg_channel_extended_data (id, 1l, data) ->
+    let* t, out, id, data = channel_data t id data in
+    Ok (t, out, [ `Channel_stderr (id, data) ])
   | Established, Msg_channel_window_adjust (id, len) ->
     let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
     let* c, msgs = Channel.adjust_window c len in
