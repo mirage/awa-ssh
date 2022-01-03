@@ -22,6 +22,7 @@ val make : ?authenticator:Keys.authenticator -> user:string -> Hostkey.priv ->
 type event = [
   | `Established of int32
   | `Channel_data of int32 * Cstruct.t
+  | `Channel_stderr of int32 * Cstruct.t
   | `Channel_eof of int32
   | `Channel_exit_status of int32 * int32
   | `Disconnected
