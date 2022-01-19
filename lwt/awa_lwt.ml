@@ -144,6 +144,7 @@ let rec nexus t fd server input_buffer =
        | None -> Lwt.return_unit)
       >>= fun () ->
       nexus t fd server input_buffer
+    | Some Awa.Server.Channel_subsystem (id, cmd) (* same as exec *)
     | Some Awa.Server.Channel_exec (id, cmd) ->
       (* Create an input box *)
       let sshin_mbox = Lwt_mvar.create_empty () in

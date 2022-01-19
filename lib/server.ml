@@ -18,6 +18,7 @@ open Util
 
 type event =
   | Channel_exec of (int32 * string)
+  | Channel_subsystem of (int32 * string)
   | Channel_data of (int32 * Cstruct.t)
   | Channel_eof of int32
   | Disconnected of string
@@ -270,7 +271,7 @@ let input_channel_request t recp_channel want_reply data =
     | Env (_key, _value) -> success t  (* TODO implement me *)
     | Shell -> fail t
     | Exec cmd -> event t (Channel_exec (c, cmd))
-    | Subsystem _ -> fail t
+    | Subsystem cmd -> event t (Channel_subsystem (c, cmd))
     | Window_change _ -> fail t
     | Xon_xoff _ -> fail t
     | Signal _ -> fail t
