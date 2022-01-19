@@ -1,3 +1,9 @@
+## v0.1.0 (2022-01-19)
+
+* mirage: add server implementation, and ssh subsystem (#35, @palainp)
+* client: accept channel extended data (stderr) (@art-w, #43)
+* cram test for awa_gen_key and what a user provides (@dinosaure, #44)
+
 ## v0.0.5 (2021-12-14)
 
 * use `eqaf` and hash to test the password (@dinosaure, @hannesm, #41)
