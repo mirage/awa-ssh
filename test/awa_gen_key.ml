@@ -29,7 +29,9 @@ let keytype =
   Arg.(value & opt (enum [ ("rsa", `Rsa) ; ("ed25519", `Ed25519) ]) `Rsa & info [ "keytype" ] ~doc)
 
 let cmd =
-  Term.(term_result (const gen_key $ seed $ keytype)),
-  Term.info "awa_gen_key" ~version:"%%VERSION_NUM%%"
+  let info = Cmd.info "awa_gen_key" ~version:"%%VERSION_NUM%%"
+  and term = Term.(term_result (const gen_key $ seed $ keytype))
+  in
+  Cmd.v info term
 
-let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
+let () = exit (Cmd.eval cmd)

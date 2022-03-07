@@ -129,7 +129,11 @@ let setup_log =
         $ Logs_cli.level ())
 
 let cmd =
-  Term.(term_result (const jump $ setup_log $ user $ seed $ keytype $ keyfile $ authenticator $ host $ port)),
-  Term.info "awa_test_client" ~version:"%%VERSION_NUM"
+  let term =
+    Term.(term_result (const jump $ setup_log $ user $ seed $ keytype $ keyfile $ authenticator $ host $ port))
+  and info =
+    Cmd.info "awa_test_client" ~version:"%%VERSION_NUM"
+  in
+  Cmd.v info term
 
-let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
+let () = exit (Cmd.eval cmd)
