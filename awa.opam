@@ -30,7 +30,7 @@ depends: [
   "mtime"
   "logs"
   "fmt"
-  "cmdliner"
+  "cmdliner" {>= "1.1.0"}
   "base64" {>= "3.0.0"}
   "zarith"
   "eqaf" {>= "0.8"}

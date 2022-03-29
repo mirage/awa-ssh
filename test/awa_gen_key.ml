@@ -6,8 +6,13 @@ let gen_key seed typ =
     | None -> b64s (Mirage_crypto_rng.generate 30)
     | Some x -> x
   in
-  Printf.printf "seed is %s\n" seed;
   let hostkey = Awa.Keys.of_seed typ seed in
+  (match hostkey with
+   | Awa.Hostkey.Ed25519_priv k ->
+     let p = Mirage_crypto_ec.Ed25519.priv_to_cstruct k in
+     Printf.printf "ED25519 private key %s\n" (b64s p)
+   | Rsa_priv _ ->
+     Printf.printf "seed is %s\n" seed);
   let pub = Awa.Hostkey.pub_of_priv hostkey in
   let public = Awa.Wire.blob_of_pubkey pub in
   Printf.printf "%s %s awa@awa.local\n" (Awa.Hostkey.sshname pub) (b64s public);
@@ -24,7 +29,9 @@ let keytype =
   Arg.(value & opt (enum [ ("rsa", `Rsa) ; ("ed25519", `Ed25519) ]) `Rsa & info [ "keytype" ] ~doc)
 
 let cmd =
-  Term.(term_result (const gen_key $ seed $ keytype)),
-  Term.info "albatross_stat_client" ~version:"%%VERSION_NUM%%"
+  let info = Cmd.info "awa_gen_key" ~version:"%%VERSION_NUM%%"
+  and term = Term.(term_result (const gen_key $ seed $ keytype))
+  in
+  Cmd.v info term
 
-let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
+let () = exit (Cmd.eval cmd)
