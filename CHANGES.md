@@ -1,3 +1,7 @@
+## v0.1.1 (2022-06-14)
+
+* awa_gen_key: output ed25519 private key instead of the seed (@hannesm, #46)
+
 ## v0.1.0 (2022-01-19)
 
 * mirage: add server implementation, and ssh subsystem (#35, @palainp)
