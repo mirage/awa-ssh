@@ -11,6 +11,10 @@ let typ_of_string s =
   | "ed25519" -> Ok `Ed25519
   | _ -> Error ("unknown key type " ^ s)
 
+let string_of_typ = function
+  | `Rsa -> "rsa"
+  | `Ed25519 -> "ed25519"
+
 type authenticator = [
   | `No_authentication
   | `Key of Hostkey.pub
