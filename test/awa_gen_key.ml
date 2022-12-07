@@ -10,9 +10,12 @@ let gen_key seed typ =
   (match hostkey with
    | Awa.Hostkey.Ed25519_priv k ->
      let p = Mirage_crypto_ec.Ed25519.priv_to_cstruct k in
-     Printf.printf "ED25519 private key %s\n" (b64s p)
+     Printf.printf "private key: %s:%s\n"
+       Awa.Keys.(string_of_typ `Ed25519)
+       (b64s p)
    | Rsa_priv _ ->
-     Printf.printf "seed is %s\n" seed);
+     Printf.printf "private key seed: %s:%s\n"
+       Awa.Keys.(string_of_typ `Rsa) seed);
   let pub = Awa.Hostkey.pub_of_priv hostkey in
   let public = Awa.Wire.blob_of_pubkey pub in
   Printf.printf "%s %s awa@awa.local\n" (Awa.Hostkey.sshname pub) (b64s public);
