@@ -1,3 +1,9 @@
+## v0.1.2 (2023-02-16)
+
+* Adapt to mirage-crypto-rng 0.11.0 API changes (#49 @hannesm)
+* Output key seeds, as expected by of_string (#48 @reynir)
+* Update dune-project (formatting disabled) (#47 @tmcgilchrist)
+
 ## v0.1.1 (2022-06-14)
 
 * awa_gen_key: output ed25519 private key instead of the seed (@hannesm, #46)
