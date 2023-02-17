@@ -1,6 +1,6 @@
 open Lwt.Infix
 
-let src = Logs.Src.create "awa.mirage" ~doc:"AWA mirage"
+let src = Logs.Src.create "awa.mirage" ~doc:"Awa mirage"
 module Log = (val Logs.src_log src : Logs.LOG)
 
 module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = struct
