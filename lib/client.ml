@@ -249,13 +249,13 @@ let service_accepted t = function
         [])
   | service -> Error ("unknown service: " ^ service)
 
-let handle_auth_failure t _ = function
+let handle_auth_failure t m = function
   | [] -> Error "no authentication method left"
   | xs ->
     if List.mem "publickey" xs then
       let pub = Hostkey.pub_of_priv t.key in
-      match t.state with
-      | Userauth_request (Ssh.Pubkey (p, None)) when Hostkey.pub_eq pub p ->
+      match m with
+      | Ssh.Pubkey (p, None) when Hostkey.pub_eq pub p ->
         Error "no supported authentication methods left (key already tried)"
       | _ ->
         let met = Ssh.Pubkey (pub, None) in
