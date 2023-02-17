@@ -256,7 +256,7 @@ let handle_auth_failure t m = function
       let pub = Hostkey.pub_of_priv t.key in
       match m with
       | Ssh.Pubkey (p, None) when Hostkey.pub_eq pub p ->
-        Error "no supported authentication methods left (key already tried)"
+        Error "permission denied (tried public key)"
       | _ ->
         let met = Ssh.Pubkey (pub, None) in
         Ok ({ t with state = Userauth_request met },
