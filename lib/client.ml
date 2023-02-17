@@ -249,15 +249,21 @@ let service_accepted t = function
         [])
   | service -> Error ("unknown service: " ^ service)
 
-let handle_auth_failure t _ = function
+let handle_auth_failure t m = function
   | [] -> Error "no authentication method left"
-  | xs when List.mem "publickey" xs ->
-    let pub = Hostkey.pub_of_priv t.key in
-    let met = Ssh.Pubkey (pub, None) in
-    Ok ({ t with state = Userauth_request met },
-        [ Ssh.Msg_userauth_request (t.user, service, met) ],
-        [])
-  | _ -> Error "no supported authentication methods left"
+  | xs ->
+    if List.mem "publickey" xs then
+      let pub = Hostkey.pub_of_priv t.key in
+      match m with
+      | Ssh.Pubkey (p, None) when Hostkey.pub_eq pub p ->
+        Error "permission denied (tried public key)"
+      | _ ->
+        let met = Ssh.Pubkey (pub, None) in
+        Ok ({ t with state = Userauth_request met },
+            [ Ssh.Msg_userauth_request (t.user, service, met) ],
+            [])
+    else
+      Error "no supported authentication methods left"
 
 let handle_pk_auth t pk =
   let session_id = match t.session_id with None -> assert false | Some x -> x in
@@ -395,6 +401,11 @@ let input_msg t msg now =
         [ Msg_channel_close (Channel.id c) ;
           Msg_disconnect (DISCONNECT_BY_APPLICATION, msg, "") ],
         [ `Disconnected ])
+  | _, Msg_disconnect (code, msg, lang) ->
+    Log.err (fun m -> m "disconnected: %s %s%s"
+                (Sexplib.Sexp.to_string_hum (sexp_of_disconnect_code code))
+                msg (if lang = "" then "" else "(lang " ^ lang ^ ")"));
+    Error "disconnected"
   | _, _ ->
     debug_msg "unexpected" msg;
     Error "unexpected state and message"

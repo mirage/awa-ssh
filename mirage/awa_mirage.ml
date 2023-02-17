@@ -1,5 +1,8 @@
 open Lwt.Infix
 
+let src = Logs.Src.create "awa.mirage" ~doc:"Awa mirage"
+module Log = (val Logs.src_log src : Logs.LOG)
+
 module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = struct
 
   module FLOW = F
@@ -27,7 +30,9 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
   let write_flow t buf =
     FLOW.write t.flow buf >>= function
     | Ok () -> Lwt.return (Ok ())
-    | Error w -> t.state <- `Error (`Write w) ; Lwt.return (Error (`Write w))
+    | Error w ->
+      Log.warn (fun m -> m "error %a while writing" F.pp_write_error w);
+      t.state <- `Error (`Write w) ; Lwt.return (Error (`Write w))
 
   let writev_flow t bufs =
     Lwt_list.fold_left_s (fun r d ->
@@ -44,13 +49,19 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
     | `Eof | `Error _ -> Lwt.return (Error ())
     | `Active _ ->
       FLOW.read t.flow >>= function
-      | Error e -> t.state <- `Error (`Read e) ; Lwt.return (Error ())
+      | Error e ->
+        Log.warn (fun m -> m "error %a while reading" F.pp_error e);
+        t.state <- `Error (`Read e);
+        Lwt.return (Error ())
       | Ok `Eof -> t.state <- `Eof ; Lwt.return (Error ())
       | Ok (`Data data) ->
         match t.state with
         | `Active ssh ->
             begin match Awa.Client.incoming ssh (now ()) data with
-            | Error msg -> t.state <- `Error (`Msg msg) ; Lwt.return (Error ())
+            | Error msg ->
+              Log.warn (fun m -> m "error %s while processing data" msg);
+              t.state <- `Error (`Msg msg);
+              Lwt.return (Error ())
             | Ok (ssh', out, events) ->
               let state' = if List.mem `Disconnected events then `Eof else `Active ssh' in
               t.state <- state';
@@ -84,6 +95,9 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
           | `Nothing, `Channel_data (_, data) -> `Data data
           | `Nothing, `Channel_eof _ -> `Eof
           | `Nothing, `Disconnected -> `Eof
+          | a, `Channel_stderr (id, data) ->
+            Log.warn (fun m -> m "%ld stderr %s" id (Cstruct.to_string data));
+            a
           | a, _ -> a)
           `Nothing events
       in
@@ -182,7 +196,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
     FLOW.write flow msg_buf >>= function
       | Ok () -> Lwt.return server
       | Error w ->
-        Logs.err (fun m -> m "error %a while writing" FLOW.pp_write_error w);
+        Log.err (fun m -> m "error %a while writing" FLOW.pp_write_error w);
         Lwt.return server
 
   let rec send_msgs fd server = function
@@ -195,7 +209,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
   let net_read flow =
     FLOW.read flow >>= function
     | Error e ->
-      Logs.err (fun m -> m "read error %a" FLOW.pp_error e);
+      Log.err (fun m -> m "read error %a" FLOW.pp_error e);
       Lwt.return Net_eof
     | Ok `Eof ->
       Lwt.return Net_eof

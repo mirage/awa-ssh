@@ -24,6 +24,15 @@ type pub =
   | Rsa_pub of Rsa.pub
   | Ed25519_pub of Mirage_crypto_ec.Ed25519.pub
 
+let pub_eq a b = match a, b with
+  | Rsa_pub rsa, Rsa_pub rsa' ->
+    Z.equal rsa.Rsa.e rsa'.Rsa.e && Z.equal rsa.Rsa.n rsa'.Rsa.n
+  | Ed25519_pub e, Ed25519_pub e' ->
+    Cstruct.equal
+      (Mirage_crypto_ec.Ed25519.pub_to_cstruct e)
+      (Mirage_crypto_ec.Ed25519.pub_to_cstruct e')
+  | _ -> false
+
 let pub_of_priv = function
   | Rsa_priv priv -> Rsa_pub (Rsa.pub_of_priv priv)
   | Ed25519_priv priv -> Ed25519_pub (Mirage_crypto_ec.Ed25519.pub_of_priv priv)
