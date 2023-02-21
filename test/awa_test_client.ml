@@ -37,28 +37,36 @@ let write_cstruct fd buf =
   let n = Unix.write fd bytes 0 len in
   assert (n > 0)
 
-let jump _ user seed typ keyfile authenticator host port =
+let jump _ user pass seed typ keyfile authenticator host port =
   let ( let* ) = Result.bind in
   Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna);
   let fd = Unix.(socket PF_INET SOCK_STREAM 0) in
   Unix.(connect fd (ADDR_INET (inet_addr_of_string host, port)));
   match
-    let* key =
-      match keyfile with
-      | None -> Ok (Keys.of_seed typ seed)
-      | Some f ->
-        let fd = Unix.(openfile f [O_RDONLY] 0) in
-        let file_buf = Unix_cstruct.of_fd fd in
-        let r = match Wire.privkey_of_openssh file_buf, Wire.privkey_of_pem file_buf with
-          | Ok (k, _), _ -> Ok k
-          | _, Ok k -> Ok k
-          | Error m, _ -> Error m
+    let* auth = match pass with
+      | None ->
+        let* key =
+          match keyfile with
+          | None -> Ok (Keys.of_seed typ seed)
+          | Some f ->
+            let fd = Unix.(openfile f [O_RDONLY] 0) in
+            let file_buf = Unix_cstruct.of_fd fd in
+            let r = match Wire.privkey_of_openssh file_buf, Wire.privkey_of_pem file_buf with
+              | Ok (k, _), _ -> Ok k
+              | _, Ok k -> Ok k
+              | Error m, _ -> Error m
+            in
+            Unix.close fd;
+            r
         in
-        Unix.close fd;
-        r
+        Logs.info (fun m -> m "using publickey authentication");
+        Ok (`Pubkey key)
+      | Some pass ->
+        Logs.info (fun m -> m "using password authentication");
+        Ok (`Password pass)
     in
     let* authenticator = Keys.authenticator_of_string authenticator in
-    let t, out = Client.make ~authenticator ~user key in
+    let t, out = Client.make ~authenticator ~user auth in
     List.iter (write_cstruct fd) out;
     let rec read_react t =
       let data = read_cstruct fd in
@@ -99,6 +107,10 @@ let user =
   let doc = "username to use" in
   Arg.(value & opt string "hannes" & info [ "user" ] ~doc)
 
+let pass =
+  let doc = "password" in
+  Arg.(value & opt (some string) None & info [ "password" ] ~doc)
+
 let seed =
   let doc = "private key seed" in
   Arg.(value & opt string "180586" & info [ "seed" ] ~doc)
@@ -130,7 +142,7 @@ let setup_log =
 
 let cmd =
   let term =
-    Term.(term_result (const jump $ setup_log $ user $ seed $ keytype $ keyfile $ authenticator $ host $ port))
+    Term.(term_result (const jump $ setup_log $ user $ pass $ seed $ keytype $ keyfile $ authenticator $ host $ port))
   and info =
     Cmd.info "awa_test_client" ~version:"%%VERSION_NUM"
   in

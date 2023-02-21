@@ -74,8 +74,9 @@ type t = {
   sig_algs : Hostkey.alg list ;
   linger  : Cstruct.t;
   user : string ;
-  key : Hostkey.priv ;
+  auth_method : [ `Pubkey of Hostkey.priv | `Password of string ] ;
   authenticator : Keys.authenticator ;
+  auth_tried : bool ;
 }
 
 let established t = match t.state with Established -> true | _ -> false
@@ -116,7 +117,7 @@ let output_msgs t msgs =
   in
   t', List.rev data
 
-let make ?(authenticator = `No_authentication) ~user key =
+let make ?(authenticator = `No_authentication) ~user auth_method =
   let open Ssh in
   let hostkey_algs = match authenticator with
     | `No_authentication -> Hostkey.preferred_algs
@@ -136,7 +137,8 @@ let make ?(authenticator = `No_authentication) ~user key =
             linger = Cstruct.empty;
             channels = Channel.empty_db;
             sig_algs = [];
-            user ; key ; authenticator
+            user ; auth_method ; authenticator ;
+            auth_tried = false ;
           }
   in
   output_msgs t [ banner_msg ; kex_msg ]
@@ -169,7 +171,9 @@ let handle_kexinit t c_v ckex s_v skex =
         [] skex.server_host_key_algs
     in
     let s = List.filter (fun a -> List.mem a s) Hostkey.preferred_algs in
-    List.filter Hostkey.(alg_matches (priv_to_typ t.key)) s
+    match t.auth_method with
+    | `Pubkey key -> List.filter Hostkey.(alg_matches (priv_to_typ key)) s
+    | `Password _ -> s
   in
   Ok ({ t with state ; sig_algs }, [ msg ], [])
 
@@ -249,37 +253,51 @@ let service_accepted t = function
         [])
   | service -> Error ("unknown service: " ^ service)
 
-let handle_auth_failure t m = function
+let handle_auth_failure t _ = function
   | [] -> Error "no authentication method left"
   | xs ->
-    if List.mem "publickey" xs then
-      let pub = Hostkey.pub_of_priv t.key in
-      match m with
-      | Ssh.Pubkey (p, None) when Hostkey.pub_eq pub p ->
-        Error "permission denied (tried public key)"
-      | _ ->
-        let met = Ssh.Pubkey (pub, None) in
-        Ok ({ t with state = Userauth_request met },
-            [ Ssh.Msg_userauth_request (t.user, service, met) ],
-            [])
+    if t.auth_tried then
+      Error "authentication failure"
     else
-      Error "no supported authentication methods left"
+      let* met =
+        match t.auth_method with
+        | `Pubkey key ->
+          if List.mem "publickey" xs then
+            let pub = Hostkey.pub_of_priv key in
+            Ok (Ssh.Pubkey (pub, None))
+          else
+            Error "no supported authentication methods left"
+        | `Password pass ->
+          if List.mem "password" xs then
+            Ok (Ssh.Password (pass, None))
+          else
+            Error "no supported authentication methods left"
+      in
+      Ok ({ t with state = Userauth_request met ; auth_tried = true },
+          [ Ssh.Msg_userauth_request (t.user, service, met) ],
+          [])
 
-let handle_pk_auth t pk =
+let handle_pk_auth t pk key =
   let session_id = match t.session_id with None -> assert false | Some x -> x in
   let* alg, sig_algs =
     match t.sig_algs with
     | [] -> Error "no more signature algorithms available"
     | a :: rt -> Ok (a, rt)
   in
-  let signed = Auth.sign t.user alg t.key session_id service in
-  let met = Ssh.Pubkey (Hostkey.pub_of_priv t.key, Some (alg, signed)) in
+  let signed = Auth.sign t.user alg key session_id service in
+  let met = Ssh.Pubkey (Hostkey.pub_of_priv key, Some (alg, signed)) in
   Ok ({ t with state = Userauth_requested (Some pk) ; sig_algs },
       [ Ssh.Msg_userauth_request (t.user, service, met) ],
       [])
 
-let handle_pk_ok t m pk = match m with
-  | Ssh.Pubkey (pub, None) when pub = pk -> handle_pk_auth t pk
+let handle_pk_fail t pk =
+  (* called when the signature algorithm wasn't received well by the server *)
+  match t.auth_method with
+  | `Pubkey key -> handle_pk_auth t pk key
+  | _ -> Error "not sure how we ended in pk fail now"
+
+let handle_pk_ok t m pk = match t.auth_method, m with
+  | `Pubkey key, Ssh.Pubkey (pub, None) when pub = pk -> handle_pk_auth t pk key
   | _ -> Error "not sure how we ended in pk ok now"
 
 let open_channel t =
@@ -360,7 +378,7 @@ let input_msg t msg now =
   | Userauth_request m, Msg_userauth_failure (methods, _) ->
     handle_auth_failure t m methods
   | Userauth_request m, Msg_userauth_pk_ok pk -> handle_pk_ok t m pk
-  | Userauth_requested (Some pk), Msg_userauth_failure _ -> handle_pk_auth t pk
+  | Userauth_requested (Some pk), Msg_userauth_failure _ -> handle_pk_fail t pk
   | Userauth_request _, Msg_userauth_success -> open_channel t
   | Userauth_requested _, Msg_userauth_success -> open_channel t
   | Opening_channel us, Msg_channel_open_confirmation (oid, tid, win, max, data) ->

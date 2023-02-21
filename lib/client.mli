@@ -16,8 +16,8 @@
 
 type t
 
-val make : ?authenticator:Keys.authenticator -> user:string -> Hostkey.priv ->
-  t * Cstruct.t list
+val make : ?authenticator:Keys.authenticator -> user:string ->
+  [ `Pubkey of Hostkey.priv | `Password of string ] -> t * Cstruct.t list
 
 type event = [
   | `Established of int32
