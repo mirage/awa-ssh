@@ -40,7 +40,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) : 
     (Cstruct.t -> unit Lwt.t) ->  (* ssherr *)
     unit Lwt.t
 
-  val spawn_server : Awa.Server.t -> Awa.Ssh.message list -> F.flow ->
+  val spawn_server : ?stop:Lwt_switch.t -> Awa.Server.t -> Awa.Ssh.message list -> F.flow ->
     exec_callback -> t Lwt.t
 
 end

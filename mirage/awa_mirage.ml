@@ -312,7 +312,12 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
         let t = { t with channels = c :: t.channels } in
         nexus t fd server input_buffer (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
 
-  let spawn_server server msgs fd exec_callback =
+  let spawn_server ?stop server msgs fd exec_callback =
+    let switched_off =
+      let t, u = Lwt.wait () in
+      Lwt_switch.add_hook stop (fun () ->
+        Lwt.wakeup_later u Net_eof;
+        Lwt.return_unit); t in
     let t = { exec_callback;
               channels = [];
               nexus_mbox = Lwt_mvar.create_empty ()
@@ -322,6 +327,6 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
     (* the ssh communication will start with 'net_read' and can only add a 'Lwt.take' promise when
      * one Awa.Server.Channel_{exec,subsystem} is received
      *)
-    nexus t fd server (Cstruct.create 0) [ net_read fd ]
+    nexus t fd server (Cstruct.create 0) [ switched_off; net_read fd ]
 
 end
