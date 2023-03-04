@@ -161,24 +161,26 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
     | Sshout of (int32 * Cstruct.t)
     | Ssherr of (int32 * Cstruct.t)
 
-  type sshin_msg = [
-    | `Data of Cstruct.t
-    | `Eof
-  ]
-
   type channel = {
-    cmd         : string;
+    cmd         : string option;
     id          : int32;
-    sshin_mbox  : sshin_msg Lwt_mvar.t;
+    sshin_mbox  : Cstruct.t Mirage_flow.or_eof Lwt_mvar.t;
     exec_thread : unit Lwt.t;
   }
 
-  type exec_callback =
-    string ->                     (* cmd *)
-    (unit -> sshin_msg Lwt.t) ->  (* sshin *)
-    (Cstruct.t -> unit Lwt.t) ->  (* sshout *)
-    (Cstruct.t -> unit Lwt.t) ->  (* ssherr *)
-    unit Lwt.t
+  type request =
+    | Pty_req of { width : int32; height : int32; max_width : int32; max_height : int32; term : string }
+    | Pty_set of { width : int32; height : int32; max_width : int32; max_height : int32 }
+    | Set_env of { key : string; value : string }
+    | Channel of { cmd : string
+                 ; ic : unit -> Cstruct.t Mirage_flow.or_eof Lwt.t
+                 ; oc : Cstruct.t -> unit Lwt.t
+                 ; ec : Cstruct.t -> unit Lwt.t }
+     | Shell  of { ic : unit -> Cstruct.t Mirage_flow.or_eof Lwt.t
+                 ; oc : Cstruct.t -> unit Lwt.t
+                 ; ec : Cstruct.t -> unit Lwt.t }
+
+  type exec_callback = request -> unit Lwt.t
 
   type t = {
     exec_callback  : exec_callback;       (* callback to run on exec *)
@@ -285,6 +287,12 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
       >>= fun server ->
       match event with
       | None -> nexus t fd server input_buffer (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
+      | Some Awa.Server.Pty (term, width, height, max_width, max_height, _modes) ->
+        t.exec_callback (Pty_req { width; height; max_width; max_height; term; }) >>= fun () ->
+        nexus t fd server input_buffer pending_promises
+      | Some Awa.Server.Set_env (key, value) ->
+        t.exec_callback (Set_env { key; value; }) >>= fun () ->
+        nexus t fd server input_buffer pending_promises
       | Some Awa.Server.Disconnected _ ->
         Lwt_list.iter_p sshin_eof t.channels
         >>= fun () -> Lwt.return t
@@ -303,12 +311,23 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
         (* Create an input box *)
         let sshin_mbox = Lwt_mvar.create_empty () in
         (* Create a callback for each mbox *)
-        let sshin () = Lwt_mvar.take sshin_mbox in
-        let sshout id buf = Lwt_mvar.put t.nexus_mbox (Sshout (id, buf)) in
-        let ssherr id buf = Lwt_mvar.put t.nexus_mbox (Ssherr (id, buf)) in
+        let ic () = Lwt_mvar.take sshin_mbox in
+        let oc id buf = Lwt_mvar.put t.nexus_mbox (Sshout (id, buf)) in
+        let ec id buf = Lwt_mvar.put t.nexus_mbox (Ssherr (id, buf)) in
         (* Create the execution thread *)
-        let exec_thread = t.exec_callback cmd sshin (sshout id) (ssherr id) in
-        let c = { cmd; id; sshin_mbox; exec_thread } in
+        let exec_thread = t.exec_callback (Channel { cmd; ic; oc= oc id; ec= ec id; }) in
+        let c = { cmd= Some cmd; id; sshin_mbox; exec_thread } in
+        let t = { t with channels = c :: t.channels } in
+        nexus t fd server input_buffer (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
+      | Some (Awa.Server.Start_shell id) ->
+        let sshin_mbox = Lwt_mvar.create_empty () in
+        (* Create a callback for each mbox *)
+        let ic () = Lwt_mvar.take sshin_mbox in
+        let oc id buf = Lwt_mvar.put t.nexus_mbox (Sshout (id, buf)) in
+        let ec id buf = Lwt_mvar.put t.nexus_mbox (Ssherr (id, buf)) in
+        (* Create the execution thread *)
+        let exec_thread = t.exec_callback (Shell { ic; oc= oc id; ec= ec id; }) in
+        let c = { cmd= None; id; sshin_mbox; exec_thread } in
         let t = { t with channels = c :: t.channels } in
         nexus t fd server input_buffer (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
 

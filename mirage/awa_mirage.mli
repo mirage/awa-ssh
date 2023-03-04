@@ -26,19 +26,21 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) : 
     Awa.Hostkey.priv -> Awa.Ssh.channel_request -> FLOW.flow ->
     (flow, error) result Lwt.t
 
- type t
+  type t
 
-  type sshin_msg = [
-    | `Data of Cstruct.t
-    | `Eof
-  ]
+  type request =
+    | Pty_req of { width : int32; height : int32; max_width : int32; max_height : int32; term : string }
+    | Pty_set of { width : int32; height : int32; max_width : int32; max_height : int32 }
+    | Set_env of { key : string; value : string }
+    | Channel of { cmd : string
+                 ; ic : unit -> Cstruct.t Mirage_flow.or_eof Lwt.t
+                 ; oc : Cstruct.t -> unit Lwt.t
+                 ; ec : Cstruct.t -> unit Lwt.t }
+    | Shell   of { ic : unit -> Cstruct.t Mirage_flow.or_eof Lwt.t
+                 ; oc : Cstruct.t -> unit Lwt.t
+                 ; ec : Cstruct.t -> unit Lwt.t }
 
-  type exec_callback =
-    string ->                     (* cmd *)
-    (unit -> sshin_msg Lwt.t) ->  (* sshin *)
-    (Cstruct.t -> unit Lwt.t) ->  (* sshout *)
-    (Cstruct.t -> unit Lwt.t) ->  (* ssherr *)
-    unit Lwt.t
+  type exec_callback = request -> unit Lwt.t
 
   val spawn_server : ?stop:Lwt_switch.t -> Awa.Server.t -> Awa.Ssh.message list -> F.flow ->
     exec_callback -> t Lwt.t
@@ -62,6 +64,4 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) : 
       {b NOTE}: Even if the [ssh_channel_handler] is fulfilled, [spawn_server]
       continues to handle SSH channels. Only [stop] can really stop the internal
       SSH channels handler. *)
-
-end
-  with module FLOW = F
+end with module FLOW = F

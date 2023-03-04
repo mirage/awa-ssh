@@ -157,6 +157,7 @@ let rec nexus t fd server input_buffer =
       let c = { cmd; id; sshin_mbox; exec_thread } in
       let t = { t with channels = c :: t.channels } in
       nexus t fd server input_buffer
+    | _ -> nexus t fd server input_buffer
 
 let spawn_server server msgs fd exec_callback =
   let t = { exec_callback;
