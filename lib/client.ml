@@ -43,8 +43,15 @@ let pp_event ppf = function
 type kex_state =
   | Negotiated_kex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Mirage_crypto_pk.Dh.secret * Ssh.mpint
 
+type ec_secret = [
+  | `Ed25519 of Mirage_crypto_ec.X25519.secret
+  | `P256 of Mirage_crypto_ec.P256.Dh.secret
+  | `P384 of Mirage_crypto_ec.P384.Dh.secret
+  | `P521 of Mirage_crypto_ec.P521.Dh.secret
+]
+
 type eckex_state =
-  | Negotiated_eckex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Mirage_crypto_ec.X25519.secret * Ssh.mpint
+  | Negotiated_eckex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * ec_secret * Ssh.mpint
 
 type gex_state =
   | Requested_gex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * int32 * int32 * int32
@@ -155,8 +162,8 @@ let handle_kexinit t c_v ckex s_v skex =
       let secret, my_pub = Kex.Dh.secret_pub neg.kex_alg in
       Kex (Negotiated_kex (c_v, ckex, s_v, skex, neg, secret, my_pub)),
       Ssh.Msg_kexdh_init my_pub
-    else (* not RFC 4419, not finite field -> ECDH *)
-      let secret, my_pub = Kex.Dh.ecdh_secret_pub neg.kex_alg in
+    else (* not RFC 4419, not finite field -> EC *)
+      let secret, my_pub = Kex.Dh.ec_secret_pub neg.kex_alg in
       Eckex (Negotiated_eckex (c_v, ckex, s_v, skex, neg, secret, my_pub)),
       Ssh.Msg_kexecdh_init my_pub
   in
@@ -201,7 +208,7 @@ let handle_kexdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs p =
   dh_reply ~ec:false t now v_c ckex v_s skex neg shared my_pub k_s theirs p
 
 let handle_kexecdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs p =
-  let* shared = Kex.Dh.ecdh_shared secret theirs in
+  let* shared = Kex.Dh.ec_shared secret theirs in
   dh_reply ~ec:true t now v_c ckex v_s skex neg shared my_pub k_s theirs p
 
 let handle_kexdh_gex_group t v_c ckex v_s skex neg min n max p gg =

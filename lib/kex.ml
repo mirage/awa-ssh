@@ -34,6 +34,9 @@ type alg =
   | Diffie_hellman_group1_sha1
   | Diffie_hellman_group_exchange_sha1
   | Curve25519_sha256
+  | Ecdh_sha2_nistp256
+  | Ecdh_sha2_nistp384
+  | Ecdh_sha2_nistp521
 
 let is_rfc4419 = function
   | Diffie_hellman_group_exchange_sha256
@@ -41,7 +44,10 @@ let is_rfc4419 = function
   | Diffie_hellman_group14_sha256
   | Diffie_hellman_group14_sha1
   | Diffie_hellman_group1_sha1
-  | Curve25519_sha256 -> false
+  | Curve25519_sha256
+  | Ecdh_sha2_nistp256
+  | Ecdh_sha2_nistp384
+  | Ecdh_sha2_nistp521 -> false
 
 let is_finite_field = function
   | Diffie_hellman_group_exchange_sha256
@@ -49,7 +55,10 @@ let is_finite_field = function
   | Diffie_hellman_group14_sha256
   | Diffie_hellman_group14_sha1
   | Diffie_hellman_group1_sha1 -> true
-  | Curve25519_sha256 -> false
+  | Curve25519_sha256
+  | Ecdh_sha2_nistp256
+  | Ecdh_sha2_nistp384
+  | Ecdh_sha2_nistp521 -> false
 
 let alg_of_string = function
   | "diffie-hellman-group-exchange-sha256" -> Ok Diffie_hellman_group_exchange_sha256
@@ -58,6 +67,9 @@ let alg_of_string = function
   | "diffie-hellman-group14-sha1" -> Ok Diffie_hellman_group14_sha1
   | "diffie-hellman-group1-sha1" -> Ok Diffie_hellman_group1_sha1
   | "curve25519-sha256" -> Ok Curve25519_sha256
+  | "ecdh-sha2-nistp256" -> Ok Ecdh_sha2_nistp256
+  | "ecdh-sha2-nistp384" -> Ok Ecdh_sha2_nistp384
+  | "ecdh-sha2-nistp521" -> Ok Ecdh_sha2_nistp521
   | s -> Error ("Unknown kex_alg " ^ s)
 
 let alg_to_string = function
@@ -67,6 +79,9 @@ let alg_to_string = function
   | Diffie_hellman_group14_sha1 -> "diffie-hellman-group14-sha1"
   | Diffie_hellman_group1_sha1  -> "diffie-hellman-group1-sha1"
   | Curve25519_sha256 -> "curve25519-sha256"
+  | Ecdh_sha2_nistp256 -> "ecdh-sha2-nistp256"
+  | Ecdh_sha2_nistp384 -> "ecdh-sha2-nistp384"
+  | Ecdh_sha2_nistp521 -> "ecdh-sha2-nistp521"
 
 let group_of_alg = function
   | Diffie_hellman_group14_sha256 -> Mirage_crypto_pk.Dh.Group.oakley_14
@@ -74,7 +89,10 @@ let group_of_alg = function
   | Diffie_hellman_group1_sha1  -> Mirage_crypto_pk.Dh.Group.oakley_2
   | Diffie_hellman_group_exchange_sha1
   | Diffie_hellman_group_exchange_sha256
-  | Curve25519_sha256 -> assert false
+  | Curve25519_sha256
+  | Ecdh_sha2_nistp256
+  | Ecdh_sha2_nistp384
+  | Ecdh_sha2_nistp521 -> assert false
 
 let hash_of_alg = function
   | Diffie_hellman_group_exchange_sha256
@@ -83,9 +101,13 @@ let hash_of_alg = function
   | Diffie_hellman_group_exchange_sha1
   | Diffie_hellman_group14_sha1
   | Diffie_hellman_group1_sha1 -> Mirage_crypto.Hash.module_of `SHA1
+  | Ecdh_sha2_nistp256 -> Mirage_crypto.Hash.module_of `SHA256
+  | Ecdh_sha2_nistp384 -> Mirage_crypto.Hash.module_of `SHA384
+  | Ecdh_sha2_nistp521 -> Mirage_crypto.Hash.module_of `SHA512
 
 let client_supported =
   [ Curve25519_sha256 ;
+    Ecdh_sha2_nistp256 ; Ecdh_sha2_nistp384 ; Ecdh_sha2_nistp521 ;
     Diffie_hellman_group14_sha256 ; Diffie_hellman_group_exchange_sha256 ;
     Diffie_hellman_group14_sha1 ; Diffie_hellman_group1_sha1 ;
     Diffie_hellman_group_exchange_sha1 ]
@@ -387,18 +409,31 @@ module Dh = struct
     in
     Ok (Mirage_crypto_pk.Z_extra.of_cstruct_be shared)
 
-  let ecdh_secret_pub = function
+  let ec_secret_pub = function
     | Curve25519_sha256 ->
       let secret, pub = Mirage_crypto_ec.X25519.gen_key () in
-      secret, Mirage_crypto_pk.Z_extra.of_cstruct_be pub
+      `Ed25519 secret, Mirage_crypto_pk.Z_extra.of_cstruct_be pub
+    | Ecdh_sha2_nistp256 ->
+      let secret, pub = Mirage_crypto_ec.P256.Dh.gen_key () in
+      `P256 secret, Mirage_crypto_pk.Z_extra.of_cstruct_be pub
+    | Ecdh_sha2_nistp384 ->
+      let secret, pub = Mirage_crypto_ec.P384.Dh.gen_key () in
+      `P384 secret, Mirage_crypto_pk.Z_extra.of_cstruct_be pub
+    | Ecdh_sha2_nistp521 ->
+      let secret, pub = Mirage_crypto_ec.P521.Dh.gen_key () in
+      `P521 secret, Mirage_crypto_pk.Z_extra.of_cstruct_be pub
     | _ -> assert false
 
-  let ecdh_shared secret recv =
+  let ec_shared secret recv =
     let r = Mirage_crypto_pk.Z_extra.to_cstruct_be recv in
     let* shared =
       Result.map_error
         (Fmt.to_to_string Mirage_crypto_ec.pp_error)
-        (Mirage_crypto_ec.X25519.key_exchange secret r)
+        (match secret with
+         | `Ed25519 secret -> Mirage_crypto_ec.X25519.key_exchange secret r
+         | `P256 secret -> Mirage_crypto_ec.P256.Dh.key_exchange secret r
+         | `P384 secret -> Mirage_crypto_ec.P384.Dh.key_exchange secret r
+         | `P521 secret -> Mirage_crypto_ec.P521.Dh.key_exchange secret r)
     in
     Ok (Mirage_crypto_pk.Z_extra.of_cstruct_be shared)
 
