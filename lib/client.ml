@@ -388,6 +388,10 @@ let input_msg t msg now =
   | Userauth_requested (Some pk), Msg_userauth_failure _ -> handle_pk_fail t pk
   | Userauth_request _, Msg_userauth_success -> open_channel t
   | Userauth_requested _, Msg_userauth_success -> open_channel t
+  | (Userauth_request _ | Userauth_requested _), Msg_userauth_banner (banner, lang) ->
+    Log.info (fun m -> m "userauth banner %s%s" banner
+                 (if lang = "" then "" else " (lang " ^ lang ^ ")"));
+    Ok (t, [], [])
   | Opening_channel us, Msg_channel_open_confirmation (oid, tid, win, max, data) ->
     open_channel_success t us oid tid win max data
   | _, Msg_global_request (_, want_reply, Unknown_request _) ->
