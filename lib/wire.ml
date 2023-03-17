@@ -40,7 +40,7 @@ let get_string buf =
   trap_error (fun () ->
       let len = Cstruct.BE.get_uint32 buf 0 |> Int32.to_int in
       Ssh.guard_sshlen_exn len;
-      (Cstruct.copy buf 4 len), Cstruct.shift buf (len + 4))
+      (Cstruct.to_string buf ~off:4 ~len), Cstruct.shift buf (len + 4))
 
 let put_string s t =
   let len = String.length s in
