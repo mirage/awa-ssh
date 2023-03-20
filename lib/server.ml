@@ -22,6 +22,9 @@ type event =
   | Channel_data of (int32 * Cstruct.t)
   | Channel_eof of int32
   | Disconnected of string
+  | Pty of (string * int32 * int32 * int32 * int32 * string)
+  | Set_env of (string * string)
+  | Start_shell of int32
 
 type t = {
   client_version : string option;         (* Without crlf *)
@@ -253,12 +256,6 @@ let input_channel_request t recp_channel want_reply data =
     else
       make_noreply t
   in
-  let success t =
-    if want_reply then
-      make_reply t (Msg_channel_success recp_channel)
-    else
-      make_noreply t
-  in
   let event t event =
     if want_reply then
       make_reply_with_event t (Msg_channel_success recp_channel) event
@@ -266,10 +263,10 @@ let input_channel_request t recp_channel want_reply data =
       make_event t event
   in
   let handle t c = function
-    | Pty_req _ -> success t
+    | Pty_req v -> event t (Pty v)
     | X11_req _ -> fail t
-    | Env (_key, _value) -> success t  (* TODO implement me *)
-    | Shell -> fail t
+    | Env v -> event t (Set_env v)
+    | Shell -> event t (Start_shell c)
     | Exec cmd -> event t (Channel_exec (c, cmd))
     | Subsystem cmd -> event t (Channel_subsystem (c, cmd))
     | Window_change _ -> fail t

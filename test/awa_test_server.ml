@@ -90,7 +90,7 @@ let rec serve t cmd =
   | Channel_subsystem (id, exec) (* same as exec *)
   | Channel_exec (id, exec) ->
     printf "channel exec %s\n%!" exec;
-    match exec with
+    begin match exec with
     | "suicide" ->
       let* _ = Driver.disconnect t in
       Ok ()
@@ -104,7 +104,8 @@ let rec serve t cmd =
       let* t = Driver.send_channel_data t id (Cstruct.of_string m) in
       printf "%s\n%!" m;
       let* t = Driver.disconnect t in
-      serve t cmd
+      serve t cmd end
+  | _ -> failwith "Invalid SSH event"
 
 let user_db =
   (* User foo auths by passoword *)

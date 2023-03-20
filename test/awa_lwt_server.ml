@@ -27,21 +27,26 @@ let user_db =
   let awa = Awa.Auth.make_user "awa" [ key ] in
   [ foo; awa ]
 
-let exec addr cmd sshin sshout _ssherror =
+let exec addr ?cmd sshin sshout _ssherror =
   let rec echo () =
     sshin () >>= function
     | `Eof -> Lwt.return_unit
     | `Data input -> sshout input >>= fun () -> echo ()
   in
   let ping () = sshout (Cstruct.of_string "pong\n") in
-  let badcmd () =
+  let badcmd cmd =
     sshout (Cstruct.of_string (Printf.sprintf "Bad command `%s`\n" cmd))
   in
-  Lwt_io.printf "[%s] executing `%s`\n%!" addr cmd >>= fun () ->
-  (match cmd with "echo" -> echo () | "ping" -> ping () | _ -> badcmd ())
-  >>= fun () ->
-  Lwt_io.printf "[%s] execution of `%s` finished\n%!" addr cmd
-  (* XXX Awa_lwt must close the channel when exec returns ! *)
+  match cmd with
+  | None ->
+    Lwt_io.printf "[%s] impossible to execute a shell\n%!" addr >>= fun () ->
+    sshout (Cstruct.of_string (Printf.sprintf "No shell available"))
+  | Some cmd ->
+    Lwt_io.printf "[%s] executing `%s`\n%!" addr cmd >>= fun () ->
+    (match cmd with "echo" -> echo () | "ping" -> ping () | _ -> badcmd cmd)
+    >>= fun () ->
+    Lwt_io.printf "[%s] execution of `%s` finished\n%!" addr cmd
+    (* XXX Awa_lwt must close the channel when exec returns ! *)
 
 let serve rsa fd addr =
   Lwt_io.printf "[%s] connected\n%!" addr >>= fun () ->
