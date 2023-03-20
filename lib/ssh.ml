@@ -172,7 +172,6 @@ let password_of_sexp _ = failwith "password_of_sexp: TODO"
 type auth_method =
   | Pubkey of (Hostkey.pub * (Hostkey.alg * Cstruct_sexp.t) option)
   | Password of (password * password option)
-  | Hostbased of (string * Cstruct_sexp.t * string * string * Cstruct_sexp.t) (* TODO *)
   | Authnone
 [@@deriving sexp]
 
@@ -187,11 +186,6 @@ let auth_method_equal a b =
     in
     key_a = key_b && signature_match
   | Password _, Password _ -> a = b
-  | Hostbased (key_alg_a, key_blob_a, hostname_a, hostuser_a, hostsig_a),
-    Hostbased (key_alg_b, key_blob_b, hostname_b, hostuser_b, hostsig_b) ->
-    key_alg_a = key_alg_b && (Cstruct.equal key_blob_a key_blob_b) &&
-    hostname_a = hostname_b && hostuser_a = hostuser_b &&
-    (Cstruct.equal hostsig_a hostsig_b)
   | Authnone, Authnone -> true
   | _ -> false
 

@@ -408,13 +408,6 @@ let get_message buf =
         else
           let* password, buf = get_string buf in
           Ok (Password (password, None), buf)
-      | "hostbased" ->
-        let* key_alg, buf = get_string buf in
-        let* key_blob, buf = get_cstring buf in
-        let* hostname, buf = get_string buf in
-        let* hostuser, buf = get_string buf in
-        let* hostsig, buf = get_cstring buf in
-        Ok (Hostbased (key_alg, key_blob, hostname, hostuser, hostsig), buf)
       | "none" -> Ok (Authnone, buf)
       | _ -> Error ("Unknown method " ^ auth_method)
     in
@@ -740,13 +733,6 @@ let put_message msg buf =
           put_bool true buf |>
           put_string oldpassword |>
           put_string password)
-     | Hostbased (key_alg, key_blob, hostname, hostuser, hostsig) ->
-       put_string "hostbased" buf |>
-       put_string key_alg |>
-       put_cstring key_blob |>
-       put_string hostname |>
-       put_string hostuser |>
-       put_cstring hostsig
      | Authnone -> put_string "none" buf)
   | Msg_userauth_failure (nl, psucc) ->
     put_id MSG_USERAUTH_FAILURE buf |>
