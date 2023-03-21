@@ -179,8 +179,8 @@ let rec input_userauth_request t username service auth_method =
       try_auth t (by_pubkey username alg pubkey session_id service signed t.user_db)
     | Password (password, None) ->    (* Password authentication *)
       try_auth t (by_password username password t.user_db)
-    (* Change of password, or Authnone won't be supported *)
-    | Password (_, Some _) | Authnone -> failure t
+    (* Change of password, or keyboard_interactive, or Authnone won't be supported *)
+    | Password (_, Some _) | Keyboard_interactive _ | Authnone -> failure t
   in
   (* See if we can actually authenticate *)
   match t.auth_state with

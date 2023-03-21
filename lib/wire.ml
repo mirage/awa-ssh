@@ -408,6 +408,13 @@ let get_message buf =
         else
           let* password, buf = get_string buf in
           Ok (Password (password, None), buf)
+      | "keyboard-interactive" ->
+        let* language, buf = get_string buf in
+        let* submethods, buf = get_string buf in
+        let lang_opt = if String.length language = 0 then None else Some language
+        and submethods = String.split_on_char ',' submethods
+        in
+        Ok (Keyboard_interactive (lang_opt, submethods), buf)
       | "none" -> Ok (Authnone, buf)
       | _ -> Error ("Unknown method " ^ auth_method)
     in
@@ -417,10 +424,8 @@ let get_message buf =
     let* psucc, _ = get_bool buf in
     Ok (Msg_userauth_failure (nl, psucc))
   | MSG_USERAUTH_SUCCESS -> Ok Msg_userauth_success
-  | MSG_USERAUTH_PK_OK ->
-    let* key_alg, buf = get_string buf in
-    let* pubkey, _ = get_pubkey key_alg buf in
-    Ok (Msg_userauth_pk_ok pubkey)
+  | MSG_USERAUTH_1 -> Ok (Msg_userauth_1 buf)
+  | MSG_USERAUTH_2 -> Ok (Msg_userauth_2 buf)
   | MSG_USERAUTH_BANNER ->
     let* s1, buf = get_string buf in
     let* s2, _ = get_string buf in
@@ -636,6 +641,26 @@ let dh_kexdh_gex_of_kex id buf =
     Ok (Msg_kexdh_gex_reply (k_s, f, key_sig))
   | _ -> Error "unsupported KEX message"
 
+let userauth_pk_ok buf =
+  let* key_alg, buf = get_string buf in
+  let* pubkey, _ = get_pubkey key_alg buf in
+  Ok (Ssh.Msg_userauth_pk_ok pubkey)
+
+let userauth_info_request buf =
+  let* name, buf = get_string buf in
+  let* instruction, buf = get_string buf in
+  let* lang, buf = get_string buf in
+  let* num_prompts, buf = get_uint32 buf in
+  let rec collect_prompts buf acc = function
+    | 0 -> Ok (List.rev acc)
+    | n ->
+      let* prompt, buf = get_string buf in
+      let* echo, buf = get_bool buf in
+      collect_prompts buf ((prompt, echo) :: acc) (n - 1)
+  in
+  let* prompts = collect_prompts buf [] (Int32.to_int num_prompts) in
+  Ok (Ssh.Msg_userauth_info_request (name, instruction, lang, prompts))
+
 let put_message msg buf =
   let open Ssh in
   let put_id = put_message_id in (* save some columns *)
@@ -733,6 +758,10 @@ let put_message msg buf =
           put_bool true buf |>
           put_string oldpassword |>
           put_string password)
+     | Keyboard_interactive (lopt, submeths) ->
+       let buf = put_string "keyboard-interactive" buf in
+       let buf = put_string (Option.value ~default:"" lopt) buf in
+       put_string (String.concat "," submeths) buf
      | Authnone -> put_string "none" buf)
   | Msg_userauth_failure (nl, psucc) ->
     put_id MSG_USERAUTH_FAILURE buf |>
@@ -745,9 +774,31 @@ let put_message msg buf =
     put_string message |>
     put_string lang
   | Msg_userauth_pk_ok pubkey ->
-    put_id MSG_USERAUTH_PK_OK buf |>
+    put_id MSG_USERAUTH_1 buf |>
     put_string (Hostkey.sshname pubkey) |>
     put_pubkey pubkey
+  | Msg_userauth_info_request (name, instruction, lang, prompts) ->
+    let buf =
+      put_id MSG_USERAUTH_1 buf |>
+      put_string name |>
+      put_string instruction |>
+      put_string lang |>
+      put_uint32 (Int32.of_int (List.length prompts))
+    in
+    List.fold_left (fun buf (prompt, echo) ->
+        put_string prompt buf |>
+        put_bool echo)
+      buf prompts
+  | Msg_userauth_info_response passwords ->
+    let buf =
+      put_id MSG_USERAUTH_2 buf |>
+      put_uint32 (Int32.of_int (List.length passwords))
+    in
+    List.fold_left (fun buf password ->
+        put_string password buf)
+      buf passwords
+  | Msg_userauth_1 _ -> assert false
+  | Msg_userauth_2 _ -> assert false
   | Msg_global_request (request, want_reply, global_request) ->
     let buf = put_id MSG_GLOBAL_REQUEST buf |>
               put_string request |>

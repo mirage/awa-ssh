@@ -61,7 +61,8 @@ type message_id =
   | MSG_USERAUTH_FAILURE          [@id 51]
   | MSG_USERAUTH_SUCCESS          [@id 52]
   | MSG_USERAUTH_BANNER           [@id 53]
-  | MSG_USERAUTH_PK_OK            [@id 60]
+  | MSG_USERAUTH_1                [@id 60]
+  | MSG_USERAUTH_2                [@id 61]
   | MSG_GLOBAL_REQUEST            [@id 80]
   | MSG_REQUEST_SUCCESS           [@id 81]
   | MSG_REQUEST_FAILURE           [@id 82]
@@ -170,22 +171,28 @@ let sexp_of_password _ = sexp_of_string "????"
 let password_of_sexp _ = failwith "password_of_sexp: TODO"
 
 type auth_method =
-  | Pubkey of (Hostkey.pub * (Hostkey.alg * Cstruct_sexp.t) option)
-  | Password of (password * password option)
+  | Pubkey of Hostkey.pub * (Hostkey.alg * Cstruct_sexp.t) option
+  | Password of password * password option
+  | Keyboard_interactive of string option * string list
   | Authnone
 [@@deriving sexp]
+
+let opt_eq f a b =
+  match a, b with
+  | None, None -> true
+  | Some a, Some b -> f a b
+  | None, Some _ | Some _, None -> false
 
 let auth_method_equal a b =
   match a, b with
   | Pubkey (key_a, signature_a),
     Pubkey (key_b, signature_b) ->
-    let signature_match = match signature_a, signature_b with
-      | Some (alga, sa), Some (algb, sb) -> alga = algb && Cstruct.equal sa sb
-      | None, None -> true
-      | _ -> false
-    in
-    key_a = key_b && signature_match
-  | Password _, Password _ -> a = b
+    let f (alga, sa) (algb, sb) = alga = algb && Cstruct.equal sa sb in
+    key_a = key_b && opt_eq f signature_a signature_b
+  | Password (p_a, popt_a), Password (p_b, popt_b) ->
+    String.equal p_a p_b && opt_eq String.equal popt_a popt_b
+  | Keyboard_interactive (l_a, sub_a), Keyboard_interactive (l_b, sub_b) ->
+    opt_eq String.equal l_a l_b && List.for_all2 String.equal sub_a sub_b
   | Authnone, Authnone -> true
   | _ -> false
 
@@ -214,7 +221,11 @@ type message =
   | Msg_userauth_failure of (string list * bool)
   | Msg_userauth_success
   | Msg_userauth_banner of (string * string)
+  | Msg_userauth_1 of Cstruct_sexp.t
+  | Msg_userauth_2 of Cstruct_sexp.t
   | Msg_userauth_pk_ok of Hostkey.pub
+  | Msg_userauth_info_request of string * string * string * (string * bool) list
+  | Msg_userauth_info_response of password list
   | Msg_global_request of (string * bool * global_request)
   | Msg_request_success of Cstruct_sexp.t option
   | Msg_request_failure
@@ -257,7 +268,11 @@ let message_to_id = function
   | Msg_userauth_failure _         -> MSG_USERAUTH_FAILURE
   | Msg_userauth_success           -> MSG_USERAUTH_SUCCESS
   | Msg_userauth_banner _          -> MSG_USERAUTH_BANNER
-  | Msg_userauth_pk_ok _           -> MSG_USERAUTH_PK_OK
+  | Msg_userauth_1 _               -> MSG_USERAUTH_1
+  | Msg_userauth_2 _               -> MSG_USERAUTH_2
+  | Msg_userauth_pk_ok _           -> MSG_USERAUTH_1
+  | Msg_userauth_info_request _    -> MSG_USERAUTH_1
+  | Msg_userauth_info_response _   -> MSG_USERAUTH_2
   | Msg_global_request _           -> MSG_GLOBAL_REQUEST
   | Msg_request_success _          -> MSG_REQUEST_SUCCESS
   | Msg_request_failure            -> MSG_REQUEST_FAILURE

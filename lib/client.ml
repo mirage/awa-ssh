@@ -57,6 +57,10 @@ type gex_state =
   | Requested_gex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * int32 * int32 * int32
   | Negotiated_gex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * int32 * int32 * int32 * Z.t * Z.t * Mirage_crypto_pk.Dh.secret * Ssh.mpint
 
+type userauth_interactive =
+  | Requested of string
+  | Info_sent
+
 type state =
   | Init of string * Ssh.kexinit
   | Received_version of string * Ssh.kexinit * string
@@ -65,8 +69,10 @@ type state =
   | Gex of gex_state
   | Newkeys_before_auth of Kex.keys * Kex.keys
   | Requested_service of string
-  | Userauth_request of Ssh.auth_method
-  | Userauth_requested of Hostkey.pub option
+  | Userauth_initial
+  | Userauth_password
+  | Userauth_publickey of Hostkey.priv
+  | Userauth_keyboard_interactive of userauth_interactive
   | Opening_channel of Channel.channel_end
   | Established
 
@@ -255,36 +261,40 @@ let handle_newkeys_before_auth t keys =
 
 let service_accepted t = function
   | "ssh-userauth" ->
-    Ok ({ t with state = Userauth_request Authnone },
+    Ok ({ t with state = Userauth_initial },
         [ Ssh.Msg_userauth_request (t.user, service, Authnone) ],
         [])
   | service -> Error ("unknown service: " ^ service)
 
-let handle_auth_failure t _ = function
+let handle_auth_none t = function
   | [] -> Error "no authentication method left"
   | xs ->
     if t.auth_tried then
       Error "authentication failure"
     else
-      let* met =
-        match t.auth_method with
-        | `Pubkey key ->
-          if List.mem "publickey" xs then
-            let pub = Hostkey.pub_of_priv key in
-            Ok (Ssh.Pubkey (pub, None))
-          else
-            Error "no supported authentication methods left"
-        | `Password pass ->
-          if List.mem "password" xs then
-            Ok (Ssh.Password (pass, None))
-          else
-            Error "no supported authentication methods left"
-      in
-      Ok ({ t with state = Userauth_request met ; auth_tried = true },
-          [ Ssh.Msg_userauth_request (t.user, service, met) ],
-          [])
+      let auth_req met = [ Ssh.Msg_userauth_request (t.user, service, met) ] in
+      match t.auth_method with
+      | `Pubkey key ->
+        if List.mem "publickey" xs then
+          let pub = Hostkey.pub_of_priv key in
+          let met = Ssh.Pubkey (pub, None) in
+          Ok ({ t with state = Userauth_publickey key ; auth_tried = true },
+              auth_req met, [])
+        else
+          Error "no supported authentication methods left"
+      | `Password pass ->
+        if List.mem "password" xs then
+          let met = Ssh.Password (pass, None) in
+          Ok ({ t with state = Userauth_password ; auth_tried = true },
+              auth_req met, [])
+        else if List.mem "keyboard-interactive" xs then
+          let met = Ssh.Keyboard_interactive (None, []) in
+          let state = Userauth_keyboard_interactive (Requested pass) in
+          Ok ({ t with state ; auth_tried = true }, auth_req met, [])
+        else
+          Error "no supported authentication methods left"
 
-let handle_pk_auth t pk key =
+let handle_pk_auth t key =
   let session_id = match t.session_id with None -> assert false | Some x -> x in
   let* alg, sig_algs =
     match t.sig_algs with
@@ -293,19 +303,20 @@ let handle_pk_auth t pk key =
   in
   let signed = Auth.sign t.user alg key session_id service in
   let met = Ssh.Pubkey (Hostkey.pub_of_priv key, Some (alg, signed)) in
-  Ok ({ t with state = Userauth_requested (Some pk) ; sig_algs },
+  Ok ({ t with state = Userauth_publickey key ; sig_algs },
       [ Ssh.Msg_userauth_request (t.user, service, met) ],
       [])
 
-let handle_pk_fail t pk =
-  (* called when the signature algorithm wasn't received well by the server *)
-  match t.auth_method with
-  | `Pubkey key -> handle_pk_auth t pk key
-  | _ -> Error "not sure how we ended in pk fail now"
-
-let handle_pk_ok t m pk = match t.auth_method, m with
-  | `Pubkey key, Ssh.Pubkey (pub, None) when pub = pk -> handle_pk_auth t pk key
-  | _ -> Error "not sure how we ended in pk ok now"
+let handle_userauth_info_req t password (name, instruction, lang, prompts) =
+  Log.info (fun m -> m "keyboard interactive: name %s instruction %s lang %s"
+               name instruction lang);
+  List.iter (fun (prompt, _echo) -> Log.info (fun m -> m "PROMPT: %s" prompt))
+    prompts;
+  match prompts with
+  | [ _ ] ->
+    Ok ({ t with state = Userauth_keyboard_interactive Info_sent },
+        [ Ssh.Msg_userauth_info_response [ password ] ], [])
+  | _ -> Error "keyboard interactive user authentication: not a single prompt"
 
 let open_channel t =
   if Channel.is_empty t.channels then
@@ -382,16 +393,47 @@ let input_msg t msg now =
     handle_newkeys_before_auth t keys
   | Requested_service s, Msg_service_accept s' when s = s' ->
     service_accepted t s
-  | Userauth_request m, Msg_userauth_failure (methods, _) ->
-    handle_auth_failure t m methods
-  | Userauth_request m, Msg_userauth_pk_ok pk -> handle_pk_ok t m pk
-  | Userauth_requested (Some pk), Msg_userauth_failure _ -> handle_pk_fail t pk
-  | Userauth_request _, Msg_userauth_success -> open_channel t
-  | Userauth_requested _, Msg_userauth_success -> open_channel t
-  | (Userauth_request _ | Userauth_requested _), Msg_userauth_banner (banner, lang) ->
+  | Userauth_initial, Msg_userauth_failure (methods, _) ->
+    handle_auth_none t methods
+  | Userauth_publickey key, Msg_userauth_failure _ ->
+    (* signature algorithm wasn't received well by the server *)
+    handle_pk_auth t key
+  | Userauth_publickey key, Msg_userauth_1 buf ->
+    begin
+      let* m = Wire.userauth_pk_ok buf in
+      match m with
+      | Msg_userauth_pk_ok pub ->
+        if Hostkey.pub_of_priv key = pub then
+          handle_pk_auth t key
+        else
+          Error "key user authentication: public key does not match private"
+      | _ -> Error "unexpected userauth message"
+    end
+  | Userauth_keyboard_interactive (Requested password), Msg_userauth_1 buf ->
+    begin
+      let* m = Wire.userauth_info_request buf in
+      match m with
+      | Msg_userauth_info_request (n, i, l, p) ->
+        handle_userauth_info_req t password (n, i, l, p)
+      | _ -> Error "unexpected userauth message"
+    end
+  | Userauth_keyboard_interactive Info_sent, Msg_userauth_1 buf ->
+    begin
+      (* in contrast to 4256, OpenSSH sends another Info_req with no prompts *)
+      let* m = Wire.userauth_info_request buf in
+      match m with
+      | Msg_userauth_info_request (_, _, _, []) ->
+        Ok (t, [ Ssh.Msg_userauth_info_response [] ], [])
+      | _ -> Error "unexpected userauth message"
+    end
+  | (Userauth_password | Userauth_publickey _ | Userauth_keyboard_interactive _), Msg_userauth_success ->
+    open_channel t
+  | (Userauth_password | Userauth_publickey _ | Userauth_keyboard_interactive _), Msg_userauth_banner (banner, lang) ->
     Log.info (fun m -> m "userauth banner %s%s" banner
                  (if lang = "" then "" else " (lang " ^ lang ^ ")"));
     Ok (t, [], [])
+  | (Userauth_password | Userauth_keyboard_interactive _), Msg_userauth_failure _ ->
+    Error "user authentication failed"
   | Opening_channel us, Msg_channel_open_confirmation (oid, tid, win, max, data) ->
     open_channel_success t us oid tid win max data
   | _, Msg_global_request (_, want_reply, Unknown_request _) ->
