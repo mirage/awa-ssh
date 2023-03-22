@@ -929,20 +929,6 @@ let put_message msg buf =
   | Msg_version version ->  (* Mocked up version message *)
     put_raw (Cstruct.of_string (version ^ "\r\n")) buf
 
-(* XXX Maybe move this to Packet *)
-let get_payload buf =
-  let open Ssh in
-  let* () = guard (Cstruct.length buf >= 5) "Buf too short" in
-  let pkt_len = get_pkt_hdr_pkt_len buf |> Int32.to_int in
-  let pad_len = get_pkt_hdr_pad_len buf in
-  let* () = guard (pkt_len > 0 && pkt_len < max_pkt_len) "Bogus pkt len" in
-  let* () = guard (pad_len < pkt_len) "Bogus pad len" in
-  let* () = guard (Cstruct.length buf = pkt_len + 4) "Bogus buf len" in
-  let payload_len = pkt_len - pad_len - 1 in
-  let* () = guard (payload_len > 0) "Bogus payload_len" in
-  let payload = Cstruct.sub buf 5 payload_len in
-  Ok payload
-
 let get_version buf =
   (* Fetches next line, returns maybe a string and the remainder of buf *)
   let fetchline buf =

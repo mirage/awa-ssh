@@ -56,7 +56,7 @@ let guard_msg t msg =
   | Some MSG_DEBUG -> Ok ()
   | Some id ->
     let msgid = message_to_id msg in
-    guard (id = msgid) ("Unexpected message " ^ (message_id_to_string msgid))
+    guard (id = msgid) ("Unexpected message " ^ string_of_int (message_id_to_int msgid))
 
 let make host_key user_db =
   let open Ssh in
@@ -396,7 +396,7 @@ let input_msg t msg now =
   | Msg_disconnect (_, s, _) -> make_event t (Disconnected s)
   | Msg_version v -> make_noreply { t with client_version = Some v;
                                            expect = Some MSG_KEXINIT }
-  | msg -> Error ("unhandled msg: " ^ (message_to_string msg))
+  | msg -> Error ("unhandled msg: " ^ Fmt.to_to_string pp_message msg)
 
 let output_msg t msg =
   let buf, keys_stoc = Common.output_msg t.keys_stoc msg in

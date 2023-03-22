@@ -30,7 +30,7 @@ type t = {
 
 let send_msg t msg =
   let* server, msg_buf = Server.output_msg t.server msg in
-  Printf.printf ">>> %s\n%!" (Ssh.message_to_string msg);
+  Printf.printf ">>> %s\n%!" (Fmt.to_to_string Ssh.pp_message msg);
   t.write_cb msg_buf;
   Ok { t with server }
 
@@ -66,7 +66,7 @@ let rec poll t =
     let input_buffer = cs_join input_buffer (t.read_cb ()) in
     poll { t with server; input_buffer }
   | Some msg ->
-    Printf.printf "<<< %s\n%!" (Ssh.message_to_string msg);
+    Printf.printf "<<< %s\n%!" (Fmt.to_to_string Ssh.pp_message msg);
     let* server, replies, event = Server.input_msg server msg now in
     let t = { t with server; input_buffer } in
     let* t = send_msgs t replies in

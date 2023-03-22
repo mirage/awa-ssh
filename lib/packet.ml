@@ -16,6 +16,33 @@
 
 open Util
 
+let len_off = 0
+
+let get_pkt_len buf =
+  Cstruct.BE.get_uint32 buf len_off |> Int32.to_int
+let set_pkt_len buf v =
+  Cstruct.BE.set_uint32 buf len_off (Int32.of_int v)
+
+let pad_len_off = 4
+
+let get_pad_len buf = Cstruct.get_uint8 buf pad_len_off
+let set_pad_len buf v = Cstruct.set_uint8 buf pad_len_off v
+
+let sizeof_pkt_hdr = 5
+
+let get_payload buf =
+  let* () = guard (Cstruct.length buf >= 5) "Buf too short" in
+  let pkt_len = get_pkt_len buf in
+  let pad_len = get_pad_len buf in
+  let* () = guard (pkt_len > 0 && pkt_len < Ssh.max_pkt_len) "Bogus pkt len" in
+  let* () = guard (pad_len < pkt_len) "Bogus pad len" in
+  let* () = guard (Cstruct.length buf = pkt_len + 4) "Bogus buf len" in
+  let payload_len = pkt_len - pad_len - 1 in
+  let* () = guard (payload_len > 0) "Bogus payload_len" in
+  let payload = Cstruct.sub buf 5 payload_len in
+  Ok payload
+
+
 let hmac mac seq buf =
   let hmac = mac.Hmac.hmac in
   let key = mac.Hmac.key in
@@ -27,7 +54,7 @@ let peek_len cipher seq block_len buf =
   assert (block_len <= Cstruct.length buf);
   let buf = Cstruct.sub buf 0 block_len in
   let* hdr, _ = Cipher.decrypt ~len:true seq cipher buf in
-  Ok (Ssh.get_pkt_hdr_pkt_len hdr |> Int32.to_int)
+  Ok (get_pkt_len hdr)
 
 let partial buf =
   if Cstruct.length buf < Ssh.max_pkt_len then
@@ -36,7 +63,7 @@ let partial buf =
     Error "Buffer is too big"
 
 let to_msg pkt =
-  Result.bind (Wire.get_payload pkt) Wire.get_message
+  Result.bind (get_payload pkt) Wire.get_message
 
 let decrypt keys buf =
   let open Ssh in
@@ -66,7 +93,7 @@ let decrypt keys buf =
       let* () =
         guard (Cstruct.equal digest1 digest2) "decrypt: Bad digest"
       in
-      let pad_len = get_pkt_hdr_pad_len pkt_dec in
+      let pad_len = get_pad_len pkt_dec in
       let* () =
         guard (pad_len >= 4 && pad_len <= 255 && pad_len < pkt_len)
           "decrypt: Bogus pad len"
@@ -81,7 +108,7 @@ let encrypt keys msg =
   let seq = keys.Kex.seq in
   let block_len = max 8 (Cipher.block_len cipher.Cipher.cipher) in
   (* packet_length + padding_length + payload - sequence_length *)
-  let buf = Dbuf.reserve Ssh.sizeof_pkt_hdr (Dbuf.create ()) |> Wire.put_message msg in
+  let buf = Dbuf.reserve sizeof_pkt_hdr (Dbuf.create ()) |> Wire.put_message msg in
   let len = Dbuf.used buf in
   let len = if Cipher.aead cipher.Cipher.cipher then len - 4 else len in
   (* calculate padding *)
@@ -91,8 +118,8 @@ let encrypt keys msg =
   in
   assert (padlen >= 4 && padlen <= 255);
   let pkt = Wire.put_random padlen buf |> Dbuf.to_cstruct in
-  Ssh.set_pkt_hdr_pkt_len pkt (Int32.of_int (Cstruct.length pkt - 4));
-  Ssh.set_pkt_hdr_pad_len pkt padlen;
+  set_pkt_len pkt (Cstruct.length pkt - 4);
+  set_pad_len pkt padlen;
   let digest = hmac mac seq pkt in
   let enc, cipher = Cipher.encrypt ~len:false seq cipher pkt in
   let packet = Cstruct.append enc digest in

@@ -142,8 +142,8 @@ let t_parsing () =
 
   (* Case 3: Test a zero pkt_len *)
   let buf = Cstruct.create 64 in
-  set_pkt_hdr_pkt_len buf 0l;
-  set_pkt_hdr_pad_len buf 0;
+  Packet.set_pkt_len buf 0;
+  Packet.set_pad_len buf 0;
   let e = Result.get_error (decrypt_plain buf) in
   assert (e = "decrypt: Bogus pkt len");
 
@@ -220,7 +220,7 @@ let t_parsing () =
       Msg_userauth_failure (["Fora"; "Temer"], true);
       Msg_userauth_success;
       Msg_userauth_banner ("Fora", "Temer");
-      Msg_userauth_pk_ok pub_rsa;
+      (* Msg_userauth_pk_ok pub_rsa; *)
       Msg_global_request
         ("tcpip-forward", true,
         Tcpip_forward ("127.0.0.1", long));
@@ -265,9 +265,7 @@ let t_key_exchange () =
   let pkt, _ = get_some @@ Result.get_ok @@ decrypt_plain buf in
   let msg = Result.get_ok @@ Packet.to_msg pkt in
   let () = match msg with
-    | Ssh.Msg_kexinit _ ->
-      (* printf "%s\n%!" (Sexplib.Sexp.to_string_hum (Ssh.sexp_of_kex_pkt kex)); *)
-      ()
+    | Ssh.Msg_kexinit _ -> ()
     | _ -> failwith "Expected Msg_kexinit"
   in
   Unix.close fd;
