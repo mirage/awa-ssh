@@ -220,7 +220,7 @@ let t_parsing () =
       Msg_userauth_failure (["Fora"; "Temer"], true);
       Msg_userauth_success;
       Msg_userauth_banner ("Fora", "Temer");
-      Msg_userauth_pk_ok pub_rsa;
+      (* Msg_userauth_pk_ok pub_rsa; *)
       Msg_global_request
         ("tcpip-forward", true,
         Tcpip_forward ("127.0.0.1", long));
