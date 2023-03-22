@@ -23,8 +23,8 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) : 
       existing connection to SSH, mutually authenticates, opens a channel and
       sends the channel request. *)
   val client_of_flow : ?authenticator:Awa.Keys.authenticator -> user:string ->
-    Awa.Hostkey.priv -> Awa.Ssh.channel_request -> FLOW.flow ->
-    (flow, error) result Lwt.t
+    [ `Pubkey of Awa.Hostkey.priv | `Password of string ] ->
+    Awa.Ssh.channel_request -> FLOW.flow -> (flow, error) result Lwt.t
 
   type t
 

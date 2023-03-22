@@ -216,10 +216,6 @@ let t_parsing () =
         ("haesbaert", "ssh-userauth",
          Password ("a", None));
       Msg_userauth_request
-        ("haesbaert", "ssh-userauth",
-         Hostbased ("a", (Cstruct.of_string "b"), "c", "d",
-                    (Cstruct.of_string "e")));
-      Msg_userauth_request
         ("haesbaert", "ssh-userauth", Authnone);
       Msg_userauth_failure (["Fora"; "Temer"], true);
       Msg_userauth_success;
