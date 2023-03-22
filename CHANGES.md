@@ -1,3 +1,15 @@
+## v0.2.0 (2023-03-22)
+
+* server: be able to stop using a Lwt_switch.t (#52 @dinosaure)
+* server: add Pty/Set_env/Start_shell events (#53 @dinosaure)
+* client: support password authentication and keyboard-interactive (#51
+  @hannesm, reported by @dgjustice #31)
+* client: add NIST EC curves (#31 @hannesm)
+* client: try public key authenticaion only once (#50 @reynir @hannesm)
+* remove (partially implemented) hostbased authentication (#31 @hannesm)
+* replace deprecated Cstruct.copy by Cstruct.to_string (#53 @dinosaure)
+* remove ppx_cstruct and sexplib dependencies (#54 @hannesm)
+
 ## v0.1.2 (2023-02-16)
 
 * Adapt to mirage-crypto-rng 0.11.0 API changes (#49 @hannesm)
