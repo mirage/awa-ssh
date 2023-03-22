@@ -37,18 +37,6 @@ let pub_of_priv = function
   | Rsa_priv priv -> Rsa_pub (Rsa.pub_of_priv priv)
   | Ed25519_priv priv -> Ed25519_pub (Mirage_crypto_ec.Ed25519.pub_of_priv priv)
 
-let sexp_of_pub p =
-  match p with
-  | Rsa_pub p ->
-    Sexplib.Sexp.(List [ Atom "rsa" ; Rsa.sexp_of_pub p ])
-  | Ed25519_pub p ->
-    let data =
-      Cstruct_sexp.sexp_of_t (Mirage_crypto_ec.Ed25519.pub_to_cstruct p)
-    in
-    Sexplib.Sexp.(List [ Atom "ed25519" ; data ])
-
-let pub_of_sexp _ = failwith "Hostkey.pub_of_sexp: TODO"
-
 let sshname = function
   | Rsa_pub _ -> "ssh-rsa"
   | Ed25519_pub _ -> "ssh-ed25519"
@@ -92,16 +80,6 @@ let alg_to_string = function
   | Rsa_sha256 -> "rsa-sha2-256"
   | Rsa_sha512 -> "rsa-sha2-512"
   | Ed25519 -> "ssh-ed25519"
-
-let alg_of_sexp = function
-  | Sexplib.Sexp.Atom s ->
-    begin match alg_of_string s with
-      | Ok alg -> alg
-      | Error msg -> failwith msg
-    end
-  | _ -> failwith "expected sexp atom for public key algorithm"
-
-let sexp_of_alg t = Sexplib.Sexp.Atom (alg_to_string t)
 
 let preferred_algs = [ Ed25519 ; Rsa_sha256 ; Rsa_sha512 ; Rsa_sha1 ]
 

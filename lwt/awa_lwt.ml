@@ -60,7 +60,7 @@ let wrapr = function
 let send_msg fd server msg =
   wrapr (Awa.Server.output_msg server msg)
   >>= fun (server, msg_buf) ->
-  Lwt_io.printf ">>> %s\n%!" (Awa.Ssh.message_to_string msg)
+  Lwt_io.printf ">>> %s\n%!" (Fmt.to_to_string Awa.Ssh.pp_message msg)
   >>= fun () ->
   Lwt_unix.write fd (Cstruct.to_bytes msg_buf) 0 (Cstruct.length msg_buf)
   >>= fun n ->
@@ -126,7 +126,7 @@ let rec nexus t fd server input_buffer =
        send_msgs fd server msgs >>= fun server ->
        nexus t fd server input_buffer)
   | Some msg -> (* SSH msg *)
-    Lwt_io.printf "<<< %s\n%!" (Awa.Ssh.message_to_string msg)
+    Lwt_io.printf "<<< %s\n%!" (Fmt.to_to_string Awa.Ssh.pp_message msg)
     >>= fun () ->
     wrapr (Awa.Server.input_msg server msg (Mtime_clock.now ()))
     >>= fun (server, replies, event) ->

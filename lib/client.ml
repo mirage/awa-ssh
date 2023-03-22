@@ -108,7 +108,7 @@ let debug_msg prefix = function
   | Ssh.Msg_channel_data (id, data) ->
     Log.debug (fun m -> m "%s (Msg_data %d bytes for %lu)" prefix
                   (Cstruct.length data) id)
-  | msg -> Log.debug (fun m -> m "%s %s" prefix (Ssh.message_to_string msg))
+  | msg -> Log.debug (fun m -> m "%s %a" prefix Ssh.pp_message msg)
 
 let output_msg t msg =
   let buf, keys_ctos = Common.output_msg t.keys_ctos msg in
@@ -474,7 +474,7 @@ let input_msg t msg now =
         [ `Disconnected ])
   | _, Msg_disconnect (code, msg, lang) ->
     Log.err (fun m -> m "disconnected: %s %s%s"
-                (Sexplib.Sexp.to_string_hum (sexp_of_disconnect_code code))
+                (Ssh.disconnect_code_to_string code)
                 msg (if lang = "" then "" else "(lang " ^ lang ^ ")"));
     Error "disconnected"
   | _, _ ->

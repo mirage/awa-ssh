@@ -1,5 +1,4 @@
 (library
  (name awa)
  (public_name awa)
- (preprocess (pps ppx_cstruct ppx_sexp_conv))
- (libraries eqaf.cstruct cstruct cstruct-sexp mirage-crypto mirage-crypto-rng mirage-crypto-pk zarith x509 mtime sexplib logs base64 mirage-crypto-ec))
+ (libraries eqaf.cstruct cstruct mirage-crypto mirage-crypto-rng mirage-crypto-pk zarith x509 mtime logs base64 mirage-crypto-ec))

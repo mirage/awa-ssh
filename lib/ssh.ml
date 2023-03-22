@@ -14,14 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Sexplib.Conv
 open Util
-
-[%%cstruct
-type pkt_hdr = {
-  pkt_len: uint32_t;
-  pad_len: uint8_t;
-} [@@big_endian]]
 
 let version_banner = "SSH-2.0-awa_ssh_0.1"
 let max_pkt_len = 512 * 1024          (* 512KB should be enough *)
@@ -42,7 +35,6 @@ let guard_sshlen len =
 let guard_sshlen_exn len =
   match guard_sshlen len with Ok () -> () | Error e -> invalid_arg e
 
-[%%cenum
 type message_id =
   | MSG_DISCONNECT                [@id 1]
   | MSG_IGNORE                    [@id 2]
@@ -78,10 +70,82 @@ type message_id =
   | MSG_CHANNEL_SUCCESS           [@id 99]
   | MSG_CHANNEL_FAILURE           [@id 100]
   | MSG_VERSION                   [@id -1]
-[@@uint8_t][@@sexp]]
+
+let message_id_to_int = function
+  | MSG_DISCONNECT                -> 1
+  | MSG_IGNORE                    -> 2
+  | MSG_UNIMPLEMENTED             -> 3
+  | MSG_DEBUG                     -> 4
+  | MSG_SERVICE_REQUEST           -> 5
+  | MSG_SERVICE_ACCEPT            -> 6
+  | MSG_KEXINIT                   -> 20
+  | MSG_NEWKEYS                   -> 21
+  | MSG_KEX_0                     -> 30
+  | MSG_KEX_1                     -> 31
+  | MSG_KEX_2                     -> 32
+  | MSG_KEX_3                     -> 33
+  | MSG_KEX_4                     -> 34
+  | MSG_USERAUTH_REQUEST          -> 50
+  | MSG_USERAUTH_FAILURE          -> 51
+  | MSG_USERAUTH_SUCCESS          -> 52
+  | MSG_USERAUTH_BANNER           -> 53
+  | MSG_USERAUTH_1                -> 60
+  | MSG_USERAUTH_2                -> 61
+  | MSG_GLOBAL_REQUEST            -> 80
+  | MSG_REQUEST_SUCCESS           -> 81
+  | MSG_REQUEST_FAILURE           -> 82
+  | MSG_CHANNEL_OPEN              -> 90
+  | MSG_CHANNEL_OPEN_CONFIRMATION -> 91
+  | MSG_CHANNEL_OPEN_FAILURE      -> 92
+  | MSG_CHANNEL_WINDOW_ADJUST     -> 93
+  | MSG_CHANNEL_DATA              -> 94
+  | MSG_CHANNEL_EXTENDED_DATA     -> 95
+  | MSG_CHANNEL_EOF               -> 96
+  | MSG_CHANNEL_CLOSE             -> 97
+  | MSG_CHANNEL_REQUEST           -> 98
+  | MSG_CHANNEL_SUCCESS           -> 99
+  | MSG_CHANNEL_FAILURE           -> 100
+  | MSG_VERSION                   -> -1
+
+let int_to_message_id = function
+  | 1 -> Some MSG_DISCONNECT
+  | 2 -> Some MSG_IGNORE
+  | 3 -> Some MSG_UNIMPLEMENTED
+  | 4 -> Some MSG_DEBUG
+  | 5 -> Some MSG_SERVICE_REQUEST
+  | 6 -> Some MSG_SERVICE_ACCEPT
+  | 20 -> Some MSG_KEXINIT
+  | 21 -> Some MSG_NEWKEYS
+  | 30 -> Some MSG_KEX_0
+  | 31 -> Some MSG_KEX_1
+  | 32 -> Some MSG_KEX_2
+  | 33 -> Some MSG_KEX_3
+  | 34 -> Some MSG_KEX_4
+  | 50 -> Some MSG_USERAUTH_REQUEST
+  | 51 -> Some MSG_USERAUTH_FAILURE
+  | 52 -> Some MSG_USERAUTH_SUCCESS
+  | 53 -> Some MSG_USERAUTH_BANNER
+  | 60 -> Some MSG_USERAUTH_1
+  | 61 -> Some MSG_USERAUTH_2
+  | 80 -> Some MSG_GLOBAL_REQUEST
+  | 81 -> Some MSG_REQUEST_SUCCESS
+  | 82 -> Some MSG_REQUEST_FAILURE
+  | 90 -> Some MSG_CHANNEL_OPEN
+  | 91 -> Some MSG_CHANNEL_OPEN_CONFIRMATION
+  | 92 -> Some MSG_CHANNEL_OPEN_FAILURE
+  | 93 -> Some MSG_CHANNEL_WINDOW_ADJUST
+  | 94 -> Some MSG_CHANNEL_DATA
+  | 95 -> Some MSG_CHANNEL_EXTENDED_DATA
+  | 96 -> Some MSG_CHANNEL_EOF
+  | 97 -> Some MSG_CHANNEL_CLOSE
+  | 98 -> Some MSG_CHANNEL_REQUEST
+  | 99 -> Some MSG_CHANNEL_SUCCESS
+  | 100 -> Some MSG_CHANNEL_FAILURE
+  | -1 -> Some MSG_VERSION
+  | _ -> None
 
 type kexinit = {
-  cookie                   : Cstruct_sexp.t;
+  cookie                   : Cstruct.t;
   kex_algs                 : string list;
   server_host_key_algs     : string list;
   encryption_algs_ctos     : string list;
@@ -93,10 +157,26 @@ type kexinit = {
   languages_ctos           : string list;
   languages_stoc           : string list;
   first_kex_packet_follows : bool;
-  rawkex                   : Cstruct_sexp.t;   (* raw kexinit *)
-} [@@deriving sexp]
+  rawkex                   : Cstruct.t;   (* raw kexinit *)
+}
 
-[%%cenum
+let pp_kexinit ppf kex =
+  let pp_sl = Fmt.(list ~sep:(any ", ") string) in
+  Fmt.pf ppf "cookie %a@.kex algorithms %a@.server host key algorithms %a@. \
+              encryption algorithms client to server %a@.encryption algorithms server to client %a@. \
+              mac algorithms client to server %a@.mac algorithms server to client %a@. \
+              compression algorithms client to server %a@.compression algorithms server to client %a@. \
+              languages client to server %a@.languages server to client %a@. \
+              first key exchange packet follows %B@.raw kex %a"
+    Cstruct.hexdump_pp kex.cookie
+    pp_sl kex.kex_algs pp_sl kex.server_host_key_algs
+    pp_sl kex.encryption_algs_ctos pp_sl kex.encryption_algs_stoc
+    pp_sl kex.mac_algs_ctos pp_sl kex.mac_algs_stoc
+    pp_sl kex.compression_algs_ctos pp_sl kex.compression_algs_stoc
+    pp_sl kex.languages_ctos pp_sl kex.languages_stoc
+    kex.first_kex_packet_follows
+    Cstruct.hexdump_pp kex.rawkex
+
 type disconnect_code =
   | DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT      [@id  1]
   | DISCONNECT_PROTOCOL_ERROR                   [@id  2]
@@ -113,31 +193,85 @@ type disconnect_code =
   | DISCONNECT_AUTH_CANCELLED_BY_USER           [@id 13]
   | DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE   [@id 14]
   | DISCONNECT_ILLEGAL_USER_NAME                [@id 15]
-[@@uint32_t][@@sexp]]
 
-let int_to_disconnect_code code =
-  match int_to_disconnect_code code with
-  | Some disc -> disc
-  | None -> DISCONNECT_PROTOCOL_ERROR (* Mock up *)
+let disconnect_code_to_int = function
+  | DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT      ->  1l
+  | DISCONNECT_PROTOCOL_ERROR                   ->  2l
+  | DISCONNECT_KEY_EXCHANGE_FAILED              ->  3l
+  | DISCONNECT_RESERVED                         ->  4l
+  | DISCONNECT_MAC_ERROR                        ->  5l
+  | DISCONNECT_COMPRESSION_ERROR                ->  6l
+  | DISCONNECT_SERVICE_NOT_AVAILABLE            ->  7l
+  | DISCONNECT_PROTOCOL_VERSION_NOT_SUPPORTED   ->  8l
+  | DISCONNECT_HOST_KEY_NOT_VERIFIABLE          ->  9l
+  | DISCONNECT_CONNECTION_LOST                  -> 10l
+  | DISCONNECT_BY_APPLICATION                   -> 11l
+  | DISCONNECT_TOO_MANY_CONNECTIONS             -> 12l
+  | DISCONNECT_AUTH_CANCELLED_BY_USER           -> 13l
+  | DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE   -> 14l
+  | DISCONNECT_ILLEGAL_USER_NAME                -> 15l
+
+let int_to_disconnect_code = function
+  | 1l -> DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT
+  | 2l -> DISCONNECT_PROTOCOL_ERROR
+  | 3l -> DISCONNECT_KEY_EXCHANGE_FAILED
+  | 4l -> DISCONNECT_RESERVED
+  | 5l -> DISCONNECT_MAC_ERROR
+  | 6l -> DISCONNECT_COMPRESSION_ERROR
+  | 7l -> DISCONNECT_SERVICE_NOT_AVAILABLE
+  | 8l -> DISCONNECT_PROTOCOL_VERSION_NOT_SUPPORTED
+  | 9l -> DISCONNECT_HOST_KEY_NOT_VERIFIABLE
+  | 10l -> DISCONNECT_CONNECTION_LOST
+  | 11l -> DISCONNECT_BY_APPLICATION
+  | 12l -> DISCONNECT_TOO_MANY_CONNECTIONS
+  | 13l -> DISCONNECT_AUTH_CANCELLED_BY_USER
+  | 14l -> DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE
+  | 15l -> DISCONNECT_ILLEGAL_USER_NAME
+  | _ -> DISCONNECT_PROTOCOL_ERROR (* Mock up *)
+
+let disconnect_code_to_string = function
+  | DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT -> "Host not allowed to connect"
+  | DISCONNECT_PROTOCOL_ERROR -> "Protocol error"
+  | DISCONNECT_KEY_EXCHANGE_FAILED -> "Key exchange failed"
+  | DISCONNECT_RESERVED -> "Reserved"
+  | DISCONNECT_MAC_ERROR -> "MAC error"
+  | DISCONNECT_COMPRESSION_ERROR -> "Compression error"
+  | DISCONNECT_SERVICE_NOT_AVAILABLE -> "Service not available"
+  | DISCONNECT_PROTOCOL_VERSION_NOT_SUPPORTED -> "Protocol version not supported"
+  | DISCONNECT_HOST_KEY_NOT_VERIFIABLE -> "Host key not verifiable"
+  | DISCONNECT_CONNECTION_LOST -> "Connection lost"
+  | DISCONNECT_BY_APPLICATION -> "Disconnected by application"
+  | DISCONNECT_TOO_MANY_CONNECTIONS -> "Too many connections"
+  | DISCONNECT_AUTH_CANCELLED_BY_USER -> "Authentication cancelled by user"
+  | DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE -> "No more authentication methods available"
+  | DISCONNECT_ILLEGAL_USER_NAME -> "Illegal user name"
 
 (* Channel open codes *)
-[%%cenum
 type channel_open_code =
   | OPEN_ADMINISTRATIVELY_PROHIBITED  [@id 1]
   | OPEN_CONNECT_FAILED               [@id 2]
   | OPEN_UNKNOWN_CHANNEL_TYPE         [@id 3]
   | OPEN_RESOURCE_SHORTAGE            [@id 4]
-[@@uint32_t][@@sexp]]
+
+let channel_open_code_to_int = function
+  | OPEN_ADMINISTRATIVELY_PROHIBITED  -> 1l
+  | OPEN_CONNECT_FAILED               -> 2l
+  | OPEN_UNKNOWN_CHANNEL_TYPE         -> 3l
+  | OPEN_RESOURCE_SHORTAGE            -> 4l
+
+let int_to_channel_open_code = function
+  | 1l -> Some OPEN_ADMINISTRATIVELY_PROHIBITED
+  | 2l -> Some OPEN_CONNECT_FAILED
+  | 3l -> Some OPEN_UNKNOWN_CHANNEL_TYPE
+  | 4l -> Some OPEN_RESOURCE_SHORTAGE
+  | _ -> None
 
 type mpint = Z.t
-
-let sexp_of_mpint mpint = sexp_of_string (Z.to_string mpint)
 
 type global_request =
   | Tcpip_forward of (string * int32)
   | Cancel_tcpip_forward of (string * int32)
   | Unknown_request of string
-[@@deriving sexp]
 
 type channel_request =
   | Pty_req of (string * int32 * int32 * int32 * int32 * string)
@@ -151,31 +285,31 @@ type channel_request =
   | Signal of string
   | Exit_status of int32
   | Exit_signal of (string * bool * string * string)
-  | Raw_data of Cstruct_sexp.t
-[@@deriving sexp]
+  | Raw_data of Cstruct.t
 
 type channel_open =
   | Session
   | X11 of (string * int32)
   | Forwarded_tcpip of (string * int32 * string * int32)
   | Direct_tcpip of (string * int32 * string * int32)
-  | Raw_data of Cstruct_sexp.t
-[@@deriving sexp]
+  | Raw_data of Cstruct.t
 
 (*
  * Protocol Authentication
  *)
 type password = string
 
-let sexp_of_password _ = sexp_of_string "????"
-let password_of_sexp _ = failwith "password_of_sexp: TODO"
-
 type auth_method =
-  | Pubkey of Hostkey.pub * (Hostkey.alg * Cstruct_sexp.t) option
+  | Pubkey of Hostkey.pub * (Hostkey.alg * Cstruct.t) option
   | Password of password * password option
   | Keyboard_interactive of string option * string list
   | Authnone
-[@@deriving sexp]
+
+let pp_auth_method ppf = function
+  | Pubkey (_pub, _algshare) -> Fmt.string ppf "publickey"
+  | Password (_, _) -> Fmt.string ppf "password"
+  | Keyboard_interactive (_, _) -> Fmt.string ppf "keyboard-interactive"
+  | Authnone -> Fmt.string ppf "none"
 
 let opt_eq f a b =
   match a, b with
@@ -205,46 +339,42 @@ type message =
   | Msg_service_accept of string
   | Msg_kexinit of kexinit
   | Msg_newkeys
-  | Msg_kexdh_reply of Hostkey.pub * mpint * (Hostkey.alg * Cstruct_sexp.t)
+  | Msg_kexdh_reply of Hostkey.pub * mpint * (Hostkey.alg * Cstruct.t)
   | Msg_kexdh_init of mpint
   (* from RFC 5656 / 8731 *)
-  | Msg_kexecdh_reply of Hostkey.pub * mpint * (Hostkey.alg * Cstruct_sexp.t)
+  | Msg_kexecdh_reply of Hostkey.pub * mpint * (Hostkey.alg * Cstruct.t)
   | Msg_kexecdh_init of mpint
   (* from RFC 4419 *)
   (* there's as well a Msg_kexdh_gex_request_old with only a single int32 *)
   | Msg_kexdh_gex_request of int32 * int32 * int32
   | Msg_kexdh_gex_group of mpint * mpint
   | Msg_kexdh_gex_init of mpint
-  | Msg_kexdh_gex_reply of Hostkey.pub * mpint * (Hostkey.alg * Cstruct_sexp.t)
-  | Msg_kex of message_id * Cstruct_sexp.t
+  | Msg_kexdh_gex_reply of Hostkey.pub * mpint * (Hostkey.alg * Cstruct.t)
+  | Msg_kex of message_id * Cstruct.t
   | Msg_userauth_request of (string * string * auth_method)
   | Msg_userauth_failure of (string list * bool)
   | Msg_userauth_success
   | Msg_userauth_banner of (string * string)
-  | Msg_userauth_1 of Cstruct_sexp.t
-  | Msg_userauth_2 of Cstruct_sexp.t
+  | Msg_userauth_1 of Cstruct.t
+  | Msg_userauth_2 of Cstruct.t
   | Msg_userauth_pk_ok of Hostkey.pub
   | Msg_userauth_info_request of string * string * string * (string * bool) list
   | Msg_userauth_info_response of password list
   | Msg_global_request of (string * bool * global_request)
-  | Msg_request_success of Cstruct_sexp.t option
+  | Msg_request_success of Cstruct.t option
   | Msg_request_failure
   | Msg_channel_open of (int32 * int32 * int32 * channel_open)
-  | Msg_channel_open_confirmation of (int32 * int32 * int32 * int32 * Cstruct_sexp.t)
+  | Msg_channel_open_confirmation of (int32 * int32 * int32 * int32 * Cstruct.t)
   | Msg_channel_open_failure of (int32 * int32 * string * string)
   | Msg_channel_window_adjust of (int32 * int32)
-  | Msg_channel_data of (int32 * Cstruct_sexp.t)
-  | Msg_channel_extended_data of (int32 * int32 * Cstruct_sexp.t)
+  | Msg_channel_data of (int32 * Cstruct.t)
+  | Msg_channel_extended_data of (int32 * int32 * Cstruct.t)
   | Msg_channel_eof of int32
   | Msg_channel_close of int32
   | Msg_channel_request of (int32 * bool * channel_request)
   | Msg_channel_success of int32
   | Msg_channel_failure of int32
   | Msg_version of string       (* Mocked version *)
-[@@deriving sexp_of]
-
-let message_to_string msg =
-  Sexplib.Sexp.to_string_hum (sexp_of_message msg)
 
 let message_to_id = function
   | Msg_disconnect _               -> MSG_DISCONNECT
@@ -288,6 +418,59 @@ let message_to_id = function
   | Msg_channel_success _          -> MSG_CHANNEL_SUCCESS
   | Msg_channel_failure _          -> MSG_CHANNEL_FAILURE
   | Msg_version _                  -> MSG_VERSION
+
+let pp_lang ppf lang =
+  if lang = "" then () else Fmt.pf ppf "(lang %s)" lang
+
+let pp_message ppf = function
+  | Msg_disconnect (code, desc, lang) ->
+    Fmt.pf ppf "disconnect %s %s%a" (disconnect_code_to_string code) desc
+      pp_lang lang
+  | Msg_ignore d -> Fmt.pf ppf "ignore %s" d
+  | Msg_unimplemented y -> Fmt.pf ppf "unimplemented %lu" y
+  | Msg_debug (display, msg, lang) ->
+    Fmt.pf ppf "debug (display %B) %s%a" display msg pp_lang lang
+  | Msg_service_request s -> Fmt.pf ppf "service request %s" s
+  | Msg_service_accept s -> Fmt.pf ppf "service accept %s" s
+  | Msg_kexinit kex -> Fmt.pf ppf "kexinit %a" pp_kexinit kex
+  | Msg_newkeys -> Fmt.pf ppf "newkeys"
+  | Msg_kexdh_init _z -> Fmt.pf ppf "KEX DH Init"
+  | Msg_kexdh_reply (_hostkey, _z, (_alg, _share)) -> Fmt.pf ppf "KEX DH reply"
+  | Msg_kexecdh_init _z -> Fmt.pf ppf "KEX ECDH Init"
+  | Msg_kexecdh_reply (_hostkey, _z, (_alg, _share)) -> Fmt.pf ppf "KEX ECDH reply"
+  | Msg_kexdh_gex_request (_a, _b, _c) -> Fmt.pf ppf "KEX DH gex request"
+  | Msg_kexdh_gex_group (_z, _z2) -> Fmt.pf ppf "KEX DH gex group"
+  | Msg_kexdh_gex_init _z -> Fmt.pf ppf "KEX DH gex init"
+  | Msg_kexdh_gex_reply (_hostkey, _z, (_alg, _share)) -> Fmt.pf ppf "KEX DH gex reply"
+  | Msg_kex (id, _) -> Fmt.pf ppf "KEX %u" (message_id_to_int id)
+  | Msg_userauth_request (user, service, auth) ->
+    Fmt.pf ppf "userauth request %s (service %s) %a" user service pp_auth_method auth
+  | Msg_userauth_failure (methods, partial) ->
+    Fmt.pf ppf "userauth failure (partial %B) %a" partial
+      Fmt.(list ~sep:(any ", ") string) methods
+  | Msg_userauth_success -> Fmt.pf ppf "userauth success"
+  | Msg_userauth_banner (msg, lang) ->
+    Fmt.pf ppf "userauth banner%a %s" pp_lang lang msg
+  | Msg_userauth_1 _ -> Fmt.pf ppf "userauth 1"
+  | Msg_userauth_2 _ -> Fmt.pf ppf "userauth 2"
+  | Msg_userauth_pk_ok _ -> Fmt.pf ppf "userauth pk ok"
+  | Msg_userauth_info_request _ -> Fmt.pf ppf "userauth info request"
+  | Msg_userauth_info_response _ -> Fmt.pf ppf "userauth info response"
+  | Msg_global_request _ -> Fmt.pf ppf "global request"
+  | Msg_request_success _ -> Fmt.pf ppf "request success"
+  | Msg_request_failure -> Fmt.pf ppf "request failure"
+  | Msg_channel_open _ -> Fmt.pf ppf "channel open"
+  | Msg_channel_open_confirmation _-> Fmt.pf ppf "channel open confirmation"
+  | Msg_channel_open_failure _ -> Fmt.pf ppf "channel open failure"
+  | Msg_channel_window_adjust _ -> Fmt.pf ppf "channel window adjust"
+  | Msg_channel_data _ -> Fmt.pf ppf "channel data"
+  | Msg_channel_extended_data _ -> Fmt.pf ppf "channel extended data"
+  | Msg_channel_eof _ -> Fmt.pf ppf "channel eof"
+  | Msg_channel_close _ -> Fmt.pf ppf "channel close"
+  | Msg_channel_request _ -> Fmt.pf ppf "channel request"
+  | Msg_channel_success _ -> Fmt.pf ppf "channel success"
+  | Msg_channel_failure _ -> Fmt.pf ppf "channel failure"
+  | Msg_version v -> Fmt.pf ppf "version %s" v
 
 let message_to_int msg = message_id_to_int (message_to_id msg)
 
