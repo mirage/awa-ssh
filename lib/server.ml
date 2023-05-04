@@ -23,6 +23,7 @@ type event =
   | Channel_eof of int32
   | Disconnected of string
   | Pty of (string * int32 * int32 * int32 * int32 * string)
+  | Pty_set of (int32 * int32 * int32 * int32)
   | Set_env of (string * string)
   | Start_shell of int32
 
@@ -269,7 +270,7 @@ let input_channel_request t recp_channel want_reply data =
     | Shell -> event t (Start_shell c)
     | Exec cmd -> event t (Channel_exec (c, cmd))
     | Subsystem cmd -> event t (Channel_subsystem (c, cmd))
-    | Window_change _ -> fail t
+    | Window_change v -> event t (Pty_set v)
     | Xon_xoff _ -> fail t
     | Signal _ -> fail t
     | Exit_status _ -> fail t

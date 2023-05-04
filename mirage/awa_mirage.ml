@@ -290,6 +290,9 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
       | Some Awa.Server.Pty (term, width, height, max_width, max_height, _modes) ->
         t.exec_callback (Pty_req { width; height; max_width; max_height; term; }) >>= fun () ->
         nexus t fd server input_buffer pending_promises
+      | Some Awa.Server.Pty_set (width, height, max_width, max_height) ->
+        t.exec_callback (Pty_set { width; height; max_width; max_height }) >>= fun () ->
+        nexus t fd server input_buffer pending_promises
       | Some Awa.Server.Set_env (key, value) ->
         t.exec_callback (Set_env { key; value; }) >>= fun () ->
         nexus t fd server input_buffer pending_promises

@@ -43,7 +43,8 @@ type exec_callback =
   unit Lwt.t
 
 type set_env = string -> string -> unit Lwt.t
-type set_window = term:string -> w:int32 -> h:int32 -> maxw:int32 -> maxh:int32 -> unit Lwt.t
+type resize_window = w:int32 -> h:int32 -> maxw:int32 -> maxh:int32 -> unit Lwt.t
+type set_window = term:string -> resize_window
 
 type t = {
   exec_callback  : exec_callback;       (* callback to run on exec *)
@@ -51,6 +52,7 @@ type t = {
   nexus_mbox     : nexus_msg Lwt_mvar.t;(* Nexus mailbox *)
   env            : set_env option;      (* Environment *)
   window         : set_window option;   (* Window *)
+  resize_window  : resize_window option;(* Resize window *)
 }
 
 let wrapr = function
@@ -159,6 +161,11 @@ let rec nexus t fd server input_buffer =
       | Some set_window -> set_window ~term ~w ~h ~maxw ~maxh
       | None -> Lwt.return_unit ) >>= fun () ->
       nexus t fd server input_buffer
+    | Some Awa.Server.Pty_set (w, h, maxw, maxh) ->
+      ( match t.resize_window with
+        | Some resize_window -> resize_window ~w ~h ~maxw ~maxh
+        | None -> Lwt.return_unit ) >>= fun () ->
+      nexus t fd server input_buffer
     | Some Awa.Server.Channel_subsystem (id, cmd) (* same as exec *)
     | Some Awa.Server.Channel_exec (id, cmd) ->
       (* Create an input box *)
@@ -185,10 +192,10 @@ let rec nexus t fd server input_buffer =
       let t = { t with channels = c :: t.channels } in
       nexus t fd server input_buffer
 
-let spawn_server ?env ?window server msgs fd exec_callback =
+let spawn_server ?env ?window ?resize_window server msgs fd exec_callback =
   let t = { exec_callback;
             channels = [];
-            env; window;
+            env; window; resize_window;
             nexus_mbox = Lwt_mvar.create_empty () }
   in
   send_msgs fd server msgs >>= fun server ->
