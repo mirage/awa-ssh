@@ -42,6 +42,7 @@ type message_id =
   | MSG_DEBUG                     [@id 4]
   | MSG_SERVICE_REQUEST           [@id 5]
   | MSG_SERVICE_ACCEPT            [@id 6]
+  | MSG_EXT_INFO                  [@id 7]
   | MSG_KEXINIT                   [@id 20]
   | MSG_NEWKEYS                   [@id 21]
   | MSG_KEX_0                     [@id 30]
@@ -78,6 +79,7 @@ let message_id_to_int = function
   | MSG_DEBUG                     -> 4
   | MSG_SERVICE_REQUEST           -> 5
   | MSG_SERVICE_ACCEPT            -> 6
+  | MSG_EXT_INFO                  -> 7
   | MSG_KEXINIT                   -> 20
   | MSG_NEWKEYS                   -> 21
   | MSG_KEX_0                     -> 30
@@ -114,6 +116,7 @@ let int_to_message_id = function
   | 4 -> Some MSG_DEBUG
   | 5 -> Some MSG_SERVICE_REQUEST
   | 6 -> Some MSG_SERVICE_ACCEPT
+  | 7 -> Some MSG_EXT_INFO
   | 20 -> Some MSG_KEXINIT
   | 21 -> Some MSG_NEWKEYS
   | 30 -> Some MSG_KEX_0
@@ -147,6 +150,7 @@ let int_to_message_id = function
 type kexinit = {
   cookie                   : Cstruct.t;
   kex_algs                 : string list;
+  ext_info                 : [`Ext_info_c | `Ext_info_s] option;
   server_host_key_algs     : string list;
   encryption_algs_ctos     : string list;
   encryption_algs_stoc     : string list;
@@ -161,21 +165,31 @@ type kexinit = {
 }
 
 let pp_kexinit ppf kex =
+  let string_of_ext_info = function
+    | None -> "no ext-info"
+    | Some `Ext_info_c -> "ext-info-c"
+    | Some `Ext_info_s -> "ext-info-s"
+  in
   let pp_sl = Fmt.(list ~sep:(any ", ") string) in
-  Fmt.pf ppf "cookie %a@.kex algorithms %a@.server host key algorithms %a@. \
+  Fmt.pf ppf "cookie %a@.kex algorithms %a@.ext_info %s@.server host key algorithms %a@. \
               encryption algorithms client to server %a@.encryption algorithms server to client %a@. \
               mac algorithms client to server %a@.mac algorithms server to client %a@. \
               compression algorithms client to server %a@.compression algorithms server to client %a@. \
               languages client to server %a@.languages server to client %a@. \
               first key exchange packet follows %B@.raw kex %a"
     Cstruct.hexdump_pp kex.cookie
-    pp_sl kex.kex_algs pp_sl kex.server_host_key_algs
+    pp_sl kex.kex_algs (string_of_ext_info kex.ext_info) pp_sl kex.server_host_key_algs
     pp_sl kex.encryption_algs_ctos pp_sl kex.encryption_algs_stoc
     pp_sl kex.mac_algs_ctos pp_sl kex.mac_algs_stoc
     pp_sl kex.compression_algs_ctos pp_sl kex.compression_algs_stoc
     pp_sl kex.languages_ctos pp_sl kex.languages_stoc
     kex.first_kex_packet_follows
     Cstruct.hexdump_pp kex.rawkex
+
+type extension = Extension of { name : string; value : string }
+
+let pp_extension ppf (Extension { name; value }) =
+  Fmt.pf ppf "%s=%S" name value
 
 type disconnect_code =
   | DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT      [@id  1]
@@ -338,6 +352,7 @@ type message =
   | Msg_service_request of string
   | Msg_service_accept of string
   | Msg_kexinit of kexinit
+  | Msg_ext_info of extension list
   | Msg_newkeys
   | Msg_kexdh_reply of Hostkey.pub * mpint * (Hostkey.alg * Cstruct.t)
   | Msg_kexdh_init of mpint
@@ -384,6 +399,7 @@ let message_to_id = function
   | Msg_service_request _          -> MSG_SERVICE_REQUEST
   | Msg_service_accept _           -> MSG_SERVICE_ACCEPT
   | Msg_kexinit _                  -> MSG_KEXINIT
+  | Msg_ext_info _                 -> MSG_EXT_INFO
   | Msg_newkeys                    -> MSG_NEWKEYS
   | Msg_kexdh_init _               -> MSG_KEX_0
   | Msg_kexdh_reply _              -> MSG_KEX_1
@@ -433,6 +449,9 @@ let pp_message ppf = function
   | Msg_service_request s -> Fmt.pf ppf "service request %s" s
   | Msg_service_accept s -> Fmt.pf ppf "service accept %s" s
   | Msg_kexinit kex -> Fmt.pf ppf "kexinit %a" pp_kexinit kex
+  | Msg_ext_info extensions ->
+    Fmt.pf ppf "extensions [%a]"
+      Fmt.(list pp_extension) extensions
   | Msg_newkeys -> Fmt.pf ppf "newkeys"
   | Msg_kexdh_init _z -> Fmt.pf ppf "KEX DH Init"
   | Msg_kexdh_reply (_hostkey, _z, (_alg, _share)) -> Fmt.pf ppf "KEX DH reply"

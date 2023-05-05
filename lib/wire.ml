@@ -266,7 +266,12 @@ let privkey_of_openssh buf =
 
 let put_kexinit kex t =
   let open Ssh in
-  let nll = [ kex.kex_algs;
+  let kex_algs = match kex.ext_info with
+    | None -> kex.kex_algs
+    | Some `Ext_info_c -> "ext-info-c" :: kex.kex_algs
+    | Some `Ext_info_s -> "ext-info-s" :: kex.kex_algs
+  in
+  let nll = [ kex_algs;
               kex.server_host_key_algs;
               kex.encryption_algs_ctos;
               kex.encryption_algs_stoc;
@@ -285,6 +290,14 @@ let put_kexinit kex t =
 let blob_of_kexinit kex =
   put_message_id Ssh.MSG_KEXINIT (Dbuf.create ()) |>
   put_kexinit kex |> Dbuf.to_cstruct
+
+let rec put_extensions extensions dbuf =
+  match extensions with
+  | [] -> dbuf
+  | Ssh.Extension { name; value } :: extensions ->
+    put_string name dbuf |>
+    put_string value |>
+    put_extensions extensions
 
 let get_signature buf =
   let* blob, _ = get_cstring buf in
@@ -366,9 +379,19 @@ let get_message buf =
     let* languages_ctos, buf = get_nl buf in
     let* languages_stoc, buf = get_nl buf in
     let* first_kex_packet_follows, _ = get_bool buf in
+    let kex_algs =
+      List.filter (function "ext-info-s" | "ext-info-c" -> false | _ -> true) kex_algs
+    and ext_info =
+      List.find_map (function
+          | "ext-info-s" -> Some `Ext_info_s
+          | "ext-info-c" -> Some `Ext_info_c
+          | _ -> None)
+        kex_algs
+    in
     Ok (Msg_kexinit
           { cookie = Cstruct.sub cookiebegin 0 16;
             kex_algs;
+            ext_info;
             server_host_key_algs;
             encryption_algs_ctos;
             encryption_algs_stoc;
@@ -380,6 +403,21 @@ let get_message buf =
             languages_stoc;
             first_kex_packet_follows;
             rawkex = msgbuf })
+  | MSG_EXT_INFO ->
+    let* nr_extensions, buf = get_uint32 buf in
+    let* nr_extensions = match Int32.unsigned_to_int nr_extensions with
+      | None -> Error "Ridiculous number of extensions advertised"
+      | Some n -> Ok n
+    in
+    let rec loop buf n acc =
+      if n = 0 then
+        Ok (Msg_ext_info (List.rev acc))
+      else
+        let* name, buf = get_string buf in
+        let* value, buf = get_string buf in
+        loop buf (pred n) (Extension { name; value } :: acc)
+    in
+    loop buf nr_extensions []
   | MSG_NEWKEYS ->
     Ok Msg_newkeys
   | MSG_KEX_0 | MSG_KEX_1 | MSG_KEX_2 | MSG_KEX_3 | MSG_KEX_4 ->
@@ -393,6 +431,7 @@ let get_message buf =
       | "publickey" ->
         let* has_sig, buf = get_bool buf in
         let* key_alg, buf = get_string buf in
+        Logs.warn (fun m -> m "read key_alg %S" key_alg);
         let* pubkey, buf = get_pubkey key_alg buf in
         if has_sig then
           let* key_sig = get_signature buf in
@@ -690,6 +729,12 @@ let put_message msg buf =
   | Msg_kexinit kex ->
     put_id MSG_KEXINIT buf |>
     put_kexinit kex
+  | Msg_ext_info extensions ->
+    let nr_extensions = List.length extensions in
+    put_id MSG_EXT_INFO buf |>
+    (* XXX: overflow *)
+    put_uint32 (Int32.of_int nr_extensions) |>
+    put_extensions extensions
   | Msg_newkeys ->
     put_id MSG_NEWKEYS buf
   | Msg_kexdh_init e ->
