@@ -431,7 +431,6 @@ let get_message buf =
       | "publickey" ->
         let* has_sig, buf = get_bool buf in
         let* key_alg, buf = get_string buf in
-        Logs.warn (fun m -> m "read key_alg %S" key_alg);
         let* pubkey, buf = get_pubkey key_alg buf in
         if has_sig then
           let* key_sig = get_signature buf in
