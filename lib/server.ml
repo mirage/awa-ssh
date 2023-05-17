@@ -71,7 +71,7 @@ let make host_key user_db =
   let open Ssh in
   let server_kexinit =
     let algs = host_key_algs host_key in
-    Kex.make_kexinit algs Kex.server_supported ()
+    Kex.make_kexinit algs Kex.supported ()
   in
   let banner_msg = Ssh.Msg_version version_banner in
   let kex_msg = Ssh.Msg_kexinit server_kexinit in
@@ -119,7 +119,7 @@ let rekey t =
   | false, true ->              (* can't be keying and must be keyed *)
     let server_kexinit =
       let algs = host_key_algs t.host_key in
-      Kex.make_kexinit algs Kex.server_supported ()
+      Kex.make_kexinit algs Kex.supported ()
     in
     let t = { t with server_kexinit; keying = true } in
     Some (t, Ssh.Msg_kexinit server_kexinit)
@@ -369,6 +369,38 @@ let input_msg t msg now =
         [ Msg_ext_info extensions ]
       else []
     in
+    let dh ~ec t e f k =
+      let* neg = guard_some t.neg_kex "No negotiated kex" in
+      let* client_version = guard_some t.client_version "No client version" in
+      let* () = guard_none t.new_keys_stoc "Already got new_keys_stoc" in
+      let* () = guard_none t.new_keys_ctos "Already got new_keys_ctos" in
+      let* c = guard_some t.client_kexinit "No client kex" in
+      let pub_host_key = Hostkey.pub_of_priv t.host_key in
+      let h = Kex.Dh.compute_hash ~signed:(not ec) neg
+          ~v_c:client_version
+          ~v_s:t.server_version
+          ~i_c:c.rawkex
+          ~i_s:(Wire.blob_of_kexinit t.server_kexinit)
+          ~k_s:pub_host_key
+          ~e ~f ~k
+      in
+      let signature = Hostkey.sign neg.server_host_key_alg t.host_key h in
+      Format.printf "shared is %a signature is %a (hash %a)\n%!"
+        Cstruct.hexdump_pp (Mirage_crypto_pk.Z_extra.to_cstruct_be f)
+        Cstruct.hexdump_pp signature Cstruct.hexdump_pp h;
+      let session_id = match t.session_id with None -> h | Some x -> x in
+      let* new_keys_ctos, new_keys_stoc, key_eol =
+        Kex.Dh.derive_keys k h session_id neg now
+      in
+      let signature = neg.server_host_key_alg, signature in
+      Ok ({ t with session_id = Some session_id;
+                   new_keys_ctos = Some new_keys_ctos;
+                   new_keys_stoc = Some new_keys_stoc;
+                   key_eol = Some key_eol;
+                   expect = Some MSG_NEWKEYS },
+          (pub_host_key, f, signature),
+          [ Msg_newkeys ] @ exts)
+    in
     begin
       match t.neg_kex with
       | None -> Error "No negotiated kex"
@@ -434,37 +466,21 @@ let input_msg t msg now =
           let* m = Wire.dh_kexdh_of_kex id data in
           match m with
           | Msg_kexdh_init e ->
-            let* neg = guard_some t.neg_kex "No negotiated kex" in
-            let* client_version = guard_some t.client_version "No client version" in
-            let* () = guard_none t.new_keys_stoc "Already got new_keys_stoc" in
-            let* () = guard_none t.new_keys_ctos "Already got new_keys_ctos" in
-            let* c = guard_some t.client_kexinit "No client kex" in
             let* f, k = Kex.(Dh.generate neg.kex_alg e) in
-            let pub_host_key = Hostkey.pub_of_priv t.host_key in
-            let h = Kex.Dh.compute_hash ~signed:true neg
-                ~v_c:client_version
-                ~v_s:t.server_version
-                ~i_c:c.rawkex
-                ~i_s:(Wire.blob_of_kexinit t.server_kexinit)
-                ~k_s:pub_host_key
-                ~e ~f ~k
-            in
-            let signature = Hostkey.sign neg.server_host_key_alg t.host_key h in
-            let session_id = match t.session_id with None -> h | Some x -> x in
-            let* new_keys_ctos, new_keys_stoc, key_eol =
-              Kex.Dh.derive_keys k h session_id neg now
-            in
-            let signature = neg.server_host_key_alg, signature in
-            make_replies { t with session_id = Some session_id;
-                                  new_keys_ctos = Some new_keys_ctos;
-                                  new_keys_stoc = Some new_keys_stoc;
-                                  key_eol = Some key_eol;
-                                  expect = Some MSG_NEWKEYS }
-              ([ Msg_kexdh_reply (pub_host_key, f, signature); Msg_newkeys ] @ exts)
-          | _ ->
-            Error "unexpected KEX message"
+            let* (t, (key, f, sig_), msgs) = dh ~ec:false t e f k in
+            make_replies t
+              (Msg_kexdh_reply (key, f, sig_) :: msgs)
+          | _ -> Error "unexpected KEX message"
         else (* EC *)
-          Error "not yet supported"
+          let* m = Wire.dh_kexecdh_of_kex id data in
+          match m with
+          | Msg_kexecdh_init e ->
+            let secret, f = Kex.Dh.ec_secret_pub neg.kex_alg in
+            let* k = Kex.Dh.ec_shared secret e in
+            let* (t, (key, f, sig_), msgs) = dh ~ec:true t e f k in
+            make_replies t
+              (Msg_kexdh_reply (key, f, sig_) :: msgs)
+          | _ -> Error "unexpected KEX message"
     end
   | Msg_newkeys ->
     (* If this is the first time we keyed, we must take a service request *)
