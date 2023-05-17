@@ -50,6 +50,7 @@ type t = {
   user_db        : Auth.db;               (* username database *)
   channels       : Channel.db;            (* Ssh channels *)
   ignore_next_packet : bool;              (* Ignore the next packet from the wire *)
+  dh_group       : (Mirage_crypto_pk.Dh.group * int32 * int32 * int32) option; (* used for GEX (RFC 4419) *)
 }
 
 let guard_msg t msg =
@@ -92,7 +93,9 @@ let make host_key user_db =
     auth_state = Auth.Preauth;
     user_db;
     channels = Channel.empty_db;
-    ignore_next_packet = false },
+    ignore_next_packet = false;
+    dh_group = None;
+  },
   [ banner_msg; kex_msg ]
 
 (* t with updated keys from new_keys_ctos *)
@@ -341,9 +344,12 @@ let input_msg t msg now =
       kex.first_kex_packet_follows &&
       not (Kex.guessed_right ~s:t.server_kexinit ~c:kex)
     in
+    let expect =
+      Some (if Kex.is_rfc4419 neg.kex_alg then MSG_KEX_4 else MSG_KEX_0)
+    in
     let t = { t with client_kexinit = Some kex;
                      neg_kex = Some neg;
-                     expect = Some MSG_KEX_0; (* TODO needs fix *)
+                     expect;
                      ignore_next_packet;
                      ext_info = kex.ext_info = Some `Ext_info_c; }
     in
@@ -351,50 +357,114 @@ let input_msg t msg now =
      | None -> make_noreply t   (* either already rekeying or not keyed *)
      | Some (t, kexinit) -> make_reply t kexinit)
   | Msg_kex (id, data) ->
+    let exts =
+      if t.ext_info then
+        let algs =
+          String.concat ","
+            (List.map Hostkey.alg_to_string (host_key_algs t.host_key));
+        in
+        let extensions =
+          [Extension { name = "server-sig-algs"; value = algs; }]
+        in
+        [ Msg_ext_info extensions ]
+      else []
+    in
     begin
-      let* m = Wire.dh_kexdh_of_kex id data in
-      match m with
-      | Msg_kexdh_init e ->
-        let* neg = guard_some t.neg_kex "No negotiated kex" in
-        let* client_version = guard_some t.client_version "No client version" in
-        let* () = guard_none t.new_keys_stoc "Already got new_keys_stoc" in
-        let* () = guard_none t.new_keys_ctos "Already got new_keys_ctos" in
-        let* c = guard_some t.client_kexinit "No client kex" in
-        let* f, k = Kex.(Dh.generate neg.kex_alg e) in
-        let pub_host_key = Hostkey.pub_of_priv t.host_key in
-        let h = Kex.Dh.compute_hash ~signed:true neg
-            ~v_c:client_version
-            ~v_s:t.server_version
-            ~i_c:c.rawkex
-            ~i_s:(Wire.blob_of_kexinit t.server_kexinit)
-            ~k_s:pub_host_key
-            ~e ~f ~k
-        in
-        let signature = Hostkey.sign neg.server_host_key_alg t.host_key h in
-        let session_id = match t.session_id with None -> h | Some x -> x in
-        let* new_keys_ctos, new_keys_stoc, key_eol =
-          Kex.Dh.derive_keys k h session_id neg now
-        in
-        let signature = neg.server_host_key_alg, signature in
-        make_replies { t with session_id = Some session_id;
-                              new_keys_ctos = Some new_keys_ctos;
-                              new_keys_stoc = Some new_keys_stoc;
-                              key_eol = Some key_eol;
-                              expect = Some MSG_NEWKEYS }
-          ([ Msg_kexdh_reply (pub_host_key, f, signature); Msg_newkeys ] @ (
-              if t.ext_info then
-                let algs =
-                  String.concat ","
-                    (List.map Hostkey.alg_to_string (host_key_algs t.host_key));
-                in
-                let extensions =
-                  [Extension { name = "server-sig-algs";
-                               value = algs; }]
-                in
-                [ Msg_ext_info extensions ]
-              else []))
-      | _ ->
-        Error "unexpected KEX message"
+      match t.neg_kex with
+      | None -> Error "No negotiated kex"
+      | Some neg ->
+        if Kex.is_rfc4419 neg.kex_alg then
+          let* m = Wire.dh_kexdh_gex_of_kex id data in
+          match t.dh_group, m with
+          | None, Msg_kexdh_gex_request (min, n, max) ->
+            let* group =
+              if max < 2048l then
+                Error "maximum group size too small"
+              else if min > 8192l then
+                Error "minimum group size too big"
+              else if min > n || n > max then
+                Error "group size limits wrong (min <= n <= max)"
+              else if n < 3072l then
+                Ok Mirage_crypto_pk.Dh.Group.ffdhe2048
+              else if n < 4096l then
+                Ok Mirage_crypto_pk.Dh.Group.ffdhe3072
+              else if n < 6144l then
+                Ok Mirage_crypto_pk.Dh.Group.ffdhe4096
+              else if n < 8192l then
+                Ok Mirage_crypto_pk.Dh.Group.ffdhe6144
+              else
+                Ok Mirage_crypto_pk.Dh.Group.ffdhe8192
+            in
+            make_replies { t with
+                           dh_group = Some (group, min, n, max);
+                           expect = Some MSG_KEX_2 }
+              [ Msg_kexdh_gex_group (group.p, group.gg) ]
+          | Some (group, min, n, max), Msg_kexdh_gex_init theirs ->
+            let secret, my_share = Mirage_crypto_pk.Dh.gen_key group in
+            let* client_version = guard_some t.client_version "No client version" in
+            let* c = guard_some t.client_kexinit "No client kex" in
+            let* k = Kex.Dh.shared secret theirs in
+            let pub_host_key = Hostkey.pub_of_priv t.host_key in
+            let f = Mirage_crypto_pk.Z_extra.of_cstruct_be my_share in
+            let h =
+              Kex.Dh.compute_hash_gex neg
+                ~v_c:client_version ~v_s:t.server_version
+                ~i_c:c.rawkex ~i_s:(Wire.blob_of_kexinit t.server_kexinit)
+                ~k_s:pub_host_key
+                ~min ~n ~max
+                ~p:group.p ~g:group.gg
+                ~e:theirs ~f
+                ~k
+            in
+            let signature = Hostkey.sign neg.server_host_key_alg t.host_key h in
+            let session_id = match t.session_id with None -> h | Some x -> x in
+            let* new_keys_ctos, new_keys_stoc, key_eol =
+              Kex.Dh.derive_keys k h session_id neg now
+            in
+            let signature = neg.server_host_key_alg, signature in
+            make_replies { t with session_id = Some session_id;
+                                  new_keys_ctos = Some new_keys_ctos;
+                                  new_keys_stoc = Some new_keys_stoc;
+                                  key_eol = Some key_eol;
+                                  expect = Some MSG_NEWKEYS }
+              ([ Msg_kexdh_gex_reply (pub_host_key, f, signature); Msg_newkeys ] @ exts)
+          | _ ->
+            Error "unexpected KEX message"
+        else if Kex.is_finite_field neg.kex_alg then
+          let* m = Wire.dh_kexdh_of_kex id data in
+          match m with
+          | Msg_kexdh_init e ->
+            let* neg = guard_some t.neg_kex "No negotiated kex" in
+            let* client_version = guard_some t.client_version "No client version" in
+            let* () = guard_none t.new_keys_stoc "Already got new_keys_stoc" in
+            let* () = guard_none t.new_keys_ctos "Already got new_keys_ctos" in
+            let* c = guard_some t.client_kexinit "No client kex" in
+            let* f, k = Kex.(Dh.generate neg.kex_alg e) in
+            let pub_host_key = Hostkey.pub_of_priv t.host_key in
+            let h = Kex.Dh.compute_hash ~signed:true neg
+                ~v_c:client_version
+                ~v_s:t.server_version
+                ~i_c:c.rawkex
+                ~i_s:(Wire.blob_of_kexinit t.server_kexinit)
+                ~k_s:pub_host_key
+                ~e ~f ~k
+            in
+            let signature = Hostkey.sign neg.server_host_key_alg t.host_key h in
+            let session_id = match t.session_id with None -> h | Some x -> x in
+            let* new_keys_ctos, new_keys_stoc, key_eol =
+              Kex.Dh.derive_keys k h session_id neg now
+            in
+            let signature = neg.server_host_key_alg, signature in
+            make_replies { t with session_id = Some session_id;
+                                  new_keys_ctos = Some new_keys_ctos;
+                                  new_keys_stoc = Some new_keys_stoc;
+                                  key_eol = Some key_eol;
+                                  expect = Some MSG_NEWKEYS }
+              ([ Msg_kexdh_reply (pub_host_key, f, signature); Msg_newkeys ] @ exts)
+          | _ ->
+            Error "unexpected KEX message"
+        else (* EC *)
+          Error "not yet supported"
     end
   | Msg_newkeys ->
     (* If this is the first time we keyed, we must take a service request *)
