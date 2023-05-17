@@ -63,7 +63,11 @@ let guard_msg t msg =
 let make host_key user_db =
   let open Ssh in
   let server_kexinit =
-    Kex.make_kexinit Hostkey.preferred_algs Kex.server_supported ()
+    let algs =
+      List.filter Hostkey.(alg_matches (priv_to_typ host_key))
+        Hostkey.preferred_algs
+    in
+    Kex.make_kexinit algs Kex.server_supported ()
   in
   let banner_msg = Ssh.Msg_version version_banner in
   let kex_msg = Ssh.Msg_kexinit server_kexinit in
