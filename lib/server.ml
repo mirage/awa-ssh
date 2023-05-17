@@ -369,22 +369,8 @@ let input_msg t msg now =
         [ Msg_ext_info extensions ]
       else []
     in
-    let dh ~ec t e f k =
-      let* neg = guard_some t.neg_kex "No negotiated kex" in
-      let* client_version = guard_some t.client_version "No client version" in
-      let* () = guard_none t.new_keys_stoc "Already got new_keys_stoc" in
-      let* () = guard_none t.new_keys_ctos "Already got new_keys_ctos" in
-      let* c = guard_some t.client_kexinit "No client kex" in
-      let pub_host_key = Hostkey.pub_of_priv t.host_key in
-      let h = Kex.Dh.compute_hash ~signed:(not ec) neg
-          ~v_c:client_version
-          ~v_s:t.server_version
-          ~i_c:c.rawkex
-          ~i_s:(Wire.blob_of_kexinit t.server_kexinit)
-          ~k_s:pub_host_key
-          ~e ~f ~k
-      in
-      let signature = Hostkey.sign neg.server_host_key_alg t.host_key h in
+    let sign_rekey t neg ~h ~f ~k =
+      let signature = Hostkey.sign neg.Kex.server_host_key_alg t.host_key h in
       Log.debug (fun m -> m "shared is %a signature is %a (hash %a)"
                     Cstruct.hexdump_pp (Mirage_crypto_pk.Z_extra.to_cstruct_be f)
                     Cstruct.hexdump_pp signature Cstruct.hexdump_pp h);
@@ -398,8 +384,29 @@ let input_msg t msg now =
                    new_keys_stoc = Some new_keys_stoc;
                    key_eol = Some key_eol;
                    expect = Some MSG_NEWKEYS },
-          (pub_host_key, f, signature),
-          [ Msg_newkeys ] @ exts)
+          signature,
+          Msg_newkeys :: exts)
+    in
+    let cv_ckex t =
+      let* client_version = guard_some t.client_version "No client version" in
+      let* () = guard_none t.new_keys_stoc "Already got new_keys_stoc" in
+      let* () = guard_none t.new_keys_ctos "Already got new_keys_ctos" in
+      let* c = guard_some t.client_kexinit "No client kex" in
+      Ok (client_version, c.rawkex)
+    in
+    let dh ~ec t neg ~e ~f ~k =
+      let* client_version, i_c = cv_ckex t in
+      let pub_host_key = Hostkey.pub_of_priv t.host_key in
+      let h = Kex.Dh.compute_hash ~signed:(not ec) neg
+          ~v_c:client_version
+          ~v_s:t.server_version
+          ~i_c
+          ~i_s:(Wire.blob_of_kexinit t.server_kexinit)
+          ~k_s:pub_host_key
+          ~e ~f ~k
+      in
+      let* t, signature, msgs = sign_rekey t neg ~h ~f ~k in
+      Ok (t, (pub_host_key, signature), msgs)
     in
     begin
       match t.neg_kex with
@@ -433,41 +440,30 @@ let input_msg t msg now =
               [ Msg_kexdh_gex_group (group.p, group.gg) ]
           | Some (group, min, n, max), Msg_kexdh_gex_init theirs ->
             let secret, my_share = Mirage_crypto_pk.Dh.gen_key group in
-            let* client_version = guard_some t.client_version "No client version" in
-            let* c = guard_some t.client_kexinit "No client kex" in
+            let* client_version, i_c = cv_ckex t in
             let* k = Kex.Dh.shared secret theirs in
             let pub_host_key = Hostkey.pub_of_priv t.host_key in
             let f = Mirage_crypto_pk.Z_extra.of_cstruct_be my_share in
             let h =
               Kex.Dh.compute_hash_gex neg
                 ~v_c:client_version ~v_s:t.server_version
-                ~i_c:c.rawkex ~i_s:(Wire.blob_of_kexinit t.server_kexinit)
+                ~i_c ~i_s:(Wire.blob_of_kexinit t.server_kexinit)
                 ~k_s:pub_host_key
                 ~min ~n ~max
                 ~p:group.p ~g:group.gg
                 ~e:theirs ~f
                 ~k
             in
-            let signature = Hostkey.sign neg.server_host_key_alg t.host_key h in
-            let session_id = match t.session_id with None -> h | Some x -> x in
-            let* new_keys_ctos, new_keys_stoc, key_eol =
-              Kex.Dh.derive_keys k h session_id neg now
-            in
-            let signature = neg.server_host_key_alg, signature in
-            make_replies { t with session_id = Some session_id;
-                                  new_keys_ctos = Some new_keys_ctos;
-                                  new_keys_stoc = Some new_keys_stoc;
-                                  key_eol = Some key_eol;
-                                  expect = Some MSG_NEWKEYS }
-              ([ Msg_kexdh_gex_reply (pub_host_key, f, signature); Msg_newkeys ] @ exts)
-          | _ ->
-            Error "unexpected KEX message"
+            let* t, sig_, msgs = sign_rekey t neg ~h ~f ~k in
+            make_replies t
+              (Msg_kexdh_gex_reply (pub_host_key, f, sig_) :: msgs)
+          | _ -> Error "unexpected KEX message"
         else if Kex.is_finite_field neg.kex_alg then
           let* m = Wire.dh_kexdh_of_kex id data in
           match m with
           | Msg_kexdh_init e ->
             let* f, k = Kex.(Dh.generate neg.kex_alg e) in
-            let* (t, (key, f, sig_), msgs) = dh ~ec:false t e f k in
+            let* (t, (key, sig_), msgs) = dh ~ec:false t neg ~e ~f ~k in
             make_replies t
               (Msg_kexdh_reply (key, f, sig_) :: msgs)
           | _ -> Error "unexpected KEX message"
@@ -477,7 +473,7 @@ let input_msg t msg now =
           | Msg_kexecdh_init e ->
             let secret, f = Kex.Dh.ec_secret_pub neg.kex_alg in
             let* k = Kex.Dh.ec_shared secret e in
-            let* (t, (key, f, sig_), msgs) = dh ~ec:true t e f k in
+            let* (t, (key, sig_), msgs) = dh ~ec:true t neg ~e ~f ~k in
             make_replies t
               (Msg_kexdh_reply (key, f, sig_) :: msgs)
           | _ -> Error "unexpected KEX message"
