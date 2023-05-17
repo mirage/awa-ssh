@@ -14,6 +14,9 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+let src = Logs.Src.create "awa.server" ~doc:"AWA server"
+module Log = (val Logs.src_log src : Logs.LOG)
+
 open Util
 
 let src = Logs.Src.create "awa.server" ~doc:"AWA server"
@@ -385,9 +388,9 @@ let input_msg t msg now =
           ~e ~f ~k
       in
       let signature = Hostkey.sign neg.server_host_key_alg t.host_key h in
-      Format.printf "shared is %a signature is %a (hash %a)\n%!"
-        Cstruct.hexdump_pp (Mirage_crypto_pk.Z_extra.to_cstruct_be f)
-        Cstruct.hexdump_pp signature Cstruct.hexdump_pp h;
+      Log.debug (fun m -> m "shared is %a signature is %a (hash %a)"
+                    Cstruct.hexdump_pp (Mirage_crypto_pk.Z_extra.to_cstruct_be f)
+                    Cstruct.hexdump_pp signature Cstruct.hexdump_pp h);
       let session_id = match t.session_id with None -> h | Some x -> x in
       let* new_keys_ctos, new_keys_stoc, key_eol =
         Kex.Dh.derive_keys k h session_id neg now
