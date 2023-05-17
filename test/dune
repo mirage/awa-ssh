@@ -22,13 +22,6 @@
    logs.fmt logs.cli fmt.cli cstruct-unix))
 
 (executable
- (name awa_lwt_server)
- (public_name awa_lwt_server)
- (modules awa_lwt_server)
- (package awa-lwt)
- (libraries awa awa-lwt mtime.clock.os cstruct-unix mirage-crypto-rng.unix))
-
-(executable
  (name awa_gen_key)
  (public_name awa_gen_key)
  (modules awa_gen_key)
