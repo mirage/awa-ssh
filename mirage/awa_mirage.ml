@@ -230,23 +230,23 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
   let lookup_channel t id =
     List.find_opt (fun c -> id = c.id) t.channels
 
+  let rekey_promise server =
+    match server.Awa.Server.key_eol with
+    | None -> []
+    | Some mtime ->
+      [ T.sleep_ns (Mtime.to_uint64_ns mtime) >>= fun () -> Lwt.return Rekey ]
+
   let rec nexus t fd server input_buffer pending_promises =
     wrapr (Awa.Server.pop_msg2 server input_buffer)
     >>= fun (server, msg, input_buffer) ->
     match msg with
     | None -> (* No SSH msg *)
-      Lwt.catch
-        (fun () ->
-          let timeout = T.sleep_ns (Duration.of_sec 2) >>= fun () -> Lwt.return Rekey in
-          (* We will listen from two incomming messages sources, from the net interface with
-           * 'net_read', and from the ssh server with 'Lwt_mvar.take'. To let the promises
-           * to be resolved, we use Lwt.choose to not add another of these until we know
-           * that it was fulfiled.
-           *)
-          Lwt.nchoose_split (List.append pending_promises [ timeout ])
-        )
-      (function exn -> Lwt.fail exn)
-      >>= fun (nexus_msg_fulfiled, pending_promises) ->
+      (* We will listen from two incomming messages sources, from the net interface with
+       * 'net_read', and from the ssh server with 'Lwt_mvar.take'. To let the promises
+       * to be resolved, we use Lwt.choose to not add another of these until we know
+       * that it was fulfiled.
+      *)
+      Lwt.nchoose_split pending_promises >>= fun (nexus_msg_fulfiled, pending_promises) ->
       (* We need to keep track of the "not fulfiled" promises and only Lwt.nchoose_split
        * allows us to have this information. This function also gives us a list of
        * "already fulfiled" promises. Here we consume this list and add the relevant new
@@ -262,7 +262,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
           | Some (server, kexinit) ->
             send_msg fd server kexinit
             >>= fun server ->
-            loop t fd server input_buffer remaining_fulfiled_promises pending_promises
+            loop t fd server input_buffer remaining_fulfiled_promises (pending_promises @ rekey_promise server)
           )
         (* Here we have the net_read tells us to stop the communication... *)
         | Net_eof :: _ -> Lwt.return t
@@ -350,6 +350,6 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
     (* the ssh communication will start with 'net_read' and can only add a 'Lwt.take' promise when
      * one Awa.Server.Channel_{exec,subsystem} is received
      *)
-    nexus t fd server (Cstruct.create 0) [ switched_off; net_read fd ]
+    nexus t fd server (Cstruct.create 0) ([ switched_off; net_read fd ] @ rekey_promise server)
 
 end
