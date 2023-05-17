@@ -113,7 +113,8 @@ let client_supported =
     Diffie_hellman_group_exchange_sha1 ]
 
 let server_supported =
-  [ Diffie_hellman_group14_sha256 ; Diffie_hellman_group14_sha1 ;
+  [ Diffie_hellman_group14_sha256 ; Diffie_hellman_group_exchange_sha256 ;
+    Diffie_hellman_group14_sha1 ; Diffie_hellman_group_exchange_sha1 ;
     Diffie_hellman_group1_sha1 ]
 
 let make_kexinit ?ext_info host_key_algs algs () =
