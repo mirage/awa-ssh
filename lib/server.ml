@@ -181,11 +181,31 @@ let rec input_userauth_request t username service auth_method =
     let* session_id = guard_some t.session_id "No session_id" in
     let* () = guard (service = "ssh-connection") "Bad service" in
     match auth_method with
-    | Pubkey (pubkey, None) ->        (* Public key probing *)
-      try_probe t pubkey
-    | Pubkey (pubkey, Some (alg, signed)) -> (* Public key authentication *)
-      try_auth t (by_pubkey username alg pubkey session_id service signed t.user_db)
-    | Password (password, None) ->    (* Password authentication *)
+    | Pubkey (_sig_alg_raw, pubkey_raw, None) -> (* Public key probing *)
+      begin match Wire.pubkey_of_blob pubkey_raw with
+        | Ok pubkey ->
+          (* TODO: match sig_alg and pubkey type *)
+          try_probe t pubkey
+        | Error `Unsupported keytype ->
+          Logs.debug (fun m -> m "Client offered unsupported key type %s" keytype);
+          failure t
+        | Error `Msg s ->
+          Logs.warn (fun m -> m "Failed to decode public key (while client offered a key): %s" s);
+          disconnect t DISCONNECT_PROTOCOL_ERROR "public key decoding failed"
+      end
+    | Pubkey (_sig_alg_raw, pubkey_raw, Some (sig_alg, signed)) -> (* Public key authentication *)
+      begin match Wire.pubkey_of_blob pubkey_raw with
+        | Ok pubkey ->
+          (* TODO: match sig_alg and pubkey type *)
+          try_auth t (by_pubkey username sig_alg pubkey session_id service signed t.user_db)
+        | Error `Unsupported keytype ->
+          Logs.debug (fun m -> m "Client attempted authentication with unsupported keytype %s" keytype);
+          failure t
+        | Error `Msg s ->
+          Logs.warn (fun m -> m "Failed to decode public key (while authenticating): %s" s);
+          disconnect t DISCONNECT_PROTOCOL_ERROR "public key decoding failed"
+      end
+    | Password (password, None) -> (* Password authentication *)
       try_auth t (by_password username password t.user_db)
     (* Change of password, or keyboard_interactive, or Authnone won't be supported *)
     | Password (_, Some _) | Keyboard_interactive _ | Authnone -> failure t

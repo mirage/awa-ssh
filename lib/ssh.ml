@@ -314,13 +314,14 @@ type channel_open =
 type password = string
 
 type auth_method =
-  | Pubkey of Hostkey.pub * (Hostkey.alg * Cstruct.t) option
+  | Pubkey of string * Cstruct.t * (Hostkey.alg * Cstruct.t) option
+  (** [Pubkey (outer_sig_alg, pubkey_raw, sig_opt)] *)
   | Password of password * password option
   | Keyboard_interactive of string option * string list
   | Authnone
 
 let pp_auth_method ppf = function
-  | Pubkey (_pub, _algshare) -> Fmt.string ppf "publickey"
+  | Pubkey (_sig_alg_raw, _pub_raw, _signature) -> Fmt.string ppf "publickey"
   | Password (_, _) -> Fmt.string ppf "password"
   | Keyboard_interactive (_, _) -> Fmt.string ppf "keyboard-interactive"
   | Authnone -> Fmt.string ppf "none"
@@ -333,10 +334,14 @@ let opt_eq f a b =
 
 let auth_method_equal a b =
   match a, b with
-  | Pubkey (key_a, signature_a),
-    Pubkey (key_b, signature_b) ->
-    let f (alga, sa) (algb, sb) = alga = algb && Cstruct.equal sa sb in
-    key_a = key_b && opt_eq f signature_a signature_b
+  | Pubkey (sig_alg_raw_a, key_a, signature_a),
+    Pubkey (sig_alg_raw_b, key_b, signature_b) ->
+    let sig_equal (sig_alg_a, sig_a) (sig_alg_b, sig_b) =
+      sig_alg_a = sig_alg_b && Cstruct.equal sig_a sig_b
+    in
+    String.equal sig_alg_raw_a sig_alg_raw_b &&
+    Cstruct.equal key_a key_b &&
+    opt_eq sig_equal signature_a signature_b
   | Password (p_a, popt_a), Password (p_b, popt_b) ->
     String.equal p_a p_b && opt_eq String.equal popt_a popt_b
   | Keyboard_interactive (l_a, sub_a), Keyboard_interactive (l_b, sub_b) ->

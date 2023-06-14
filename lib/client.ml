@@ -277,7 +277,14 @@ let handle_auth_none t = function
       | `Pubkey key ->
         if List.mem "publickey" xs then
           let pub = Hostkey.pub_of_priv key in
-          let met = Ssh.Pubkey (pub, None) in
+          let pub_raw = Wire.blob_of_pubkey pub in
+          let sig_alg =
+            match pub with
+            | Hostkey.Rsa_pub _ -> Hostkey.Rsa_sha1
+            | Hostkey.Ed25519_pub _ -> Hostkey.Ed25519
+          in
+          let sig_alg_raw = Hostkey.alg_to_string sig_alg in
+          let met = Ssh.Pubkey (sig_alg_raw, pub_raw, None) in
           Ok ({ t with state = Userauth_publickey key ; auth_tried = true },
               auth_req met, [])
         else
@@ -302,7 +309,9 @@ let handle_pk_auth t key =
     | a :: rt -> Ok (a, rt)
   in
   let signed = Auth.sign t.user alg key session_id service in
-  let met = Ssh.Pubkey (Hostkey.pub_of_priv key, Some (alg, signed)) in
+  let alg_raw = Hostkey.alg_to_string alg in
+  let pub_raw = Wire.blob_of_pubkey (Hostkey.pub_of_priv key) in
+  let met = Ssh.Pubkey (alg_raw, pub_raw, Some (alg, signed)) in
   Ok ({ t with state = Userauth_publickey key ; sig_algs },
       [ Ssh.Msg_userauth_request (t.user, service, met) ],
       [])

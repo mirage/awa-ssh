@@ -190,7 +190,9 @@ let t_parsing () =
   let rsa = Mirage_crypto_pk.Rsa.(generate ~bits:2048 ()) in
   let priv_rsa = Hostkey.Rsa_priv rsa in
   let pub_rsa = Hostkey.Rsa_pub (Mirage_crypto_pk.Rsa.pub_of_priv rsa) in
+  let pub_rsa_raw = Wire.blob_of_pubkey pub_rsa in
   let alg = Hostkey.Rsa_sha1 in
+  let alg_raw = Hostkey.alg_to_string alg in
   let signature = Hostkey.sign alg priv_rsa cstring in
   let l =
     [ Msg_disconnect (DISCONNECT_PROTOCOL_ERROR, "foo", "bar");
@@ -205,10 +207,10 @@ let t_parsing () =
       Msg_newkeys;
       Msg_userauth_request
         ("haesbaert", "ssh-userauth",
-         Pubkey (pub_rsa, None));
+         Pubkey (alg_raw, pub_rsa_raw, None));
       Msg_userauth_request
         ("haesbaert", "ssh-userauth",
-         Pubkey (pub_rsa, Some (alg, signature)));
+         Pubkey (alg_raw, pub_rsa_raw, Some (alg, signature)));
       Msg_userauth_request
         ("haesbaert", "ssh-userauth",
          Password ("a", Some "b"));

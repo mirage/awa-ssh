@@ -131,31 +131,33 @@ let blob_of_pubkey pk =
   Dbuf.to_cstruct buf'
 
 let pubkey_of_blob blob =
-  let* key_alg, blob = get_string blob in
-  match key_alg with
+  let* key_type, blob = Result.map_error (fun s -> `Msg s) (get_string blob) in
+  match key_type with
   | "ssh-rsa" ->
-    let* e, blob = get_mpint blob in
-    let* n, _ = get_mpint blob in
-    let* pub =
-      Result.map_error (function `Msg m -> m)
-        (Mirage_crypto_pk.Rsa.pub ~e ~n)
-    in
+    let* e, blob = Result.map_error (fun s -> `Msg s) (get_mpint blob) in
+    let* n, _ = Result.map_error (fun s -> `Msg s) (get_mpint blob) in
+    let* pub = Mirage_crypto_pk.Rsa.pub ~e ~n in
     Ok (Hostkey.Rsa_pub pub)
   | "ssh-ed25519" ->
-    let* pub, _ = get_string blob in
+    let* pub, _ = Result.map_error (fun s -> `Msg s) (get_string blob) in
     let cs = Cstruct.of_string pub in
     let* pubkey =
       Result.map_error
-        (Fmt.to_to_string Mirage_crypto_ec.pp_error)
+        (fun e -> `Msg (Fmt.to_to_string Mirage_crypto_ec.pp_error e))
         (Mirage_crypto_ec.Ed25519.pub_of_cstruct cs)
     in
     Ok (Hostkey.Ed25519_pub pubkey)
-  | k -> Error ("unsupported key algorithm: " ^ k)
+  | k -> Error (`Unsupported k)
+
+let pubkey_of_blob_error_as_string blob =
+    Result.map_error
+      (function `Msg s -> s | `Unsupported alg -> "unsupported algorithm: " ^ alg)
+      (pubkey_of_blob blob)
 
 (* Prefer using get_pubkey_alg always *)
 let get_pubkey_any buf =
   let* blob, buf = get_cstring buf in
-  let* pubkey = pubkey_of_blob blob in
+  let* pubkey = pubkey_of_blob_error_as_string blob in
   Ok (pubkey, buf)
 
 (* Always use get_pubkey_alg since it returns Unknown if key_alg mismatches *)
@@ -182,7 +184,7 @@ let pubkey_of_openssh buf =
       (Base64.decode key_buf)
   in
   (* NOTE: can't use get_pubkey here, there is no string blob *)
-  let* key = pubkey_of_blob (Cstruct.of_string blob) in
+  let* key = pubkey_of_blob_error_as_string (Cstruct.of_string blob) in
   let* () = guard (Hostkey.sshname key = key_type) "Key type mismatch" in
   Ok key
 
@@ -301,10 +303,10 @@ let rec put_extensions extensions dbuf =
 
 let get_signature buf =
   let* blob, _ = get_cstring buf in
-  let* key_alg, blob = get_string blob in
-  let* key_alg = Hostkey.alg_of_string key_alg in
+  let* sig_alg, blob = get_string blob in
+  let* sig_alg = Hostkey.alg_of_string sig_alg in
   let* key_sig, _ = get_cstring blob in
-  Ok (key_alg, key_sig)
+  Ok (sig_alg, key_sig)
 
 let put_signature (alg, signature) t =
   let blob =
@@ -430,13 +432,14 @@ let get_message buf =
       match auth_method with
       | "publickey" ->
         let* has_sig, buf = get_bool buf in
-        let* key_alg, buf = get_string buf in
-        let* pubkey, buf = get_pubkey key_alg buf in
+        let* sig_alg_raw, buf = get_string buf in
+        let* pubkey_raw, buf = get_cstring buf in
         if has_sig then
-          let* key_sig = get_signature buf in
-          Ok (Pubkey (pubkey, Some key_sig), buf)
+          let* signature = get_signature buf in
+          (* TODO: do sig_alg & sig_alg' need to agree? *)
+          Ok (Pubkey (sig_alg_raw, pubkey_raw, Some signature), buf)
         else
-          Ok (Pubkey (pubkey, None), buf)
+          Ok (Pubkey (sig_alg_raw, pubkey_raw, None), buf)
       | "password" ->
         let* has_old, buf = get_bool buf in
         if has_old then
@@ -776,18 +779,12 @@ let put_message msg buf =
               put_string service
     in
     (match auth_method with
-     | Pubkey (pubkey, signature) ->
+     | Pubkey (sig_alg_raw, pubkey_raw, signature) ->
        let buf =
-         let alg = match signature with
-           | Some (alg, _) -> alg
-           | None -> match pubkey with
-             | Hostkey.Rsa_pub _ -> Hostkey.Rsa_sha1
-             | Hostkey.Ed25519_pub _ -> Hostkey.Ed25519
-         in
          put_string "publickey" buf |>
          put_bool (is_some signature) |>
-         put_string (Hostkey.alg_to_string alg) |>
-         put_pubkey pubkey
+         put_string sig_alg_raw |>
+         put_cstring pubkey_raw
        in
        (match signature with
         | None -> buf
