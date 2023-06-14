@@ -105,12 +105,16 @@ let hash_of_alg = function
   | Ecdh_sha2_nistp384 -> Mirage_crypto.Hash.module_of `SHA384
   | Ecdh_sha2_nistp521 -> Mirage_crypto.Hash.module_of `SHA512
 
-let supported =
+let client_supported =
   [ Curve25519_sha256 ;
     Ecdh_sha2_nistp256 ; Ecdh_sha2_nistp384 ; Ecdh_sha2_nistp521 ;
     Diffie_hellman_group14_sha256 ; Diffie_hellman_group_exchange_sha256 ;
     Diffie_hellman_group14_sha1 ; Diffie_hellman_group1_sha1 ;
     Diffie_hellman_group_exchange_sha1 ]
+
+let server_supported =
+  [ Diffie_hellman_group14_sha256 ; Diffie_hellman_group14_sha1 ;
+    Diffie_hellman_group1_sha1 ]
 
 let make_kexinit ?ext_info host_key_algs algs () =
   let k =
