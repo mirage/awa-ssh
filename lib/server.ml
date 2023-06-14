@@ -184,7 +184,7 @@ let rec input_userauth_request t username service auth_method =
     | Pubkey (_sig_alg_raw, pubkey_raw, None) -> (* Public key probing *)
       begin match Wire.pubkey_of_blob pubkey_raw with
         | Ok pubkey ->
-          (* TODO: match sig_alg and pubkey type *)
+          (* TODO: Hostkey.comptible_alg pubkey _sig_alg_raw *)
           try_probe t pubkey
         | Error `Unsupported keytype ->
           Logs.debug (fun m -> m "Client offered unsupported key type %s" keytype);
@@ -196,10 +196,11 @@ let rec input_userauth_request t username service auth_method =
     | Pubkey (_sig_alg_raw, pubkey_raw, Some (sig_alg, signed)) -> (* Public key authentication *)
       begin match Wire.pubkey_of_blob pubkey_raw with
         | Ok pubkey ->
-          (* TODO: match sig_alg and pubkey type *)
+          (* TODO: check equality of _sig_alg_raw and sig_alg? *)
+          (* TODO: Hostkey.comptible_alg pubkey _sig_alg_raw *)
           try_auth t (by_pubkey username sig_alg pubkey session_id service signed t.user_db)
         | Error `Unsupported keytype ->
-          Logs.debug (fun m -> m "Client attempted authentication with unsupported keytype %s" keytype);
+          Logs.debug (fun m -> m "Client attempted authentication with unsupported key type %s" keytype);
           failure t
         | Error `Msg s ->
           Logs.warn (fun m -> m "Failed to decode public key (while authenticating): %s" s);
