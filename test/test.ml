@@ -210,7 +210,7 @@ let t_parsing () =
          Pubkey (alg_raw, pub_rsa_raw, None));
       Msg_userauth_request
         ("haesbaert", "ssh-userauth",
-         Pubkey (alg_raw, pub_rsa_raw, Some (alg, signature)));
+         Pubkey (alg_raw, pub_rsa_raw, Some (alg_raw, signature)));
       Msg_userauth_request
         ("haesbaert", "ssh-userauth",
          Password ("a", Some "b"));

@@ -314,8 +314,7 @@ type channel_open =
 type password = string
 
 type auth_method =
-  | Pubkey of string * Cstruct.t * (Hostkey.alg * Cstruct.t) option
-  (** [Pubkey (outer_sig_alg, pubkey_raw, sig_opt)] *)
+  | Pubkey of string * Cstruct.t * (string * Cstruct.t) option
   | Password of password * password option
   | Keyboard_interactive of string option * string list
   | Authnone

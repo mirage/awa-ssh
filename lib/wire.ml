@@ -301,20 +301,29 @@ let rec put_extensions extensions dbuf =
     put_string value |>
     put_extensions extensions
 
-let get_signature buf =
+let get_signature_raw buf =
   let* blob, _ = get_cstring buf in
   let* sig_alg, blob = get_string blob in
-  let* sig_alg = Hostkey.alg_of_string sig_alg in
   let* key_sig, _ = get_cstring blob in
   Ok (sig_alg, key_sig)
 
-let put_signature (alg, signature) t =
+let get_signature buf =
+  Result.bind
+    (get_signature_raw buf)
+    (fun (sig_alg, key_sig) ->
+       let* sig_alg = Hostkey.alg_of_string sig_alg in
+       Ok (sig_alg, key_sig))
+
+let put_signature_raw (alg, signature) t =
   let blob =
-    put_string (Hostkey.alg_to_string alg) (Dbuf.create ()) |>
+    put_string alg (Dbuf.create ()) |>
     put_cstring signature |>
     Dbuf.to_cstruct
   in
   put_cstring blob t
+
+let put_signature (alg, signature) t =
+  put_signature_raw (Hostkey.alg_to_string alg, signature) t
 
 let put_channel_data channel_data buf =
   let open Ssh in
@@ -435,8 +444,7 @@ let get_message buf =
         let* sig_alg_raw, buf = get_string buf in
         let* pubkey_raw, buf = get_cstring buf in
         if has_sig then
-          let* signature = get_signature buf in
-          (* TODO: do sig_alg & sig_alg' need to agree? *)
+          let* signature = get_signature_raw buf in
           Ok (Pubkey (sig_alg_raw, pubkey_raw, Some signature), buf)
         else
           Ok (Pubkey (sig_alg_raw, pubkey_raw, None), buf)
@@ -788,7 +796,7 @@ let put_message msg buf =
        in
        (match signature with
         | None -> buf
-        | Some signature -> put_signature signature buf)
+        | Some signature -> put_signature_raw signature buf)
      | Password (password, oldpassword) ->
        let buf = put_string "password" buf in
        (match oldpassword with

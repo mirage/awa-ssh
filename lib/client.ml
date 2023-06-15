@@ -311,7 +311,7 @@ let handle_pk_auth t key =
   let signed = Auth.sign t.user alg key session_id service in
   let alg_raw = Hostkey.alg_to_string alg in
   let pub_raw = Wire.blob_of_pubkey (Hostkey.pub_of_priv key) in
-  let met = Ssh.Pubkey (alg_raw, pub_raw, Some (alg, signed)) in
+  let met = Ssh.Pubkey (alg_raw, pub_raw, Some (alg_raw, signed)) in
   Ok ({ t with state = Userauth_publickey key ; sig_algs },
       [ Ssh.Msg_userauth_request (t.user, service, met) ],
       [])
