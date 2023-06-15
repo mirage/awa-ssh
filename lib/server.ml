@@ -181,11 +181,14 @@ let rec input_userauth_request t username service auth_method =
     let* session_id = guard_some t.session_id "No session_id" in
     let* () = guard (service = "ssh-connection") "Bad service" in
     match auth_method with
-    | Pubkey (_sig_alg_raw, pubkey_raw, None) -> (* Public key probing *)
+    | Pubkey (sig_alg_raw, pubkey_raw, None) -> (* Public key probing *)
       begin match Wire.pubkey_of_blob pubkey_raw with
-        | Ok pubkey ->
-          (* TODO: Hostkey.comptible_alg pubkey _sig_alg_raw *)
+        | Ok pubkey when Hostkey.comptible_alg pubkey sig_alg_raw ->
           try_probe t pubkey
+        | Ok _ ->
+          Logs.debug (fun m -> m "Client offered unsupported or incompatible signature algorithm %s"
+                         sig_alg_raw);
+          failure t
         | Error `Unsupported keytype ->
           Logs.debug (fun m -> m "Client offered unsupported key type %s" keytype);
           failure t
@@ -193,12 +196,15 @@ let rec input_userauth_request t username service auth_method =
           Logs.warn (fun m -> m "Failed to decode public key (while client offered a key): %s" s);
           disconnect t DISCONNECT_PROTOCOL_ERROR "public key decoding failed"
       end
-    | Pubkey (_sig_alg_raw, pubkey_raw, Some (sig_alg, signed)) -> (* Public key authentication *)
+    | Pubkey (sig_alg_raw, pubkey_raw, Some (sig_alg, signed)) -> (* Public key authentication *)
       begin match Wire.pubkey_of_blob pubkey_raw with
-        | Ok pubkey ->
+        | Ok pubkey when Hostkey.comptible_alg pubkey sig_alg_raw ->
           (* TODO: check equality of _sig_alg_raw and sig_alg? *)
-          (* TODO: Hostkey.comptible_alg pubkey _sig_alg_raw *)
           try_auth t (by_pubkey username sig_alg pubkey session_id service signed t.user_db)
+        | Ok _ ->
+          Logs.debug (fun m -> m "Client offered unsupported or incompatible signature algorithm %s"
+                         sig_alg_raw);
+          failure t
         | Error `Unsupported keytype ->
           Logs.debug (fun m -> m "Client attempted authentication with unsupported key type %s" keytype);
           failure t
