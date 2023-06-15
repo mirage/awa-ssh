@@ -198,12 +198,20 @@ let rec input_userauth_request t username service auth_method =
       end
     | Pubkey (sig_alg_raw, pubkey_raw, Some (sig_alg, signed)) -> (* Public key authentication *)
       begin match Wire.pubkey_of_blob pubkey_raw with
-        | Ok pubkey when Hostkey.comptible_alg pubkey sig_alg_raw ->
-          (* TODO: check equality of _sig_alg_raw and sig_alg? *)
+        | Ok pubkey when Hostkey.comptible_alg pubkey sig_alg_raw &&
+                         String.equal sig_alg_raw (Hostkey.alg_to_string sig_alg) ->
+          (* NOTE: for backwards compatibility with older OpenSSH clients we
+             should be more lenient if the sig_alg is "ssh-rsa-cert-v01" (if we
+             ever implement that). See
+             https://github.com/openssh/openssh-portable/blob/master/ssh-rsa.c#L504-L507 *)
           try_auth t (by_pubkey username sig_alg pubkey session_id service signed t.user_db)
-        | Ok _ ->
-          Logs.debug (fun m -> m "Client offered unsupported or incompatible signature algorithm %s"
-                         sig_alg_raw);
+        | Ok pubkey ->
+          if Hostkey.comptible_alg pubkey sig_alg_raw then
+            Logs.debug (fun m -> m "Client offered unsupported or incompatible signature algorithm %s"
+                           sig_alg_raw)
+          else
+            Logs.debug (fun m -> m "Client offered signature using algorithm different from advertised: %s vs %s"
+                           (Hostkey.alg_to_string sig_alg) sig_alg_raw);
           failure t
         | Error `Unsupported keytype ->
           Logs.debug (fun m -> m "Client attempted authentication with unsupported key type %s" keytype);
