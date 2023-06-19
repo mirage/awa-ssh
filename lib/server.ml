@@ -475,7 +475,7 @@ let input_msg t msg now =
             let* k = Kex.Dh.ec_shared secret e in
             let* (t, (key, sig_), msgs) = dh ~ec:true t neg ~e ~f ~k in
             make_replies t
-              (Msg_kexdh_reply (key, f, sig_) :: msgs)
+              (Msg_kexecdh_reply (key, f, sig_) :: msgs)
           | _ -> Error "unexpected KEX message"
     end
   | Msg_newkeys ->
