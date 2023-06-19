@@ -16,6 +16,9 @@
 
 open Util
 
+let src = Logs.Src.create "awa.server" ~doc:"AWA server"
+module Log = (val Logs.src_log src : Logs.LOG)
+
 type event =
   | Channel_exec of (int32 * string)
   | Channel_subsystem of (int32 * string)
@@ -186,14 +189,14 @@ let rec input_userauth_request t username service auth_method =
         | Ok pubkey when Hostkey.comptible_alg pubkey pkalg ->
           try_probe t pubkey
         | Ok _ ->
-          Logs.debug (fun m -> m "Client offered unsupported or incompatible signature algorithm %s"
-                         pkalg);
+          Log.debug (fun m -> m "Client offered unsupported or incompatible signature algorithm %s"
+                        pkalg);
           failure t
         | Error `Unsupported keytype ->
-          Logs.debug (fun m -> m "Client offered unsupported key type %s" keytype);
+          Log.debug (fun m -> m "Client offered unsupported key type %s" keytype);
           failure t
         | Error `Msg s ->
-          Logs.warn (fun m -> m "Failed to decode public key (while client offered a key): %s" s);
+          Log.warn (fun m -> m "Failed to decode public key (while client offered a key): %s" s);
           disconnect t DISCONNECT_PROTOCOL_ERROR "public key decoding failed"
       end
     | Pubkey (pkalg, pubkey_raw, Some (sig_alg, signed)) -> (* Public key authentication *)
@@ -210,17 +213,17 @@ let rec input_userauth_request t username service auth_method =
           try_auth t (by_pubkey username sig_alg pubkey session_id service signed t.user_db)
         | Ok pubkey ->
           if Hostkey.comptible_alg pubkey pkalg then
-            Logs.debug (fun m -> m "Client offered unsupported or incompatible signature algorithm %s"
-                           pkalg)
+            Log.debug (fun m -> m "Client offered unsupported or incompatible signature algorithm %s"
+                          pkalg)
           else
-            Logs.debug (fun m -> m "Client offered signature using algorithm different from advertised: %s vs %s"
-                           sig_alg pkalg);
+            Log.debug (fun m -> m "Client offered signature using algorithm different from advertised: %s vs %s"
+                          sig_alg pkalg);
           failure t
         | Error `Unsupported keytype ->
-          Logs.debug (fun m -> m "Client attempted authentication with unsupported key type %s" keytype);
+          Log.debug (fun m -> m "Client attempted authentication with unsupported key type %s" keytype);
           failure t
         | Error `Msg s ->
-          Logs.warn (fun m -> m "Failed to decode public key (while authenticating): %s" s);
+          Log.warn (fun m -> m "Failed to decode public key (while authenticating): %s" s);
           disconnect t DISCONNECT_PROTOCOL_ERROR "public key decoding failed"
       end
     | Password (password, None) -> (* Password authentication *)
@@ -333,6 +336,7 @@ let input_msg t msg now =
   match msg with
   | Msg_kexinit kex ->
     let* neg = Kex.negotiate ~s:t.server_kexinit ~c:kex in
+    Logs.debug (fun m -> m "neg is %a" Kex.pp_negotiation neg);
     let ignore_next_packet =
       kex.first_kex_packet_follows &&
       not (Kex.guessed_right ~s:t.server_kexinit ~c:kex)
@@ -367,9 +371,6 @@ let input_msg t msg now =
             ~e ~f ~k
         in
         let signature = Hostkey.sign neg.server_host_key_alg t.host_key h in
-        Format.printf "shared is %a signature is %a (hash %a)\n%!"
-          Cstruct.hexdump_pp (Mirage_crypto_pk.Z_extra.to_cstruct_be f)
-          Cstruct.hexdump_pp signature Cstruct.hexdump_pp h;
         let session_id = match t.session_id with None -> h | Some x -> x in
         let* new_keys_ctos, new_keys_stoc, key_eol =
           Kex.Dh.derive_keys k h session_id neg now

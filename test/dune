@@ -11,7 +11,8 @@
  (public_name awa_test_server)
  (modules awa_test_server)
  (package awa)
- (libraries awa mtime.clock.os cstruct-unix mirage-crypto-rng.unix))
+ (libraries awa mtime.clock.os cstruct-unix mirage-crypto-rng.unix
+   fmt.tty logs.fmt logs.cli fmt.cli))
 
 (executable
  (name awa_test_client)
