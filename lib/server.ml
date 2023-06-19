@@ -14,9 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-let src = Logs.Src.create "awa.server" ~doc:"AWA server"
-module Log = (val Logs.src_log src : Logs.LOG)
-
 open Util
 
 let src = Logs.Src.create "awa.server" ~doc:"AWA server"
