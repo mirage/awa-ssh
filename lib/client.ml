@@ -138,7 +138,7 @@ let make ?(authenticator = `No_authentication) ~user auth_method =
     | `Key Hostkey.Ed25519_pub _ -> Hostkey.algs_of_typ `Ed25519
     | `Fingerprint (typ, _) -> Hostkey.algs_of_typ typ
   in
-  let client_kexinit = Kex.make_kexinit hostkey_algs Kex.client_supported () in
+  let client_kexinit = Kex.make_kexinit hostkey_algs Kex.supported () in
   let banner_msg = Ssh.Msg_version version_banner in
   let kex_msg = Ssh.Msg_kexinit client_kexinit in
   let t = { state = Init (version_banner, client_kexinit);
