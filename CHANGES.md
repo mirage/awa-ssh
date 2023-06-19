@@ -1,12 +1,15 @@
-## unreleased
+## v0.3.0 (2023-06-19)
 
 * FEATURE server: propagate window-change message (#55 @reynir)
 * FEATURE server: implement ext-info and server-sig-algs extension (#56 @reynir)
 * FEATURE server: support RFC 4419 (group key exchanges) and NIST ECDH key
-  exchanges, and X25519 (#63 @hannesm)
+  exchanges, and X25519 (#63 #67 @hannesm)
+* FEATURE server: handle unknown public keys (instead of closing the connection,
+  send a message back, allowing other public keys to be probeb) (#68 @reynir)
 * BUGFIX server: fix rekey (avoid allocating lots of timeout tasks (#58 @reynir)
 * BUGFIX server: filter advertised host key algorithms with used host key
   (#62 @hannesm)
+* server: use logs instead of printf (#69 @hannesm)
 * awa-lwt: drop package (unused, #61 @hannesm)
 * drop Driver module, embed into awa_test_server.ml (#64 @hannesm)
 
