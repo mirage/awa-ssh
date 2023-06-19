@@ -71,7 +71,7 @@ let authenticator_of_string str =
     | _ ->
       match Base64.decode ~pad:false str with
       | Ok k ->
-        let* key = Wire.pubkey_of_blob (Cstruct.of_string k) in
+        let* key = Wire.pubkey_of_blob_error_as_string (Cstruct.of_string k) in
         Ok (`Key key)
       | Error (`Msg msg) ->
         Error (str ^ " is invalid or unsupported authenticator, b64 failed: " ^ msg)

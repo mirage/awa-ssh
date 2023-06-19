@@ -181,11 +181,49 @@ let rec input_userauth_request t username service auth_method =
     let* session_id = guard_some t.session_id "No session_id" in
     let* () = guard (service = "ssh-connection") "Bad service" in
     match auth_method with
-    | Pubkey (pubkey, None) ->        (* Public key probing *)
-      try_probe t pubkey
-    | Pubkey (pubkey, Some (alg, signed)) -> (* Public key authentication *)
-      try_auth t (by_pubkey username alg pubkey session_id service signed t.user_db)
-    | Password (password, None) ->    (* Password authentication *)
+    | Pubkey (pkalg, pubkey_raw, None) -> (* Public key probing *)
+      begin match Wire.pubkey_of_blob pubkey_raw with
+        | Ok pubkey when Hostkey.comptible_alg pubkey pkalg ->
+          try_probe t pubkey
+        | Ok _ ->
+          Logs.debug (fun m -> m "Client offered unsupported or incompatible signature algorithm %s"
+                         pkalg);
+          failure t
+        | Error `Unsupported keytype ->
+          Logs.debug (fun m -> m "Client offered unsupported key type %s" keytype);
+          failure t
+        | Error `Msg s ->
+          Logs.warn (fun m -> m "Failed to decode public key (while client offered a key): %s" s);
+          disconnect t DISCONNECT_PROTOCOL_ERROR "public key decoding failed"
+      end
+    | Pubkey (pkalg, pubkey_raw, Some (sig_alg, signed)) -> (* Public key authentication *)
+      begin match Wire.pubkey_of_blob pubkey_raw with
+        | Ok pubkey when Hostkey.comptible_alg pubkey pkalg &&
+                         String.equal pkalg sig_alg ->
+          (* NOTE: for backwards compatibility with older OpenSSH clients we
+             should be more lenient if the sig_alg is "ssh-rsa-cert-v01" (if we
+             ever implement that). See
+             https://github.com/openssh/openssh-portable/blob/master/ssh-rsa.c#L504-L507 *)
+          (* XXX: this should be fine due to the previous [Hostkey.comptible_alg] *)
+          (* TODO: avoid Result.get_ok :/ *)
+          let sig_alg = Result.get_ok (Hostkey.alg_of_string sig_alg) in
+          try_auth t (by_pubkey username sig_alg pubkey session_id service signed t.user_db)
+        | Ok pubkey ->
+          if Hostkey.comptible_alg pubkey pkalg then
+            Logs.debug (fun m -> m "Client offered unsupported or incompatible signature algorithm %s"
+                           pkalg)
+          else
+            Logs.debug (fun m -> m "Client offered signature using algorithm different from advertised: %s vs %s"
+                           sig_alg pkalg);
+          failure t
+        | Error `Unsupported keytype ->
+          Logs.debug (fun m -> m "Client attempted authentication with unsupported key type %s" keytype);
+          failure t
+        | Error `Msg s ->
+          Logs.warn (fun m -> m "Failed to decode public key (while authenticating): %s" s);
+          disconnect t DISCONNECT_PROTOCOL_ERROR "public key decoding failed"
+      end
+    | Password (password, None) -> (* Password authentication *)
       try_auth t (by_password username password t.user_db)
     (* Change of password, or keyboard_interactive, or Authnone won't be supported *)
     | Password (_, Some _) | Keyboard_interactive _ | Authnone -> failure t
