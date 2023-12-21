@@ -146,12 +146,15 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
     } in
     writev_flow t msgs >>= fun () ->
     drain_handshake t >>= fun id ->
-    (* TODO that's a bit hardcoded... *)
-    let ssh = match t.state with `Active t -> t | _ -> assert false in
-    (match Awa.Client.outgoing_request ssh ~id req with
-     | Error msg -> t.state <- `Error (`Msg msg) ; Lwt.return (Error (`Msg msg))
-     | Ok (ssh', data) -> t.state <- `Active ssh' ; write_flow t data) >|= fun () ->
-    t
+    match t.state with
+    | `Active ssh ->
+      (match Awa.Client.outgoing_request ssh ~id req with
+       | Error msg -> t.state <- `Error (`Msg msg) ; Lwt.return (Error (`Msg msg))
+       | Ok (ssh', data) -> t.state <- `Active ssh' ; write_flow t data) >|= fun () ->
+      t
+    | `Eof -> Lwt.return (Error (`Msg "end of file"))
+    | `Error e -> Lwt.return (Error e)
+
 
 (* copy from awa_lwt.ml and unix references removed in favor to FLOW *)
   type nexus_msg =
