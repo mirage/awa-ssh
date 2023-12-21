@@ -141,8 +141,8 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
     FLOW.close t.flow >>= fun () ->
     match t.state with
     | `Active ssh | `Read_closed ssh | `Write_closed ssh ->
-      let state, msg = Awa.Client.close ssh in
-      t.state <- `Active state;
+      let ssh, msg = Awa.Client.close ssh in
+      t.state <- inject_state ssh t.state;
       (match msg with
        | None -> Lwt.return (Ok ())
        | Some msg -> writev_flow t [ msg ]) >|= fun _ ->
