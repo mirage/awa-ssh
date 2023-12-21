@@ -123,30 +123,27 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
     | _ -> Lwt.return_unit
 
   let shutdown t mode =
-    match t.state with
-    | `Active ssh ->
-      begin
-        let state, msg =
-          if mode = `read_write then
-            Awa.Client.close ssh
-          else if mode = `write then
-            Awa.Client.eof ssh
-          else
-            ssh, None
-        in
-        t.state <- `Active state;
-        (match msg with
-         | None -> Lwt.return (Ok ())
-         | Some msg -> writev_flow t [ msg ]) >>= fun _ ->
-        (if mode = `read_write then
-           FLOW.close t.flow
-         else
-           Lwt.return_unit) >|= fun () ->
-        match mode with
-        | `read | `read_write -> t.state <- `Eof
-        | `write -> ()
-      end
-    | _ -> Lwt.return_unit
+    if mode = `read_write then
+      close t
+    else
+      match t.state with
+      | `Active ssh ->
+        begin
+          let state, msg =
+            if mode = `write then
+              Awa.Client.eof ssh
+            else
+              ssh, None
+          in
+          t.state <- `Active state;
+          (match msg with
+           | None -> Lwt.return (Ok ())
+           | Some msg -> writev_flow t [ msg ]) >|= fun _ ->
+          match mode with
+          | `read | `read_write -> t.state <- `Eof
+          | `write -> ()
+        end
+      | _ -> Lwt.return_unit
 
   let writev t bufs =
     let open Lwt_result.Infix in
