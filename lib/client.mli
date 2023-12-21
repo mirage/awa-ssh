@@ -38,3 +38,7 @@ val outgoing_request : t -> ?id:int32 -> ?want_reply:bool ->
 
 val outgoing_data : t -> ?id:int32 -> Cstruct.t ->
   (t * Cstruct.t list, string) result
+
+val eof : ?id:int32 -> t -> t * Cstruct.t option
+
+val close : ?id:int32 -> t -> t * Cstruct.t option
