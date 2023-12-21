@@ -32,19 +32,34 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
       | `Error of error ]
   }
 
+  let half_close state mode =
+    match state, mode with
+    | `Active ssh, `read -> `Read_closed ssh
+    | `Active ssh, `write -> `Write_closed ssh
+    | `Active _, `read_write -> `Closed
+    | `Read_closed ssh, `read -> `Read_closed ssh
+    | `Read_closed _, (`write | `read_write) -> `Closed
+    | `Write_closed ssh, `write -> `Write_closed ssh
+    | `Write_closed _, (`read | `read_write) -> `Closed
+    | (`Closed | `Error _) as e, (`read | `write | `read_write) -> e
+
+  let inject_state ssh = function
+    | `Active _ -> `Active ssh
+    | `Read_closed _ -> `Read_closed ssh
+    | `Write_closed _ -> `Write_closed ssh
+    | (`Closed | `Error _) as e -> e
+
   let write_flow t buf =
     FLOW.write t.flow buf >>= function
     | Ok () -> Lwt.return (Ok ())
     | Error `Closed ->
       Log.warn (fun m -> m "error closed while writing");
-      (match t.state with
-       | `Active ssh -> t.state <- `Write_closed ssh
-       | `Read_closed _ -> t.state <- `Closed
-       | `Write_closed _ | `Closed | `Error _ -> ());
+      t.state <- half_close t.state `write;
       Lwt.return (Error (`Write `Closed))
     | Error w ->
       Log.warn (fun m -> m "error %a while writing" F.pp_write_error w);
-      t.state <- `Error (`Write w) ; Lwt.return (Error (`Write w))
+      t.state <- `Error (`Write w);
+      Lwt.return (Error (`Write w))
 
   let writev_flow t bufs =
     Lwt_list.fold_left_s (fun r d ->
@@ -66,11 +81,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
         t.state <- `Error (`Read e);
         Lwt.return (Error ())
       | Ok `Eof ->
-        t.state <-
-          (match t.state with
-           | `Active ssh -> `Read_closed ssh
-           | `Write_closed _ -> `Closed
-           | _ -> assert false);
+        t.state <- half_close t.state `read;
         Lwt.return (Error ())
       | Ok (`Data data) ->
         match t.state with
@@ -81,15 +92,8 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
               t.state <- `Error (`Msg msg);
               Lwt.return (Error ())
             | Ok (ssh', out, events) ->
-              let state' =
-                match List.mem `Disconnected events, t.state with
-                | false, `Active _ -> `Active ssh'
-                | false, `Write_closed _ -> `Write_closed ssh'
-                | true, `Active _ -> `Read_closed ssh'
-                | true, `Write_closed _ -> `Closed
-                | _ -> assert false
-              in
-              t.state <- state';
+              t.state <-
+                inject_state ssh' (if List.mem `Disconnected events then half_close t.state `read else t.state);
               writev_flow t out >>= fun _ ->
               Lwt.return (Ok events)
           end
@@ -106,8 +110,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
       end
     | Error () -> match t.state with
       | `Error e -> Lwt.return (Error e)
-      | `Closed | `Read_closed _ -> Lwt.return (Error (`Msg "disconnected"))
-      | `Active _ | `Write_closed _ -> assert false
+      | `Closed | `Read_closed _ | `Active _ | `Write_closed _ -> Lwt.return (Error (`Msg "disconnected"))
 
   let rec read t =
     read_react t >>= function
@@ -132,8 +135,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
       end
     | Error () -> match t.state with
       | `Error e -> Lwt.return (Error e)
-      | `Closed | `Read_closed _ -> Lwt.return (Ok `Eof)
-      | `Active _ | `Write_closed _ -> assert false
+      | `Closed | `Read_closed _ | `Active _ | `Write_closed _ -> Lwt.return (Ok `Eof)
 
   let close t =
     FLOW.close t.flow >>= fun () ->
@@ -149,24 +151,14 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
 
   let shutdown t mode =
     match t.state with
-    | `Active _ | `Read_closed _ | `Write_closed _ ->
-      let state, msg =
+    | `Active ssh | `Read_closed ssh | `Write_closed ssh ->
+      let ssh, msg =
         match t.state, mode with
         | (`Active ssh | `Read_closed ssh), `write -> Awa.Client.eof ssh
-        | (`Active ssh | `Read_closed ssh | `Write_closed ssh), `read_write ->
-          Awa.Client.close ssh
-        | (`Active ssh | `Read_closed ssh | `Write_closed ssh), _ -> ssh, None
-        | _ -> assert false
+        | _, `read_write -> Awa.Client.close ssh
+        | _ -> ssh, None
       in
-      (t.state <- match t.state, mode with
-          | _, `read_write -> `Closed
-          | `Active _, `read -> `Read_closed state
-          | `Active _, `write -> `Write_closed state
-          | `Read_closed _, `read -> `Read_closed state
-          | `Read_closed _, `write -> `Closed
-          | `Write_closed _, `read -> `Closed
-          | `Write_closed _, `write -> `Write_closed state
-          | _ -> assert false);
+      t.state <- inject_state ssh (half_close t.state mode);
       (match msg with
        | None -> Lwt.return (Ok ())
        | Some msg -> writev_flow t [ msg ]) >|= fun _ ->
@@ -183,10 +175,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
           | Ok ssh ->
             match Awa.Client.outgoing_data ssh data with
             | Ok (ssh', datas) ->
-              t.state <- (match t.state with
-                  | `Active _ -> `Active ssh'
-                  | `Read_closed _ -> `Read_closed ssh'
-                  | _ -> assert false);
+              t.state <- inject_state ssh' t.state;
               writev_flow t datas >|= fun () ->
               ssh'
             | Error msg ->
