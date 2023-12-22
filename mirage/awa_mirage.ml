@@ -148,18 +148,24 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
     FLOW.close t.flow
 
   let shutdown t mode =
-    (match t.state with
-     | `Active ssh | `Read_closed ssh | `Write_closed ssh ->
-       let ssh, msg =
-         match t.state, mode with
-         | (`Active ssh | `Read_closed ssh), `write -> Awa.Client.eof ssh
-         | _, `read_write -> Awa.Client.close ssh
-         | _ -> ssh, None
-       in
-       t.state <- inject_state ssh (half_close t.state mode);
-       writev_flow t (Option.to_list msg) >|= ignore
-     | `Error _ | `Closed -> Lwt.return_unit) >>= fun () ->
-    FLOW.shutdown t.flow mode
+    match t.state with
+    | `Active ssh | `Read_closed ssh | `Write_closed ssh ->
+      let ssh, msg =
+        match t.state, mode with
+        | (`Active ssh | `Read_closed ssh), `write -> Awa.Client.eof ssh
+        | _, `read_write -> Awa.Client.close ssh
+        | _ -> ssh, None
+      in
+      t.state <- inject_state ssh (half_close t.state mode);
+      writev_flow t (Option.to_list msg) >>= fun _ ->
+      (* we don't [FLOW.shutdown _ mode] because we still need to read/write
+         channel_eof/channel_close unless both directions are closed *)
+      (match t.state with
+       | `Closed ->
+         (* also close on error?! *)
+         FLOW.close t.flow
+       | _ -> Lwt.return_unit)
+    | `Error _ | `Closed -> Lwt.return_unit
 
   let writev t bufs =
     let open Lwt_result.Infix in
