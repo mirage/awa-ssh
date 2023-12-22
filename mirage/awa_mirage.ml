@@ -138,32 +138,28 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
       | `Closed | `Read_closed _ | `Active _ | `Write_closed _ -> Lwt.return (Ok `Eof)
 
   let close t =
-    FLOW.close t.flow >>= fun () ->
-    match t.state with
-    | `Active ssh | `Read_closed ssh | `Write_closed ssh ->
-      let ssh, msg = Awa.Client.close ssh in
-      t.state <- inject_state ssh t.state;
-      (match msg with
-       | None -> Lwt.return (Ok ())
-       | Some msg -> writev_flow t [ msg ]) >|= fun _ ->
-      t.state <- `Closed
-    | `Error _ | `Closed -> Lwt.return_unit
+    (match t.state with
+     | `Active ssh | `Read_closed ssh | `Write_closed ssh ->
+       let ssh, msg = Awa.Client.close ssh in
+       t.state <- inject_state ssh t.state;
+       writev_flow t (Option.to_list msg) >|= fun _ ->
+       t.state <- `Closed
+     | `Error _ | `Closed -> Lwt.return_unit) >>= fun () ->
+    FLOW.close t.flow
 
   let shutdown t mode =
-    match t.state with
-    | `Active ssh | `Read_closed ssh | `Write_closed ssh ->
-      let ssh, msg =
-        match t.state, mode with
-        | (`Active ssh | `Read_closed ssh), `write -> Awa.Client.eof ssh
-        | _, `read_write -> Awa.Client.close ssh
-        | _ -> ssh, None
-      in
-      t.state <- inject_state ssh (half_close t.state mode);
-      (match msg with
-       | None -> Lwt.return (Ok ())
-       | Some msg -> writev_flow t [ msg ]) >|= fun _ ->
-      ()
-    | `Error _ | `Closed -> Lwt.return_unit
+    (match t.state with
+     | `Active ssh | `Read_closed ssh | `Write_closed ssh ->
+       let ssh, msg =
+         match t.state, mode with
+         | (`Active ssh | `Read_closed ssh), `write -> Awa.Client.eof ssh
+         | _, `read_write -> Awa.Client.close ssh
+         | _ -> ssh, None
+       in
+       t.state <- inject_state ssh (half_close t.state mode);
+       writev_flow t (Option.to_list msg) >|= ignore
+     | `Error _ | `Closed -> Lwt.return_unit) >>= fun () ->
+    FLOW.shutdown t.flow mode
 
   let writev t bufs =
     let open Lwt_result.Infix in
