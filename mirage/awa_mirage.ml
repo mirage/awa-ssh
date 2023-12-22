@@ -142,8 +142,8 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
      | `Active ssh | `Read_closed ssh | `Write_closed ssh ->
        let ssh, msg = Awa.Client.close ssh in
        t.state <- inject_state ssh t.state;
-       writev_flow t (Option.to_list msg) >|= fun _ ->
-       t.state <- `Closed
+       t.state <- `Closed;
+       writev_flow t (Option.to_list msg) >|= ignore
      | `Error _ | `Closed -> Lwt.return_unit) >>= fun () ->
     FLOW.close t.flow
 
@@ -161,9 +161,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
       (* we don't [FLOW.shutdown _ mode] because we still need to read/write
          channel_eof/channel_close unless both directions are closed *)
       (match t.state with
-       | `Closed ->
-         (* also close on error?! *)
-         FLOW.close t.flow
+       | `Closed -> FLOW.close t.flow
        | _ -> Lwt.return_unit)
     | `Error _ | `Closed -> Lwt.return_unit
 
