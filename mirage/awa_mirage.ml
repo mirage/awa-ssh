@@ -22,6 +22,20 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
     | #Mirage_flow.write_error as e -> Mirage_flow.pp_write_error ppf e
     | #error as e -> pp_error ppf e
 
+  (* this is the flow of a ssh-client. be aware that we're only using a single
+     channel.
+
+     the state `Read_closed is set (a) when a TCP.read returned `Eof,
+     and (b) when the application did a shutdown `read (or `read_write).
+     the state `Write_closed is set (a) when a TCP.write returned `Closed,
+     and (b) when the application did a shutdown `write (or `read_write).
+
+     If we're in `Write_closed, and do a shutdown `read, we'll end up in
+     `Closed, and attempt to (a) send a SSH_MSG_CHANNEL_CLOSE and (b) TCP.close.
+     This may fail, since on the TCP layer, the connection may have already be
+     half-closed (or fully closed) in the write direction. We ignore this error
+     from writev below in close.
+  *)
   type flow = {
     flow : FLOW.flow ;
     mutable state : [
@@ -143,6 +157,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
        let ssh, msg = Awa.Client.close ssh in
        t.state <- inject_state ssh t.state;
        t.state <- `Closed;
+       (* as outlined above, this may fail since the TCP flow may already be (half-)closed *)
        writev_flow t (Option.to_list msg) >|= ignore
      | `Error _ | `Closed -> Lwt.return_unit) >>= fun () ->
     FLOW.close t.flow
@@ -157,6 +172,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
         | _ -> ssh, None
       in
       t.state <- inject_state ssh (half_close t.state mode);
+      (* as outlined above, this may fail since the TCP flow may already be (half-)closed *)
       writev_flow t (Option.to_list msg) >>= fun _ ->
       (* we don't [FLOW.shutdown _ mode] because we still need to read/write
          channel_eof/channel_close unless both directions are closed *)
