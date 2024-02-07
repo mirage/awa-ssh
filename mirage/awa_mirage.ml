@@ -5,7 +5,6 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = struct
 
-  module FLOW = F
   module MCLOCK = M
 
   type error  = [ `Msg of string
@@ -37,7 +36,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
      from writev below in close.
   *)
   type flow = {
-    flow : FLOW.flow ;
+    flow : F.flow ;
     mutable state : [
       | `Active of Awa.Client.t
       | `Read_closed of Awa.Client.t
@@ -64,8 +63,8 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
     | (`Closed | `Error _) as e -> e
 
   let write_flow t buf =
-    FLOW.write t.flow buf >>= function
-    | Ok () -> Lwt.return (Ok ())
+    F.write t.flow buf >>= function
+    | Ok _ as o -> Lwt.return o
     | Error `Closed ->
       Log.warn (fun m -> m "error closed while writing");
       t.state <- half_close t.state `write;
@@ -78,7 +77,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
   let writev_flow t bufs =
     Lwt_list.fold_left_s (fun r d ->
         match r with
-        | Error e -> Lwt.return (Error e)
+        | Error _ as e -> Lwt.return e
         | Ok () -> write_flow t d)
       (Ok ()) bufs
 
@@ -89,7 +88,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
     match t.state with
     | `Read_closed _ | `Closed | `Error _ -> Lwt.return (Error ())
     | `Active _ | `Write_closed _ ->
-      FLOW.read t.flow >>= function
+      F.read t.flow >>= function
       | Error e ->
         Log.warn (fun m -> m "error %a while reading" F.pp_error e);
         t.state <- `Error (`Read e);
@@ -160,7 +159,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
        (* as outlined above, this may fail since the TCP flow may already be (half-)closed *)
        writev_flow t (Option.to_list msg) >|= ignore
      | `Error _ | `Closed -> Lwt.return_unit) >>= fun () ->
-    FLOW.close t.flow
+    F.close t.flow
 
   let shutdown t mode =
     match t.state with
@@ -177,7 +176,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
       (* we don't [FLOW.shutdown _ mode] because we still need to read/write
          channel_eof/channel_close unless both directions are closed *)
       (match t.state with
-       | `Closed -> FLOW.close t.flow
+       | `Closed -> F.close t.flow
        | _ -> Lwt.return_unit)
     | `Error _ | `Closed -> Lwt.return_unit
 
@@ -266,10 +265,10 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
   let send_msg flow server msg =
     wrapr (Awa.Server.output_msg server msg)
     >>= fun (server, msg_buf) ->
-    FLOW.write flow msg_buf >>= function
+    F.write flow msg_buf >>= function
       | Ok () -> Lwt.return server
       | Error w ->
-        Log.err (fun m -> m "error %a while writing" FLOW.pp_write_error w);
+        Log.err (fun m -> m "error %a while writing" F.pp_write_error w);
         Lwt.return server
 
   let rec send_msgs fd server = function
@@ -280,9 +279,9 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
     | [] -> Lwt.return server
 
   let net_read flow =
-    FLOW.read flow >>= function
+    F.read flow >>= function
     | Error e ->
-      Log.err (fun m -> m "read error %a" FLOW.pp_error e);
+      Log.err (fun m -> m "read error %a" F.pp_error e);
       Lwt.return Net_eof
     | Ok `Eof ->
       Lwt.return Net_eof

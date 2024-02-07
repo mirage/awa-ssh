@@ -3,8 +3,6 @@
 (** SSH module given a flow *)
 module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) : sig
 
-  module FLOW : Mirage_flow.S
-
   (** possible errors: incoming alert, processing failure, or a
       problem in the underlying flow. *)
   type error  = [ `Msg of string
@@ -24,7 +22,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) : 
       sends the channel request. *)
   val client_of_flow : ?authenticator:Awa.Keys.authenticator -> user:string ->
     [ `Pubkey of Awa.Hostkey.priv | `Password of string ] ->
-    Awa.Ssh.channel_request -> FLOW.flow -> (flow, error) result Lwt.t
+    Awa.Ssh.channel_request -> F.flow -> (flow, error) result Lwt.t
 
   type t
 
@@ -64,4 +62,4 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) : 
       {b NOTE}: Even if the [ssh_channel_handler] is fulfilled, [spawn_server]
       continues to handle SSH channels. Only [stop] can really stop the internal
       SSH channels handler. *)
-end with module FLOW = F
+end
