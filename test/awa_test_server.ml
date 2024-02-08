@@ -177,7 +177,23 @@ let rec serve t cmd =
       Logs.info (fun m -> m "%s" msg);
       let* t = Driver.disconnect t in
       serve t cmd end
-  | _ -> failwith "Invalid SSH event"
+  | Set_env (k, v) ->
+    Logs.info (fun m -> m "Ignoring Set_env (%S, %S)" k v);
+    serve t cmd
+  | Pty _ | Pty_set _ ->
+    let msg =
+      Ssh.disconnect_msg Ssh.DISCONNECT_SERVICE_NOT_AVAILABLE
+      "Sorry no PTY for you"
+    in
+    let* _ = Driver.send_msg t msg in
+    Ok ()
+  | Start_shell _ ->
+    let msg =
+      Ssh.disconnect_msg Ssh.DISCONNECT_SERVICE_NOT_AVAILABLE
+        "Sorry no shell for you"
+    in
+    let* _ = Driver.send_msg t msg in
+    Ok ()
 
 let user_db =
   (* User foo auths by passoword *)

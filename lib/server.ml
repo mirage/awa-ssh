@@ -30,6 +30,17 @@ type event =
   | Set_env of (string * string)
   | Start_shell of int32
 
+let pp_event ppf = function
+  | Channel_exec (c, cmd) -> Fmt.pf ppf "channel exec %lu: %S" c cmd
+  | Channel_subsystem (c, cmd) -> Fmt.pf ppf "channel subsystem %lu: %S" c cmd
+  | Channel_data (c, data) -> Fmt.pf ppf "channel data %lu: %d bytes" c (Cstruct.length data)
+  | Channel_eof c -> Fmt.pf ppf "channel end-of-file %lu" c
+  | Disconnected s -> Fmt.pf ppf "disconnected with messsage %S" s
+  | Pty _ -> Fmt.pf ppf "pty"
+  | Pty_set _ -> Fmt.pf ppf "pty set"
+  | Set_env (k, v) -> Fmt.pf ppf "Set env %S=%S" k v
+  | Start_shell c -> Fmt.pf ppf "start shell %lu" c
+
 type t = {
   client_version : string option;         (* Without crlf *)
   server_version : string;                (* Without crlf *)
