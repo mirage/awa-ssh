@@ -523,3 +523,23 @@ let outgoing_data t ?(id = 0l) data =
   let* c, frags = Channel.output_data c data in
   let t' = { t with channels = Channel.update c t.channels } in
   Ok (output_msgs t' frags)
+
+let eof ?(id = 0l) t =
+  match
+    let* () = guard (established t) "not yet established" in
+    let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
+    let msg = Ssh.Msg_channel_eof c.them.id in
+    Ok (output_msg t msg)
+  with
+  | Error _ -> t, None
+  | Ok (t, msg) -> t, Some msg
+
+let close ?(id = 0l) t =
+  match
+    let* () = guard (established t) "not yet established" in
+    let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
+    let msg = Ssh.Msg_channel_close c.them.id in
+    Ok (output_msg t msg)
+  with
+  | Error _ -> t, None
+  | Ok (t, msg) -> t, Some msg
