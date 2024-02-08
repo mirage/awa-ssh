@@ -1,3 +1,8 @@
+## v0.3.1 (2024-02-08)
+
+* awa-mirage: adapt to mirage-flow 4.0.0 (#70 @dinosaure @hannesm @reynir)
+* awa-test: handle new events (#71 @reynir)
+
 ## v0.3.0 (2023-06-19)
 
 * FEATURE server: propagate window-change message (#55 @reynir)
