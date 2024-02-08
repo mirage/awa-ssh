@@ -178,7 +178,8 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
       (match t.state with
        | `Closed -> F.close t.flow
        | _ -> Lwt.return_unit)
-    | `Error _ | `Closed -> Lwt.return_unit
+    | `Error _ | `Closed ->
+      F.close t.flow
 
   let writev t bufs =
     let open Lwt_result.Infix in
