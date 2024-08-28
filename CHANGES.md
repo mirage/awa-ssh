@@ -1,3 +1,7 @@
+## v0.4.0 (2024-08-28)
+
+* Update to mirage-crypto 1.0.0 API (#73 @hannesm)
+
 ## v0.3.1 (2024-02-08)
 
 * awa-mirage: adapt to mirage-flow 4.0.0 (#70 @dinosaure @hannesm @reynir)
