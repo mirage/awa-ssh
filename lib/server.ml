@@ -49,7 +49,7 @@ type t = {
   neg_kex        : Kex.negotiation option;(* Negotiated KEX *)
   ext_info       : bool;                  (* The other end wants ext_info *)
   host_key       : Hostkey.priv;          (* Server host key *)
-  session_id     : Cstruct.t option;      (* First calculated H *)
+  session_id     : string option;         (* First calculated H *)
   keys_ctos      : Kex.keys;              (* Client to server (input) keys *)
   keys_stoc      : Kex.keys;              (* Server to cleint (output) keys *)
   new_keys_ctos  : Kex.keys option;       (* Install when we receive NEWKEYS *)
@@ -383,8 +383,8 @@ let input_msg t msg now =
     let sign_rekey t neg ~h ~f ~k =
       let signature = Hostkey.sign neg.Kex.server_host_key_alg t.host_key h in
       Log.debug (fun m -> m "shared is %a signature is %a (hash %a)"
-                    Cstruct.hexdump_pp (Mirage_crypto_pk.Z_extra.to_cstruct_be f)
-                    Cstruct.hexdump_pp signature Cstruct.hexdump_pp h);
+                    Ohex.pp (Mirage_crypto_pk.Z_extra.to_octets_be f)
+                    Ohex.pp signature Ohex.pp h);
       let session_id = match t.session_id with None -> h | Some x -> x in
       let* new_keys_ctos, new_keys_stoc, key_eol =
         Kex.Dh.derive_keys k h session_id neg now
@@ -454,7 +454,7 @@ let input_msg t msg now =
             let* client_version, i_c = cv_ckex t in
             let* k = Kex.Dh.shared secret theirs in
             let pub_host_key = Hostkey.pub_of_priv t.host_key in
-            let f = Mirage_crypto_pk.Z_extra.of_cstruct_be my_share in
+            let f = Mirage_crypto_pk.Z_extra.of_octets_be my_share in
             let h =
               Kex.Dh.compute_hash_gex neg
                 ~v_c:client_version ~v_s:t.server_version

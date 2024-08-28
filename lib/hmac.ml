@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Mirage_crypto.Hash
+open Digestif
 
 type t =
   | Plaintext
@@ -26,8 +26,8 @@ type t =
   | Sha2_512
 
 type key = {
-  hmac : t;            (* Hmac algorithm *)
-  key  : Cstruct.t;    (* The actual hmac key *)
+  hmac : t;         (* Hmac algorithm *)
+  key  : string;    (* The actual hmac key *)
 }
 
 let to_string = function
@@ -74,16 +74,16 @@ let preferred = [ Md5; Sha1; Sha2_256;
 
 let hmacv hmac ~key data =
   let take_96 buf =
-    if Cstruct.length buf < 12 then
+    if String.length buf < 12 then
       failwith "digest is too short."
     else
-      Cstruct.sub buf 0 12
+      String.sub buf 0 12
   in
   match hmac with
-  | Plaintext -> Cstruct.create 0
-  | Md5 -> MD5.hmaci ~key (fun f -> List.iter f data)
-  | Md5_96 -> MD5.hmaci ~key (fun f -> List.iter f data) |> take_96
-  | Sha1 -> SHA1.hmaci ~key (fun f -> List.iter f data)
-  | Sha1_96 -> SHA1.hmaci ~key (fun f -> List.iter f data) |> take_96
-  | Sha2_256 -> SHA256.hmaci ~key (fun f -> List.iter f data)
-  | Sha2_512 -> SHA512.hmaci ~key (fun f -> List.iter f data)
+  | Plaintext -> ""
+  | Md5 -> MD5.(hmaci_string ~key (fun f -> List.iter f data) |> to_raw_string)
+  | Md5_96 -> MD5.(hmaci_string ~key (fun f -> List.iter f data) |> to_raw_string |> take_96)
+  | Sha1 -> SHA1.(hmaci_string ~key (fun f -> List.iter f data) |> to_raw_string)
+  | Sha1_96 -> SHA1.(hmaci_string ~key (fun f -> List.iter f data) |> to_raw_string |> take_96)
+  | Sha2_256 -> SHA256.(hmaci_string ~key (fun f -> List.iter f data) |> to_raw_string)
+  | Sha2_512 -> SHA512.(hmaci_string ~key (fun f -> List.iter f data) |> to_raw_string)

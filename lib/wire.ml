@@ -69,7 +69,7 @@ let put_raw buf t =
   Dbuf.shift len t
 
 let put_random len t =
-  put_raw (Mirage_crypto_rng.generate len) t
+  put_raw (Cstruct.of_string (Mirage_crypto_rng.generate len)) t
 
 let get_mpint ?(signed = true) buf =
   trap_error (fun () ->
@@ -83,11 +83,11 @@ let get_mpint ?(signed = true) buf =
           invalid_arg "Negative mpint"
         else
           (* of_cstruct_be strips leading zeros for us *)
-          Mirage_crypto_pk.Z_extra.of_cstruct_be mpbuf,
+          Mirage_crypto_pk.Z_extra.of_octets_be (Cstruct.to_string mpbuf),
           Cstruct.shift buf (len + 4))
 
 let put_mpint ?(signed = true) mpint t =
-  let mpbuf = Mirage_crypto_pk.Z_extra.to_cstruct_be mpint in
+  let mpbuf = Cstruct.of_string (Mirage_crypto_pk.Z_extra.to_octets_be mpint) in
   let mplen = Cstruct.length mpbuf in
   let t =
     if signed && mplen > 0 &&
@@ -125,8 +125,8 @@ let blob_of_pubkey pk =
       put_mpint rsa.e buf |>
       put_mpint rsa.n
     | Hostkey.Ed25519_pub pub ->
-      let pub_cs = Mirage_crypto_ec.Ed25519.pub_to_cstruct pub in
-      put_string (Cstruct.to_string pub_cs) buf
+      let pub_str = Mirage_crypto_ec.Ed25519.pub_to_octets pub in
+      put_string pub_str buf
   in
   Dbuf.to_cstruct buf'
 
@@ -140,11 +140,10 @@ let pubkey_of_blob blob =
     Ok (Hostkey.Rsa_pub pub)
   | "ssh-ed25519" ->
     let* pub, _ = Result.map_error (fun s -> `Msg s) (get_string blob) in
-    let cs = Cstruct.of_string pub in
     let* pubkey =
       Result.map_error
         (fun e -> `Msg (Fmt.to_to_string Mirage_crypto_ec.pp_error e))
-        (Mirage_crypto_ec.Ed25519.pub_of_cstruct cs)
+        (Mirage_crypto_ec.Ed25519.pub_of_octets pub)
     in
     Ok (Hostkey.Ed25519_pub pubkey)
   | k -> Error (`Unsupported k)
@@ -239,14 +238,14 @@ let privkey_of_openssh buf =
   let* keytype, cs = get_string (Cstruct.shift priv 8) in
   match keytype with
   | "ssh-ed25519" ->
-    let* _pub, cs = get_cstring cs in
-    let* priv, cs = get_cstring cs in
+    let* _pub, cs = get_string cs in
+    let* priv, cs = get_string cs in
     let* comment, _padding = get_string cs in
-    let priv = Cstruct.sub priv 0 32 in
+    let priv = String.sub priv 0 32 in
     let* priv_key =
       Result.map_error
         (Fmt.to_to_string Mirage_crypto_ec.pp_error)
-        (Mirage_crypto_ec.Ed25519.priv_of_cstruct priv)
+        (Mirage_crypto_ec.Ed25519.priv_of_octets priv)
     in
     Ok (Hostkey.Ed25519_priv priv_key, comment)
   | "ssh-rsa" ->
@@ -304,7 +303,7 @@ let rec put_extensions extensions dbuf =
 let get_signature_raw buf =
   let* blob, _ = get_cstring buf in
   let* sig_alg, blob = get_string blob in
-  let* key_sig, _ = get_cstring blob in
+  let* key_sig, _ = get_string blob in
   Ok (sig_alg, key_sig)
 
 let get_signature buf =
@@ -317,7 +316,7 @@ let get_signature buf =
 let put_signature_raw (alg, signature) t =
   let blob =
     put_string alg (Dbuf.create ()) |>
-    put_cstring signature |>
+    put_string signature |>
     Dbuf.to_cstruct
   in
   put_cstring blob t

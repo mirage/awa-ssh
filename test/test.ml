@@ -39,20 +39,20 @@ let trap_exn f =
              (Printexc.get_backtrace ()))
 
 let cipher_key_of cipher key iv =
-  let open Mirage_crypto.Cipher_block.AES in
+  let open Mirage_crypto in
   let open Cipher in
   match cipher with
   | Plaintext -> { cipher = Plaintext;
                    cipher_key = Plaintext_key }
   | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
-    let iv = CTR.ctr_of_cstruct iv in
+    let iv = AES.CTR.ctr_of_octets iv in
     { cipher;
-      cipher_key = Aes_ctr_key ((CTR.of_secret key), iv) }
+      cipher_key = Aes_ctr_key ((AES.CTR.of_secret key), iv) }
   | Aes128_cbc | Aes192_cbc | Aes256_cbc ->
     { cipher;
-      cipher_key = Aes_cbc_key ((CBC.of_secret key), iv) }
+      cipher_key = Aes_cbc_key ((AES.CBC.of_secret key), iv) }
   | Chacha20_poly1305 ->
-    let key = Mirage_crypto.Chacha20.of_secret key in
+    let key = Chacha20.of_secret key in
     { cipher; cipher_key = Chacha20_poly1305_key (key, key) }
 
 let hmac_key_of hmac key = Hmac.{ hmac; key }
@@ -141,10 +141,10 @@ let t_parsing () =
   assert (Cstruct.length rbuf = 1);
 
   (* Case 3: Test a zero pkt_len *)
-  let buf = Cstruct.create 64 in
+  let buf = Bytes.create 64 in
   Packet.set_pkt_len buf 0;
   Packet.set_pad_len buf 0;
-  let e = Result.get_error (decrypt_plain buf) in
+  let e = Result.get_error (decrypt_plain (Cstruct.of_bytes buf)) in
   assert (e = "decrypt: Bogus pkt len");
 
   let id msg =
@@ -185,7 +185,7 @@ let t_parsing () =
   in
   let long = Int32.of_int 180586 in
   (* let mpint = Z.of_int 180586 in *)
-  let cstring = Cstruct.of_string "The Conquest of Bread" in
+  let cstring = "The Conquest of Bread" in
   (* XXX slow *)
   let rsa = Mirage_crypto_pk.Rsa.(generate ~bits:2048 ()) in
   let priv_rsa = Hostkey.Rsa_priv rsa in
@@ -282,7 +282,7 @@ let t_namelist () =
 
 let t_mpint () =
   let assert_byte buf off v =
-    assert ((Cstruct.get_uint8 buf off) = v)
+    assert ((String.get_uint8 buf off) = v)
   in
 
   (*
@@ -296,8 +296,8 @@ let t_mpint () =
   Cstruct.set_uint8 data 3 0x02;
   Cstruct.BE.set_uint32 head 0 (Int32.of_int (Cstruct.length data));
   let mpint = fst @@ Result.get_ok @@ Wire.get_mpint (Cstruct.append head data) in
-  let buf = Mirage_crypto_pk.Z_extra.to_cstruct_be mpint in
-  assert (Cstruct.length buf = 2); (* Cuts the first two zeros *)
+  let buf = Mirage_crypto_pk.Z_extra.to_octets_be mpint in
+  assert (String.length buf = 2); (* Cuts the first two zeros *)
   assert_byte buf 0 0xff;
   assert_byte buf 1 0x02;
 
@@ -317,13 +317,14 @@ let t_mpint () =
   let buf = Dbuf.to_cstruct @@ Wire.put_mpint mpint (Dbuf.create ()) in
   (* 4 for header + 1 zero prepended + 2 data*)
   assert (Cstruct.length buf = 4 + 1 + 2);
-  assert_byte buf 0 0x00;
-  assert_byte buf 1 0x00;
-  assert_byte buf 2 0x00;
-  assert_byte buf 3 0x03;
-  assert_byte buf 4 0x00;
-  assert_byte buf 5 0xff;
-  assert_byte buf 6 0x02;
+  let buf' = Cstruct.to_string buf in
+  assert_byte buf' 0 0x00;
+  assert_byte buf' 1 0x00;
+  assert_byte buf' 2 0x00;
+  assert_byte buf' 3 0x03;
+  assert_byte buf' 4 0x00;
+  assert_byte buf' 5 0xff;
+  assert_byte buf' 6 0x02;
 
   (*
    * Case 4: Make sure negative are errors.
@@ -369,8 +370,8 @@ let t_crypto () =
     (* assert (Cstruct.equal keys.Kex.iv keys_next2.Kex.iv) *)
   in
   let make cipher hmac =
-    let secret = Cstruct.of_string "Pyotr Alexeyevich Kropotkin 1842" in
-    let iv = Cstruct.sub secret 0 16 in
+    let secret = "Pyotr Alexeyevich Kropotkin 1842" in
+    let iv = String.sub secret 0 16 in
     let cipher = cipher_key_of cipher secret iv in
     let mac = hmac_key_of hmac secret in
     Kex.{ cipher; mac; seq = Int32.zero; tx_rx = Int64.zero }
@@ -399,11 +400,12 @@ let t_signature () =
   let signed = Hostkey.sign alg priv unsigned in
   assert (Hostkey.verify alg pub ~signed ~unsigned);
   (* Corrupt every one byte in the signature, all should fail *)
-  for off = 0 to pred (Cstruct.length signed) do
-    let evilbyte = Cstruct.get_uint8 signed off in
-    Cstruct.set_uint8 signed off (succ evilbyte);
-    assert_false (Hostkey.verify alg pub ~signed ~unsigned);
-    Cstruct.set_uint8 signed off evilbyte;
+  let s = Bytes.of_string signed in
+  for off = 0 to pred (Bytes.length s) do
+    let evilbyte = Bytes.get_uint8 s off in
+    Bytes.set_uint8 s off (succ evilbyte);
+    assert_false (Hostkey.verify alg pub ~signed:(Bytes.unsafe_to_string s) ~unsigned);
+    Bytes.set_uint8 s off evilbyte;
   done;
   test_ok
 
@@ -439,8 +441,9 @@ let t_ignore_next_packet () =
 let t_channel_input () =
   let x = Channel.make_end Int32.zero Ssh.channel_win_len Ssh.channel_max_pkt_len in
   let c = Channel.make ~us:x ~them:x in
-  let d = Mirage_crypto_rng.generate
-      Int32.(add Ssh.channel_win_len Int32.one |> Int32.to_int)
+  let d =
+    Mirage_crypto_rng.generate
+      Int32.(add Ssh.channel_win_len Int32.one |> Int32.to_int) |> Cstruct.of_string
   in
   (* Case 1: No adjustments, just window consumption *)
   let d' = Cstruct.sub d 0 32 in
@@ -470,8 +473,9 @@ let t_channel_input () =
 let t_channel_output () =
   let x = Channel.make_end Int32.zero Ssh.channel_win_len Ssh.channel_max_pkt_len in
   let c = Channel.make ~us:x ~them:x in
-  let d = Mirage_crypto_rng.generate
-      Int32.(add Ssh.channel_win_len Int32.one |> Int32.to_int)
+  let d =
+    Mirage_crypto_rng.generate
+      Int32.(add Ssh.channel_win_len Int32.one |> Int32.to_int) |> Cstruct.of_string
   in
   (* Case 1: Small output, single message *)
   let d' = Cstruct.sub d 0 32 in

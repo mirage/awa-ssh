@@ -1,4 +1,4 @@
 (library
  (name awa)
  (public_name awa)
- (libraries eqaf.cstruct cstruct mirage-crypto mirage-crypto-rng mirage-crypto-pk zarith x509 mtime logs base64 mirage-crypto-ec))
+ (libraries eqaf cstruct mirage-crypto mirage-crypto-rng mirage-crypto-pk zarith x509 mtime logs base64 mirage-crypto-ec))

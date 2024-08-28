@@ -1,24 +1,24 @@
 
 let gen_key seed typ =
   Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna);
-  let b64s x = Cstruct.to_string x |> Base64.encode_string in
   let seed = match seed with
-    | None -> b64s (Mirage_crypto_rng.generate 30)
+    | None -> Base64.encode_string (Mirage_crypto_rng.generate 30)
     | Some x -> x
   in
   let hostkey = Awa.Keys.of_seed typ seed in
   (match hostkey with
    | Awa.Hostkey.Ed25519_priv k ->
-     let p = Mirage_crypto_ec.Ed25519.priv_to_cstruct k in
+     let p = Mirage_crypto_ec.Ed25519.priv_to_octets k in
      Printf.printf "private key: %s:%s\n"
        Awa.Keys.(string_of_typ `Ed25519)
-       (b64s p)
+       (Base64.encode_string p)
    | Rsa_priv _ ->
      Printf.printf "private key seed: %s:%s\n"
        Awa.Keys.(string_of_typ `Rsa) seed);
   let pub = Awa.Hostkey.pub_of_priv hostkey in
   let public = Awa.Wire.blob_of_pubkey pub in
-  Printf.printf "%s %s awa@awa.local\n" (Awa.Hostkey.sshname pub) (b64s public);
+  Printf.printf "%s %s awa@awa.local\n" (Awa.Hostkey.sshname pub)
+    (Base64.encode_string (Cstruct.to_string public));
   Ok ()
 
 open Cmdliner

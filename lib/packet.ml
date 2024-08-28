@@ -18,15 +18,20 @@ open Util
 
 let len_off = 0
 
+let get_pkt_len_str buf =
+  String.get_int32_be buf len_off |> Int32.to_int
+
 let get_pkt_len buf =
   Cstruct.BE.get_uint32 buf len_off |> Int32.to_int
 let set_pkt_len buf v =
-  Cstruct.BE.set_uint32 buf len_off (Int32.of_int v)
+  Bytes.set_int32_be buf len_off (Int32.of_int v)
 
 let pad_len_off = 4
 
+let get_pad_len_str buf = String.get_uint8 buf pad_len_off
+
 let get_pad_len buf = Cstruct.get_uint8 buf pad_len_off
-let set_pad_len buf v = Cstruct.set_uint8 buf pad_len_off v
+let set_pad_len buf v = Bytes.set_uint8 buf pad_len_off v
 
 let sizeof_pkt_hdr = 5
 
@@ -46,15 +51,15 @@ let get_payload buf =
 let hmac mac seq buf =
   let hmac = mac.Hmac.hmac in
   let key = mac.Hmac.key in
-  let seqbuf = Cstruct.create 4 in
-  Cstruct.BE.set_uint32 seqbuf 0 seq;
-  Hmac.hmacv hmac ~key [ seqbuf; buf ]
+  let seqbuf = Bytes.create 4 in
+  Bytes.set_int32_be seqbuf 0 seq;
+  Hmac.hmacv hmac ~key [ Bytes.unsafe_to_string seqbuf; buf ]
 
 let peek_len cipher seq block_len buf =
   assert (block_len <= Cstruct.length buf);
-  let buf = Cstruct.sub buf 0 block_len in
+  let buf = Cstruct.to_string buf ~off:0 ~len:block_len in
   let* hdr, _ = Cipher.decrypt ~len:true seq cipher buf in
-  Ok (get_pkt_len hdr)
+  Ok (get_pkt_len_str hdr)
 
 let partial buf =
   if Cstruct.length buf < Ssh.max_pkt_len then
@@ -85,22 +90,24 @@ let decrypt keys buf =
     if Cstruct.length buf < pkt_len + 4 + digest_len + mac_len then
       partial buf
     else
-      let pkt_enc, digest1 = Cstruct.split buf (pkt_len + 4 + mac_len) in
-      let tx_rx = Int64.(add keys.Kex.tx_rx (Cstruct.length pkt_enc - mac_len |> of_int)) in
+      let pkt_enc, digest1 =
+        Cstruct.to_string buf ~off:0 ~len:(pkt_len + 4 + mac_len),
+        Cstruct.to_string buf ~off:(pkt_len + 4 + mac_len) ~len:digest_len
+      in
+      let tx_rx = Int64.(add keys.Kex.tx_rx (String.length pkt_enc - mac_len |> of_int)) in
       let* pkt_dec, cipher = Cipher.decrypt ~len:false seq cipher pkt_enc in
-      let digest1 = Cstruct.sub digest1 0 digest_len in
       let digest2 = hmac mac seq pkt_dec in
       let* () =
-        guard (Cstruct.equal digest1 digest2) "decrypt: Bad digest"
+        guard (String.equal digest1 digest2) "decrypt: Bad digest"
       in
-      let pad_len = get_pad_len pkt_dec in
+      let pad_len = get_pad_len_str pkt_dec in
       let* () =
         guard (pad_len >= 4 && pad_len <= 255 && pad_len < pkt_len)
           "decrypt: Bogus pad len"
       in
       let buf = Cstruct.shift buf (4 + pkt_len + mac_len + digest_len) in
       let keys = Kex.{ cipher; mac; seq = Int32.succ keys.Kex.seq; tx_rx } in
-      Ok (Some (pkt_dec, buf, keys))
+      Ok (Some (Cstruct.of_string pkt_dec, buf, keys))
 
 let encrypt keys msg =
   let cipher = keys.Kex.cipher in
@@ -117,12 +124,13 @@ let encrypt keys msg =
     if x < 4 then x + block_len else x
   in
   assert (padlen >= 4 && padlen <= 255);
-  let pkt = Wire.put_random padlen buf |> Dbuf.to_cstruct in
-  set_pkt_len pkt (Cstruct.length pkt - 4);
+  let pkt = Wire.put_random padlen buf |> Dbuf.to_cstruct |> Cstruct.to_bytes in
+  set_pkt_len pkt (Bytes.length pkt - 4);
   set_pad_len pkt padlen;
+  let pkt = Bytes.unsafe_to_string pkt in
   let digest = hmac mac seq pkt in
   let enc, cipher = Cipher.encrypt ~len:false seq cipher pkt in
-  let packet = Cstruct.append enc digest in
-  let tx_rx = Int64.add keys.Kex.tx_rx (Cstruct.length packet |> Int64.of_int) in
+  let packet = enc ^ digest in
+  let tx_rx = Int64.add keys.Kex.tx_rx (String.length packet |> Int64.of_int) in
   let keys = Kex.{ cipher; mac; seq = Int32.succ keys.Kex.seq; tx_rx } in
-  packet, keys
+  Cstruct.of_string packet, keys

@@ -51,7 +51,7 @@ let jump _ user pass seed typ keyfile authenticator host port =
           | Some f ->
             let fd = Unix.(openfile f [O_RDONLY] 0) in
             let file_buf = Unix_cstruct.of_fd fd in
-            let r = match Wire.privkey_of_openssh file_buf, Wire.privkey_of_pem file_buf with
+            let r = match Wire.privkey_of_openssh file_buf, Wire.privkey_of_pem (Cstruct.to_string file_buf) with
               | Ok (k, _), _ -> Ok k
               | _, Ok k -> Ok k
               | Error m, _ -> Error m
