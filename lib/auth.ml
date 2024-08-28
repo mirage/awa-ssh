@@ -48,14 +48,15 @@ let by_password name password db =
   | None -> false
   | Some user -> match user.password with
     | Some password' ->
-      let a = Mirage_crypto.Hash.digest `SHA256 (Cstruct.of_string password')
-      and b = Mirage_crypto.Hash.digest `SHA256 (Cstruct.of_string password) in
-      Eqaf_cstruct.equal a b
+      let open Digestif.SHA256 in
+      let a = to_raw_string (digest_string password')
+      and b = to_raw_string (digest_string password) in
+      Eqaf.equal a b
     | None -> false
 
 let to_hash name alg pubkey session_id service =
   let open Wire in
-  put_cstring session_id (Dbuf.create ()) |>
+  put_string session_id (Dbuf.create ()) |>
   put_message_id Ssh.MSG_USERAUTH_REQUEST |>
   put_string name |>
   put_string service |>
@@ -63,7 +64,8 @@ let to_hash name alg pubkey session_id service =
   put_bool true |>
   put_string (Hostkey.alg_to_string alg) |>
   put_pubkey pubkey |>
-  Dbuf.to_cstruct
+  Dbuf.to_cstruct |>
+  Cstruct.to_string
 
 let sign name alg key session_id service =
   let data = to_hash name alg (Hostkey.pub_of_priv key) session_id service in

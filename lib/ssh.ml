@@ -314,7 +314,7 @@ type channel_open =
 type password = string
 
 type auth_method =
-  | Pubkey of string * Cstruct.t * (string * Cstruct.t) option
+  | Pubkey of string * Cstruct.t * (string * string) option
   | Password of password * password option
   | Keyboard_interactive of string option * string list
   | Authnone
@@ -336,7 +336,7 @@ let auth_method_equal a b =
   | Pubkey (sig_alg_raw_a, key_a, signature_a),
     Pubkey (sig_alg_raw_b, key_b, signature_b) ->
     let sig_equal (sig_alg_a, sig_a) (sig_alg_b, sig_b) =
-      sig_alg_a = sig_alg_b && Cstruct.equal sig_a sig_b
+      sig_alg_a = sig_alg_b && String.equal sig_a sig_b
     in
     String.equal sig_alg_raw_a sig_alg_raw_b &&
     Cstruct.equal key_a key_b &&
@@ -358,17 +358,17 @@ type message =
   | Msg_kexinit of kexinit
   | Msg_ext_info of extension list
   | Msg_newkeys
-  | Msg_kexdh_reply of Hostkey.pub * mpint * (Hostkey.alg * Cstruct.t)
+  | Msg_kexdh_reply of Hostkey.pub * mpint * (Hostkey.alg * string)
   | Msg_kexdh_init of mpint
   (* from RFC 5656 / 8731 *)
-  | Msg_kexecdh_reply of Hostkey.pub * mpint * (Hostkey.alg * Cstruct.t)
+  | Msg_kexecdh_reply of Hostkey.pub * mpint * (Hostkey.alg * string)
   | Msg_kexecdh_init of mpint
   (* from RFC 4419 *)
   (* there's as well a Msg_kexdh_gex_request_old with only a single int32 *)
   | Msg_kexdh_gex_request of int32 * int32 * int32
   | Msg_kexdh_gex_group of mpint * mpint
   | Msg_kexdh_gex_init of mpint
-  | Msg_kexdh_gex_reply of Hostkey.pub * mpint * (Hostkey.alg * Cstruct.t)
+  | Msg_kexdh_gex_reply of Hostkey.pub * mpint * (Hostkey.alg * string)
   | Msg_kex of message_id * Cstruct.t
   | Msg_userauth_request of (string * string * auth_method)
   | Msg_userauth_failure of (string list * bool)

@@ -78,7 +78,7 @@ type state =
 
 type t = {
   state : state ;
-  session_id     : Cstruct.t option;
+  session_id     : string option;
   keys_ctos      : Kex.keys;
   keys_stoc      : Kex.keys;
   keying         : bool;
@@ -226,7 +226,7 @@ let handle_kexdh_gex_group t v_c ckex v_s skex neg min n max p gg =
   let bits = modulus_size group in
   if Int32.to_int min <= bits && bits <= Int32.to_int max then
     let secret, shared = gen_key group in
-    let pub = Mirage_crypto_pk.Z_extra.of_cstruct_be shared in
+    let pub = Mirage_crypto_pk.Z_extra.of_octets_be shared in
     let state = Negotiated_gex (v_c, ckex, v_s, skex, neg, min, n, max, p, gg, secret, pub) in
     Ok ({ t with state = Gex state }, [ Ssh.Msg_kexdh_gex_init pub ], [])
   else

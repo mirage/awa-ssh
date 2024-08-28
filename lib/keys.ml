@@ -35,14 +35,14 @@ let hostkey_matches a key =
       false
     end
   | `Fingerprint (typ, s) ->
-    let hash = Mirage_crypto.Hash.SHA256.digest (Wire.blob_of_pubkey key) in
+    let hash = Digestif.SHA256.(to_raw_string (digest_string (Cstruct.to_string (Wire.blob_of_pubkey key)))) in
     Log.app (fun m -> m "authenticating server fingerprint SHA256:%s"
-                (Base64.encode_string ~pad:false (Cstruct.to_string hash)));
+                (Base64.encode_string ~pad:false hash));
     let typ_matches = match typ, key with
       | `Ed25519, Hostkey.Ed25519_pub _ -> true
       | `Rsa, Hostkey.Rsa_pub _ -> true
       | _ -> false
-    and fp_matches = Cstruct.(equal (of_string s) hash)
+    and fp_matches = String.equal s hash
     in
     if typ_matches && fp_matches then begin
       Log.app (fun m -> m "host fingerprint verification successful!");
@@ -78,7 +78,7 @@ let authenticator_of_string str =
 
 let of_seed ?bits typ seed =
   let typ = match typ with `Rsa -> `RSA | `Ed25519 -> `ED25519 in
-  match X509.Private_key.generate ~seed:(Cstruct.of_string seed) ?bits typ with
+  match X509.Private_key.generate ~seed ?bits typ with
   | `RSA k ->
     let pub = Mirage_crypto_pk.Rsa.pub_of_priv k in
     let pubkey = Wire.blob_of_pubkey (Hostkey.Rsa_pub pub) in

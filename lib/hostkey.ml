@@ -28,9 +28,9 @@ let pub_eq a b = match a, b with
   | Rsa_pub rsa, Rsa_pub rsa' ->
     Z.equal rsa.Rsa.e rsa'.Rsa.e && Z.equal rsa.Rsa.n rsa'.Rsa.n
   | Ed25519_pub e, Ed25519_pub e' ->
-    Cstruct.equal
-      (Mirage_crypto_ec.Ed25519.pub_to_cstruct e)
-      (Mirage_crypto_ec.Ed25519.pub_to_cstruct e')
+    String.equal
+      (Mirage_crypto_ec.Ed25519.pub_to_octets e)
+      (Mirage_crypto_ec.Ed25519.pub_to_octets e')
   | _ -> false
 
 let pub_of_priv = function

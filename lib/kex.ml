@@ -97,13 +97,13 @@ let group_of_alg = function
 let hash_of_alg = function
   | Diffie_hellman_group_exchange_sha256
   | Diffie_hellman_group14_sha256
-  | Curve25519_sha256 -> Mirage_crypto.Hash.module_of `SHA256
+  | Curve25519_sha256 -> Digestif.module_of_hash' `SHA256
   | Diffie_hellman_group_exchange_sha1
   | Diffie_hellman_group14_sha1
-  | Diffie_hellman_group1_sha1 -> Mirage_crypto.Hash.module_of `SHA1
-  | Ecdh_sha2_nistp256 -> Mirage_crypto.Hash.module_of `SHA256
-  | Ecdh_sha2_nistp384 -> Mirage_crypto.Hash.module_of `SHA384
-  | Ecdh_sha2_nistp521 -> Mirage_crypto.Hash.module_of `SHA512
+  | Diffie_hellman_group1_sha1 -> Digestif.module_of_hash' `SHA1
+  | Ecdh_sha2_nistp256 -> Digestif.module_of_hash' `SHA256
+  | Ecdh_sha2_nistp384 -> Digestif.module_of_hash' `SHA384
+  | Ecdh_sha2_nistp521 -> Digestif.module_of_hash' `SHA512
 
 let supported =
   [ Curve25519_sha256 ;
@@ -114,7 +114,7 @@ let supported =
 
 let make_kexinit ?ext_info host_key_algs algs () =
   let k =
-    { cookie = Mirage_crypto_rng.generate 16;
+    { cookie = Cstruct.of_string (Mirage_crypto_rng.generate 16);
       kex_algs = List.map alg_to_string algs;
       ext_info;
       server_host_key_algs = List.map Hostkey.alg_to_string host_key_algs;
@@ -261,7 +261,7 @@ let make_plaintext () =
   { cipher = Cipher.{ cipher = Plaintext;
                       cipher_key = Plaintext_key };
     mac = Hmac.{ hmac = Plaintext;
-                 key = Cstruct.create 0 };
+                 key = "" };
     seq = Int32.zero ;
     tx_rx = Int64.zero }
 
@@ -300,35 +300,34 @@ let derive_keys digesti k h session_id neg now =
   let cipher_stoc = neg.encryption_alg_stoc in
   let mac_ctos = neg.mac_alg_ctos in
   let mac_stoc = neg.mac_alg_stoc in
-  let k = Wire.(Dbuf.to_cstruct @@ put_mpint k (Dbuf.create ())) in
+  let k = Cstruct.to_string (Wire.(Dbuf.to_cstruct @@ put_mpint k (Dbuf.create ()))) in
   let hash ch need =
     let rec expand kn =
-      if (Cstruct.length kn) >= need then
+      if String.length kn >= need then
         kn
       else
         let kn' = digesti (fun f -> List.iter f [k; h; kn]) in
-        expand (Cstruct.append kn kn')
+        expand (kn ^ kn')
     in
-    let x = Cstruct.create 1 in
-    Cstruct.set_char x 0 ch;
+    let x = String.make 1 ch in
     let k1 = digesti (fun f -> List.iter f [k; h; x; session_id]) in
-    Cstruct.sub (expand k1) 0 need
+    String.sub (expand k1) 0 need
   in
   let key_of cipher iv secret =
-    let open Mirage_crypto.Cipher_block in
+    let open Mirage_crypto in
     let open Cipher in
     match cipher with
     | Plaintext -> invalid_arg "Deriving plaintext, abort at all costs"
     | Aes128_ctr | Aes192_ctr | Aes256_ctr ->
-      let iv = AES.CTR.ctr_of_cstruct iv in
+      let iv = AES.CTR.ctr_of_octets iv in
       { cipher;
         cipher_key = Aes_ctr_key ((AES.CTR.of_secret secret), iv) }
     | Aes128_cbc | Aes192_cbc | Aes256_cbc ->
       { cipher;
         cipher_key = Aes_cbc_key ((AES.CBC.of_secret secret), iv) }
     | Chacha20_poly1305 ->
-      assert (Cstruct.length secret = 64);
-      let d, l = Cstruct.split secret 32 in
+      assert (String.length secret = 64);
+      let d, l = String.sub secret 0 32, String.sub secret 32 32 in
       let lkey = Mirage_crypto.Chacha20.of_secret l
       and key = Mirage_crypto.Chacha20.of_secret d
       in
@@ -359,7 +358,7 @@ module Dh = struct
 
   let derive_keys k h session_id neg now =
     let (module H) = hash_of_alg neg.kex_alg in
-    derive_keys H.digesti k h session_id neg now
+    derive_keys (fun ds -> H.(to_raw_string (digesti_string ds))) k h session_id neg now
 
   let compute_hash ?(signed = false) neg ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
     let (module H) = hash_of_alg neg.kex_alg in
@@ -373,7 +372,9 @@ module Dh = struct
     put_mpint ~signed f |>
     put_mpint k |>
     Dbuf.to_cstruct |>
-    H.digest
+    Cstruct.to_string |>
+    H.digest_string |>
+    H.to_raw_string
 
   let compute_hash_gex neg ~v_c ~v_s ~i_c ~i_s ~k_s ~min ~n ~max ~p ~g ~e ~f ~k =
     let (module H) = hash_of_alg neg.kex_alg in
@@ -392,37 +393,39 @@ module Dh = struct
     put_mpint f |>
     put_mpint k |>
     Dbuf.to_cstruct |>
-    H.digest
+    Cstruct.to_string |>
+    H.digest_string |>
+    H.to_raw_string
 
   let secret_pub alg =
     let secret, pub = Mirage_crypto_pk.Dh.gen_key (group_of_alg alg) in
-    secret, Mirage_crypto_pk.Z_extra.of_cstruct_be pub
+    secret, Mirage_crypto_pk.Z_extra.of_octets_be pub
 
   let shared secret recv =
-    let r = Mirage_crypto_pk.Z_extra.to_cstruct_be recv in
+    let r = Mirage_crypto_pk.Z_extra.to_octets_be recv in
     let* shared =
       guard_some (Mirage_crypto_pk.Dh.shared secret r)
         "Can't compute shared secret"
     in
-    Ok (Mirage_crypto_pk.Z_extra.of_cstruct_be shared)
+    Ok (Mirage_crypto_pk.Z_extra.of_octets_be shared)
 
   let ec_secret_pub = function
     | Curve25519_sha256 ->
       let secret, pub = Mirage_crypto_ec.X25519.gen_key () in
-      `Ed25519 secret, Mirage_crypto_pk.Z_extra.of_cstruct_be pub
+      `Ed25519 secret, Mirage_crypto_pk.Z_extra.of_octets_be pub
     | Ecdh_sha2_nistp256 ->
       let secret, pub = Mirage_crypto_ec.P256.Dh.gen_key () in
-      `P256 secret, Mirage_crypto_pk.Z_extra.of_cstruct_be pub
+      `P256 secret, Mirage_crypto_pk.Z_extra.of_octets_be pub
     | Ecdh_sha2_nistp384 ->
       let secret, pub = Mirage_crypto_ec.P384.Dh.gen_key () in
-      `P384 secret, Mirage_crypto_pk.Z_extra.of_cstruct_be pub
+      `P384 secret, Mirage_crypto_pk.Z_extra.of_octets_be pub
     | Ecdh_sha2_nistp521 ->
       let secret, pub = Mirage_crypto_ec.P521.Dh.gen_key () in
-      `P521 secret, Mirage_crypto_pk.Z_extra.of_cstruct_be pub
+      `P521 secret, Mirage_crypto_pk.Z_extra.of_octets_be pub
     | _ -> assert false
 
   let ec_shared secret recv =
-    let r = Mirage_crypto_pk.Z_extra.to_cstruct_be recv in
+    let r = Mirage_crypto_pk.Z_extra.to_octets_be recv in
     let* shared =
       Result.map_error
         (Fmt.to_to_string Mirage_crypto_ec.pp_error)
@@ -432,7 +435,7 @@ module Dh = struct
          | `P384 secret -> Mirage_crypto_ec.P384.Dh.key_exchange secret r
          | `P521 secret -> Mirage_crypto_ec.P521.Dh.key_exchange secret r)
     in
-    Ok (Mirage_crypto_pk.Z_extra.of_cstruct_be shared)
+    Ok (Mirage_crypto_pk.Z_extra.of_octets_be shared)
 
   let generate alg peer_pub =
     let secret, my_pub = secret_pub alg in
