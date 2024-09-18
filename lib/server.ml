@@ -78,7 +78,6 @@ type t = {
   key_eol        : Mtime.t option;        (* Keys end of life, in ns *)
   expect         : Ssh.message_id option; (* Messages to expect, None if any *)
   auth_state     : Auth.state;            (* username * service in progress *)
-  user_db        : Auth.db;               (* username database *)
   channels       : Channel.db;            (* Ssh channels *)
   ignore_next_packet : bool;              (* Ignore the next packet from the wire *)
   dh_group       : (Mirage_crypto_pk.Dh.group * int32 * int32 * int32) option; (* used for GEX (RFC 4419) *)
@@ -98,7 +97,7 @@ let guard_msg t msg =
 let host_key_algs key =
   List.filter Hostkey.(alg_matches (priv_to_typ key)) Hostkey.preferred_algs
 
-let make host_key user_db =
+let make host_key =
   let open Ssh in
   let server_kexinit =
     let algs = host_key_algs host_key in
@@ -122,7 +121,6 @@ let make host_key user_db =
     key_eol = None;
     expect = Some MSG_VERSION;
     auth_state = Auth.Preauth;
-    user_db;
     channels = Channel.empty_db;
     ignore_next_packet = false;
     dh_group = None;
