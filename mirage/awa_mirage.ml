@@ -251,6 +251,7 @@ module Make (F : Mirage_flow.S) = struct
   type exec_callback = request -> unit Lwt.t
 
   type t = {
+    user_db : Awa.Auth.db;
     exec_callback  : exec_callback;       (* callback to run on exec *)
     channels       : channel list;        (* Opened channels *)
     nexus_mbox     : nexus_msg Lwt_mvar.t;(* Nexus mailbox *)
@@ -355,6 +356,30 @@ module Make (F : Mirage_flow.S) = struct
       >>= fun server ->
       match event with
       | None -> nexus t fd server input_buffer (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
+      | Some Awa.Server.Userauth (user, userauth) ->
+        let accept =
+          match Awa.Auth.lookup_user user t.user_db with
+          | None ->
+            false
+          | Some u ->
+            match userauth with
+            | Password password ->
+              u.password = Some password
+            | Pubkey pubkeyauth ->
+              Awa.Server.verify_pubkeyauth ~user pubkeyauth &&
+              (* XXX: polymorphic compare *)
+              List.mem (Awa.Server.pubkey_of_pubkeyauth pubkeyauth) u.keys
+        in
+        (* FIXME: Result.get_ok *)
+        let server, reply =
+          Result.get_ok
+            (if accept then
+               Awa.Server.accept_userauth server userauth
+             else
+               Awa.Server.reject_userauth server userauth)
+        in
+        send_msg fd server reply >>= fun server ->
+        nexus t fd server input_buffer pending_promises
       | Some Awa.Server.Pty (term, width, height, max_width, max_height, _modes) ->
         t.exec_callback (Pty_req { width; height; max_width; max_height; term; }) >>= fun () ->
         nexus t fd server input_buffer pending_promises
@@ -402,8 +427,9 @@ module Make (F : Mirage_flow.S) = struct
         let t = { t with channels = c :: t.channels } in
         nexus t fd server input_buffer (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
 
-  let spawn_server ?stop server msgs fd exec_callback =
-    let t = { exec_callback;
+  let spawn_server ?stop server user_db msgs fd exec_callback =
+    let t = { user_db;
+              exec_callback;
               channels = [];
               nexus_mbox = Lwt_mvar.create_empty ()
             }

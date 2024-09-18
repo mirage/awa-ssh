@@ -40,7 +40,7 @@ module Make (F : Mirage_flow.S) : sig
 
   type exec_callback = request -> unit Lwt.t
 
-  val spawn_server : ?stop:Lwt_switch.t -> Awa.Server.t -> Awa.Ssh.message list -> F.flow ->
+  val spawn_server : ?stop:Lwt_switch.t -> Awa.Server.t -> Awa.Auth.db -> Awa.Ssh.message list -> F.flow ->
     exec_callback -> t Lwt.t
   (** [spawn_server ?stop server msgs flow callback] launches an {i internal}
       SSH channels handler which can be stopped by [stop]. This SSH channels
