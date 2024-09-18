@@ -71,9 +71,6 @@ let sign name alg key session_id service =
   let data = to_hash name alg (Hostkey.pub_of_priv key) session_id service in
   Hostkey.sign alg key data
 
-let by_pubkey name alg pubkey session_id service signed db =
-  match lookup_user_key name pubkey db with
-  | None -> false
-  | Some pubkey ->
-    let unsigned = to_hash name alg pubkey session_id service in
-    Hostkey.verify alg pubkey ~unsigned ~signed
+let by_pubkey name alg pubkey session_id service signed =
+  let unsigned = to_hash name alg pubkey session_id service in
+  Hostkey.verify alg pubkey ~unsigned ~signed
