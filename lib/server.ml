@@ -372,7 +372,7 @@ let input_msg t msg now =
       if t.ext_info then
         let algs =
           String.concat ","
-            (List.map Hostkey.alg_to_string (host_key_algs t.host_key));
+            (List.map Hostkey.alg_to_string Hostkey.preferred_algs);
         in
         let extensions =
           [Extension { name = "server-sig-algs"; value = algs; }]
