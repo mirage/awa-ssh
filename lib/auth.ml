@@ -27,6 +27,20 @@ type state =
   | Inprogress of (string * string * int)
   | Done
 
+type pubkeyauth = {
+  pubkey : Hostkey.pub ;
+  session_id : string ;
+  service : string ;
+  sig_alg : Hostkey.alg ;
+  signed : string ;
+}
+
+let pubkey_of_pubkeyauth { pubkey; _ } = pubkey
+
+type userauth =
+  | Password of string
+  | Pubkey of pubkeyauth
+
 let make_user name ?password keys =
   if password = None && keys = [] then
     invalid_arg "password must be Some, and/or keys must not be empty";
@@ -34,25 +48,6 @@ let make_user name ?password keys =
 
 let lookup_user name db =
   List.find_opt (fun user -> user.name = name) db
-
-let lookup_key user key =
-  List.find_opt (fun key2 -> key = key2 ) user.keys
-
-let lookup_user_key user key db =
-  match lookup_user user db with
-  | None -> None
-  | Some user -> lookup_key user key
-
-let by_password name password db =
-  match lookup_user name db with
-  | None -> false
-  | Some user -> match user.password with
-    | Some password' ->
-      let open Digestif.SHA256 in
-      let a = to_raw_string (digest_string password')
-      and b = to_raw_string (digest_string password) in
-      Eqaf.equal a b
-    | None -> false
 
 let to_hash name alg pubkey session_id service =
   let open Wire in
@@ -71,6 +66,23 @@ let sign name alg key session_id service =
   let data = to_hash name alg (Hostkey.pub_of_priv key) session_id service in
   Hostkey.sign alg key data
 
-let by_pubkey name alg pubkey session_id service signed =
+let verify_signature name alg pubkey session_id service signed =
   let unsigned = to_hash name alg pubkey session_id service in
   Hostkey.verify alg pubkey ~unsigned ~signed
+
+let verify_pubkeyauth ~user { pubkey; session_id; service ; sig_alg ; signed } =
+  verify_signature user sig_alg pubkey session_id service signed
+
+let verify db user userauth =
+  match lookup_user user db, userauth with
+  | None, Pubkey pubkeyauth ->
+    verify_pubkeyauth ~user pubkeyauth && false
+  | (None | Some { password = None; _ }), Password _ -> false
+  | Some u, Pubkey pubkeyauth ->
+    (* XXX: polymorphic comparison *)
+    verify_pubkeyauth ~user pubkeyauth && List.mem pubkeyauth.pubkey u.keys
+  | Some { password = Some password; _ }, Password password' ->
+      let open Digestif.SHA256 in
+      let a = digest_string password
+      and b = digest_string password' in
+      Digestif.SHA256.equal a b

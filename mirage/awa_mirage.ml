@@ -357,19 +357,7 @@ module Make (F : Mirage_flow.S) = struct
       match event with
       | None -> nexus t fd server input_buffer (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
       | Some Awa.Server.Userauth (user, userauth) ->
-        let accept =
-          match Awa.Auth.lookup_user user t.user_db with
-          | None ->
-            false
-          | Some u ->
-            match userauth with
-            | Password password ->
-              u.password = Some password
-            | Pubkey pubkeyauth ->
-              Awa.Server.verify_pubkeyauth ~user pubkeyauth &&
-              (* XXX: polymorphic compare *)
-              List.mem (Awa.Server.pubkey_of_pubkeyauth pubkeyauth) u.keys
-        in
+        let accept = Awa.Auth.verify t.user_db user userauth in
         (* FIXME: Result.get_ok *)
         let server, reply =
           Result.get_ok

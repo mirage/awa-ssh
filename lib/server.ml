@@ -19,7 +19,7 @@ open Util
 let src = Logs.Src.create "awa.server" ~doc:"AWA server"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-type pubkeyauth = {
+type pubkeyauth = Auth.pubkeyauth = {
   pubkey : Hostkey.pub ;
   session_id : string ;
   service : string ;
@@ -27,12 +27,11 @@ type pubkeyauth = {
   signed : string ;
 }
 
-let pubkey_of_pubkeyauth { pubkey; _ } = pubkey
+let pubkey_of_pubkeyauth = Auth.pubkey_of_pubkeyauth
 
-let verify_pubkeyauth ~user { pubkey; session_id; service ; sig_alg ; signed } =
-  Auth.by_pubkey user sig_alg pubkey session_id service signed
+let verify_pubkeyauth = Auth.verify_pubkeyauth
 
-type userauth =
+type userauth = Auth.userauth =
   | Password of string
   | Pubkey of pubkeyauth
 
