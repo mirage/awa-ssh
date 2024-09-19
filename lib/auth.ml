@@ -79,8 +79,8 @@ let verify db user userauth =
     verify_pubkeyauth ~user pubkeyauth && false
   | (None | Some { password = None; _ }), Password _ -> false
   | Some u, Pubkey pubkeyauth ->
-    (* XXX: polymorphic comparison *)
-    verify_pubkeyauth ~user pubkeyauth && List.mem pubkeyauth.pubkey u.keys
+    verify_pubkeyauth ~user pubkeyauth &&
+    List.exists (fun pubkey -> Hostkey.pub_eq pubkey pubkeyauth.pubkey) u.keys
   | Some { password = Some password; _ }, Password password' ->
       let open Digestif.SHA256 in
       let a = digest_string password
