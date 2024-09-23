@@ -1,5 +1,12 @@
 (** Effectful operations using Mirage for pure SSH. *)
 
+module Auth : sig
+  type user
+  type db = user list
+
+  val make_user : string -> ?password:string -> Awa.Hostkey.pub list -> user
+end
+
 (** SSH module given a flow *)
 module Make (F : Mirage_flow.S) : sig
 
@@ -40,7 +47,7 @@ module Make (F : Mirage_flow.S) : sig
 
   type exec_callback = request -> unit Lwt.t
 
-  val spawn_server : ?stop:Lwt_switch.t -> Awa.Server.t -> Awa.Auth.db -> Awa.Ssh.message list -> F.flow ->
+  val spawn_server : ?stop:Lwt_switch.t -> Awa.Server.t -> Auth.db -> Awa.Ssh.message list -> F.flow ->
     exec_callback -> t Lwt.t
   (** [spawn_server ?stop server msgs flow callback] launches an {i internal}
       SSH channels handler which can be stopped by [stop]. This SSH channels
