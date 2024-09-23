@@ -19,7 +19,12 @@ open Util
 let src = Logs.Src.create "awa.server" ~doc:"AWA server"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-type pubkeyauth = Auth.pubkeyauth = {
+type auth_state =
+  | Preauth
+  | Inprogress of (string * string * int)
+  | Done
+
+type pubkeyauth = {
   pubkey : Hostkey.pub ;
   session_id : string ;
   service : string ;
@@ -27,11 +32,12 @@ type pubkeyauth = Auth.pubkeyauth = {
   signed : string ;
 }
 
-let pubkey_of_pubkeyauth = Auth.pubkey_of_pubkeyauth
+let pubkey_of_pubkeyauth { pubkey; _ } = pubkey
 
-let verify_pubkeyauth = Auth.verify_pubkeyauth
+let verify_pubkeyauth ~user { pubkey; session_id; service ; sig_alg ; signed } =
+  Auth.verify_signature user sig_alg pubkey session_id service signed
 
-type userauth = Auth.userauth =
+type userauth =
   | Password of string
   | Pubkey of pubkeyauth
 
@@ -76,7 +82,7 @@ type t = {
   keying         : bool;                  (* keying = sent KEXINIT *)
   key_eol        : Mtime.t option;        (* Keys end of life, in ns *)
   expect         : Ssh.message_id option; (* Messages to expect, None if any *)
-  auth_state     : Auth.state;            (* username * service in progress *)
+  auth_state     : auth_state;            (* username * service in progress *)
   channels       : Channel.db;            (* Ssh channels *)
   ignore_next_packet : bool;              (* Ignore the next packet from the wire *)
   dh_group       : (Mirage_crypto_pk.Dh.group * int32 * int32 * int32) option; (* used for GEX (RFC 4419) *)
@@ -119,7 +125,7 @@ let make host_key =
     keying = true;
     key_eol = None;
     expect = Some MSG_VERSION;
-    auth_state = Auth.Preauth;
+    auth_state = Preauth;
     channels = Channel.empty_db;
     ignore_next_packet = false;
     dh_group = None;
@@ -185,7 +191,7 @@ let make_reply_with_event t msg e = Ok (t, [ msg ], Some e)
 let make_disconnect t code s =
   Ok (t, [ Ssh.disconnect_msg code s ], Some (Disconnected s))
 
-let rec input_userauth_request t username service auth_method =
+let input_userauth_request t username service auth_method =
   let open Ssh in
   let inc_nfailed t =
     match t.auth_state with
@@ -201,69 +207,72 @@ let rec input_userauth_request t username service auth_method =
     let* t = inc_nfailed t in
     make_reply t (Msg_userauth_failure ([ "publickey"; "password" ], false))
   in
-  let discard t = make_noreply t in
   let try_probe t pubkey =
     make_reply t (Msg_userauth_pk_ok pubkey)
   in
-  let handle_auth t =
-    (* XXX verify all fail cases, what should we do and so on *)
-    let* session_id = guard_some t.session_id "No session_id" in
-    let* () = guard (service = "ssh-connection") "Bad service" in
-    match auth_method with
-    | Pubkey (pkalg, pubkey_raw, None) -> (* Public key probing *)
-      begin match Wire.pubkey_of_blob pubkey_raw with
-        | Ok pubkey when Hostkey.comptible_alg pubkey pkalg ->
-          try_probe t pubkey
-        | Ok _ ->
+  (* XXX verify all fail cases, what should we do and so on *)
+  let* session_id = guard_some t.session_id "No session_id" in
+  let* () = guard (service = "ssh-connection") "Bad service" in
+  match auth_method with
+  | Pubkey (pkalg, pubkey_raw, None) -> (* Public key probing *)
+    begin match Wire.pubkey_of_blob pubkey_raw with
+      | Ok pubkey when Hostkey.comptible_alg pubkey pkalg ->
+        try_probe t pubkey
+      | Ok _ ->
+        Log.debug (fun m -> m "Client offered unsupported or incompatible signature algorithm %s"
+                      pkalg);
+        failure t
+      | Error `Unsupported keytype ->
+        Log.debug (fun m -> m "Client offered unsupported key type %s" keytype);
+        failure t
+      | Error `Msg s ->
+        Log.warn (fun m -> m "Failed to decode public key (while client offered a key): %s" s);
+        disconnect t DISCONNECT_PROTOCOL_ERROR "public key decoding failed"
+    end
+  | Pubkey (pkalg, pubkey_raw, Some (sig_alg, signed)) -> (* Public key authentication *)
+    begin match Wire.pubkey_of_blob pubkey_raw with
+      | Ok pubkey when Hostkey.comptible_alg pubkey pkalg &&
+                       String.equal pkalg sig_alg ->
+        (* NOTE: for backwards compatibility with older OpenSSH clients we
+           should be more lenient if the sig_alg is "ssh-rsa-cert-v01" (if we
+           ever implement that). See
+           https://github.com/openssh/openssh-portable/blob/master/ssh-rsa.c#L504-L507 *)
+        (* XXX: this should be fine due to the previous [Hostkey.comptible_alg] *)
+        (* TODO: avoid Result.get_ok :/ *)
+        let sig_alg = Result.get_ok (Hostkey.alg_of_string sig_alg) in
+        Ok (t, [], Some (Userauth (username, Pubkey { pubkey; session_id; service; sig_alg; signed })))
+      | Ok pubkey ->
+        if Hostkey.comptible_alg pubkey pkalg then
           Log.debug (fun m -> m "Client offered unsupported or incompatible signature algorithm %s"
-                        pkalg);
-          failure t
-        | Error `Unsupported keytype ->
-          Log.debug (fun m -> m "Client offered unsupported key type %s" keytype);
-          failure t
-        | Error `Msg s ->
-          Log.warn (fun m -> m "Failed to decode public key (while client offered a key): %s" s);
-          disconnect t DISCONNECT_PROTOCOL_ERROR "public key decoding failed"
-      end
-    | Pubkey (pkalg, pubkey_raw, Some (sig_alg, signed)) -> (* Public key authentication *)
-      begin match Wire.pubkey_of_blob pubkey_raw with
-        | Ok pubkey when Hostkey.comptible_alg pubkey pkalg &&
-                         String.equal pkalg sig_alg ->
-          (* NOTE: for backwards compatibility with older OpenSSH clients we
-             should be more lenient if the sig_alg is "ssh-rsa-cert-v01" (if we
-             ever implement that). See
-             https://github.com/openssh/openssh-portable/blob/master/ssh-rsa.c#L504-L507 *)
-          (* XXX: this should be fine due to the previous [Hostkey.comptible_alg] *)
-          (* TODO: avoid Result.get_ok :/ *)
-          let sig_alg = Result.get_ok (Hostkey.alg_of_string sig_alg) in
-          Ok (t, [], Some (Userauth (username, Pubkey { pubkey; session_id; service; sig_alg; signed })))
-        | Ok pubkey ->
-          if Hostkey.comptible_alg pubkey pkalg then
-            Log.debug (fun m -> m "Client offered unsupported or incompatible signature algorithm %s"
-                          pkalg)
-          else
-            Log.debug (fun m -> m "Client offered signature using algorithm different from advertised: %s vs %s"
-                          sig_alg pkalg);
-          failure t
-        | Error `Unsupported keytype ->
-          Log.debug (fun m -> m "Client attempted authentication with unsupported key type %s" keytype);
-          failure t
-        | Error `Msg s ->
-          Log.warn (fun m -> m "Failed to decode public key (while authenticating): %s" s);
-          disconnect t DISCONNECT_PROTOCOL_ERROR "public key decoding failed"
-      end
-    | Password (password, None) -> (* Password authentication *)
-      Ok (t, [], Some (Userauth (username, Password password)))
-    (* Change of password, or keyboard_interactive, or Authnone won't be supported *)
-    | Password (_, Some _) | Keyboard_interactive _ | Authnone -> failure t
-  in
+                        pkalg)
+        else
+          Log.debug (fun m -> m "Client offered signature using algorithm different from advertised: %s vs %s"
+                        sig_alg pkalg);
+        failure t
+      | Error `Unsupported keytype ->
+        Log.debug (fun m -> m "Client attempted authentication with unsupported key type %s" keytype);
+        failure t
+      | Error `Msg s ->
+        Log.warn (fun m -> m "Failed to decode public key (while authenticating): %s" s);
+        disconnect t DISCONNECT_PROTOCOL_ERROR "public key decoding failed"
+    end
+  | Password (password, None) -> (* Password authentication *)
+    Ok (t, [], Some (Userauth (username, Password password)))
+  (* Change of password, or keyboard_interactive, or Authnone won't be supported *)
+  | Password (_, Some _) | Keyboard_interactive _ | Authnone -> failure t
+
+let input_userauth_request t username service auth_method =
   (* See if we can actually authenticate *)
   match t.auth_state with
-  | Auth.Done -> discard t (* RFC tells us we must discard requests if already authenticated *)
-  | Auth.Preauth -> (* Recurse, but now Inprogress *)
-    let t = { t with auth_state = Auth.Inprogress (username, service, 0) } in
+  | Done -> make_noreply t (* RFC tells us we must discard requests if already authenticated *)
+  | Preauth -> (* Recurse, but now Inprogress *)
+    let t = { t with auth_state = Inprogress (username, service, 0) } in
     input_userauth_request t username service auth_method
   | Inprogress (prev_username, prev_service, nfailed) ->
+    let disconnect t code s =
+      let t = { t with auth_state = Inprogress (prev_username, prev_service, succ nfailed) } in
+      make_disconnect t code s
+    in
     if service <> "ssh-connection" then
       disconnect t DISCONNECT_SERVICE_NOT_AVAILABLE
         (sprintf "Don't know service `%s`" service)
@@ -276,22 +285,22 @@ let rec input_userauth_request t username service auth_method =
     else if nfailed > 10 then
       Error "Maximum authentication attempts reached, already sent disconnect"
     else
-      handle_auth t
+      input_userauth_request t username service auth_method
 
 let reject_userauth t _userauth =
   match t.auth_state with
-  | Auth.Inprogress (u, s, nfailed) ->
-    let t = { t with auth_state = Auth.Inprogress (u, s, succ nfailed) } in
+  | Inprogress (u, s, nfailed) ->
+    let t = { t with auth_state = Inprogress (u, s, succ nfailed) } in
     Ok (t, Ssh.Msg_userauth_failure ([ "publickey"; "password" ], false))
-  | Auth.Done | Auth.Preauth ->
+  | Done | Preauth ->
     Error "userauth in unexpected state"
 
 let accept_userauth t _userauth =
   match t.auth_state with
-  | Auth.Inprogress _ ->
-    let t = { t with auth_state = Auth.Done; expect = None } in
+  | Inprogress _ ->
+    let t = { t with auth_state = Done; expect = None } in
     Ok (t, Ssh.Msg_userauth_success)
-  | Auth.Done | Auth.Preauth ->
+  | Done | Preauth ->
     Error "userauth in unexpected state"
 
 let input_channel_open t send_channel init_win_size max_pkt_size data =

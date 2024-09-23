@@ -14,41 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-type user = {
-  name     : string;
-  password : string option;
-  keys     : Hostkey.pub list;
-}
-
-type db = user list
-
-type state =
-  | Preauth
-  | Inprogress of (string * string * int)
-  | Done
-
-type pubkeyauth = {
-  pubkey : Hostkey.pub ;
-  session_id : string ;
-  service : string ;
-  sig_alg : Hostkey.alg ;
-  signed : string ;
-}
-
-let pubkey_of_pubkeyauth { pubkey; _ } = pubkey
-
-type userauth =
-  | Password of string
-  | Pubkey of pubkeyauth
-
-let make_user name ?password keys =
-  if password = None && keys = [] then
-    invalid_arg "password must be Some, and/or keys must not be empty";
-  { name; password; keys }
-
-let lookup_user name db =
-  List.find_opt (fun user -> user.name = name) db
-
 let to_hash name alg pubkey session_id service =
   let open Wire in
   put_string session_id (Dbuf.create ()) |>
@@ -69,20 +34,3 @@ let sign name alg key session_id service =
 let verify_signature name alg pubkey session_id service signed =
   let unsigned = to_hash name alg pubkey session_id service in
   Hostkey.verify alg pubkey ~unsigned ~signed
-
-let verify_pubkeyauth ~user { pubkey; session_id; service ; sig_alg ; signed } =
-  verify_signature user sig_alg pubkey session_id service signed
-
-let verify db user userauth =
-  match lookup_user user db, userauth with
-  | None, Pubkey pubkeyauth ->
-    verify_pubkeyauth ~user pubkeyauth && false
-  | (None | Some { password = None; _ }), Password _ -> false
-  | Some u, Pubkey pubkeyauth ->
-    verify_pubkeyauth ~user pubkeyauth &&
-    List.exists (fun pubkey -> Hostkey.pub_eq pubkey pubkeyauth.pubkey) u.keys
-  | Some { password = Some password; _ }, Password password' ->
-      let open Digestif.SHA256 in
-      let a = digest_string password
-      and b = digest_string password' in
-      Digestif.SHA256.equal a b
