@@ -79,6 +79,15 @@ module Driver = struct
       | None -> poll t
       | Some event -> Ok (t, event)
 
+  let user_auth t userauth success =
+    let* server, reply =
+      if success then
+        Awa.Server.accept_userauth t.server userauth
+      else
+        Awa.Server.reject_userauth t.server userauth
+    in
+    send_msg { t with server } reply
+
   let send_channel_data t id data =
     let* server, msgs = Server.output_channel_data t.server id data in
     send_msgs { t with server } msgs
@@ -133,10 +142,13 @@ let bc t id data =
   in
   Driver.send_channel_data t id (Cstruct.of_string reply)
 
-let rec serve t cmd =
+let rec serve t user_auth cmd =
   let open Server in
   let* t, poll_result = Driver.poll t in
   match poll_result with
+  | Userauth (username, userauth) ->
+    let* t = Driver.user_auth t userauth (user_auth username userauth) in
+    serve t user_auth cmd
   | Disconnected s ->
     Logs.info (fun m -> m "Disconnected: %s" s);
     Ok ()
@@ -146,17 +158,17 @@ let rec serve t cmd =
   | Channel_data (id, data) ->
     Logs.info (fun m -> m "channel data %d" (Cstruct.length data));
     (match cmd with
-     | None -> serve t cmd
+     | None -> serve t user_auth cmd
      | Some "echo" ->
        if (Cstruct.to_string data) = "rekey\n" then
          let* t = Driver.rekey t in
-         serve t cmd
+         serve t user_auth cmd
        else
          let* t = echo t id data in
-         serve t cmd
+         serve t user_auth cmd
      | Some "bc" ->
        let* t = bc t id data in
-       serve t cmd
+       serve t user_auth cmd
      | _ -> Error "Unexpected cmd")
   | Channel_subsystem (id, exec) (* same as exec *)
   | Channel_exec (id, exec) ->
@@ -170,16 +182,16 @@ let rec serve t cmd =
       let* _ = Driver.disconnect t in
       Logs.info (fun m -> m "sent pong");
       Ok ()
-    | "echo" | "bc" as c -> serve t (Some c)
+    | "echo" | "bc" as c -> serve t user_auth (Some c)
     | _ ->
       let msg = Printf.sprintf "Unknown command %s" exec in
       let* t = Driver.send_channel_data t id (Cstruct.of_string msg) in
       Logs.info (fun m -> m "%s" msg);
       let* t = Driver.disconnect t in
-      serve t cmd end
+      serve t user_auth cmd end
   | Set_env (k, v) ->
     Logs.info (fun m -> m "Ignoring Set_env (%S, %S)" k v);
-    serve t cmd
+    serve t user_auth cmd
   | Pty _ | Pty_set _ ->
     let msg =
       Ssh.disconnect_msg Ssh.DISCONNECT_SERVICE_NOT_AVAILABLE
@@ -195,29 +207,33 @@ let rec serve t cmd =
     let* _ = Driver.send_msg t msg in
     Ok ()
 
-let user_db =
-  (* User foo auths by passoword *)
-  let foo = Auth.make_user "foo" ~password:"bar" [] in
+let user_auth =
   (* User awa auths by pubkey *)
   let fd = Unix.(openfile "test/data/awa_test_rsa.pub" [O_RDONLY] 0) in
   let file_buf = Unix_cstruct.of_fd fd in
   let key = Result.get_ok (Wire.pubkey_of_openssh file_buf) in
   Unix.close fd;
-  let awa = Auth.make_user "awa" [ key ] in
-  [ foo; awa ]
+  fun user userauth ->
+  match user, userauth with
+  | "foo", Awa.Server.Password "bar" ->
+    true
+  | "awa", Awa.Server.Pubkey pubkeyauth ->
+    Awa.Server.verify_pubkeyauth ~user:"awa" pubkeyauth &&
+    Awa.Server.pubkey_of_pubkeyauth pubkeyauth = key
+  | _ -> false
 
 let rec wait_connection priv_key listen_fd server_port =
   Logs.info (fun m -> m "Awa server waiting connections on port %d" server_port);
   let client_fd, _ = Unix.(accept listen_fd) in
   Logs.info (fun m -> m "Client connected!");
-  let server, msgs = Server.make priv_key user_db in
+  let server, msgs = Server.make priv_key in
   let* t =
     Driver.of_server server msgs
       (write_cstruct client_fd)
       (read_cstruct client_fd)
       Mtime_clock.now
   in
-  let () = match serve t None with
+  let () = match serve t user_auth None with
     | Ok () -> Logs.info (fun m -> m "Client finished")
     | Error e -> Logs.warn (fun m -> m "error: %s" e)
   in
