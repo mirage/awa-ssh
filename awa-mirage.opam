@@ -28,3 +28,4 @@ depends: [
 ]
 synopsis: "SSH implementation in OCaml"
 description: """The OpenSSH protocol implemented in OCaml."""
+x-maintenance-intent: [ "(latest)" ]
