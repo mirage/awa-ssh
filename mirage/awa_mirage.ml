@@ -3,10 +3,7 @@ open Lwt.Infix
 let src = Logs.Src.create "awa.mirage" ~doc:"Awa mirage"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = struct
-
-  module MCLOCK = M
-
+module Make (F : Mirage_flow.S) = struct
   type error  = [ `Msg of string
                 | `Read of F.error
                 | `Write of F.write_error ]
@@ -81,8 +78,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
         | Ok () -> write_flow t d)
       (Ok ()) bufs
 
-  let now () =
-    Mtime.of_uint64_ns (M.elapsed_ns ())
+  let now () = Mtime.of_uint64_ns (Mirage_mtime.elapsed_ns ())
 
   let read_react t =
     match t.state with
@@ -305,7 +301,7 @@ module Make (F : Mirage_flow.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) = 
     match server.Awa.Server.key_eol with
     | None -> []
     | Some mtime ->
-      [ T.sleep_ns (Mtime.to_uint64_ns mtime) >>= fun () -> Lwt.return Rekey ]
+      [ Mirage_sleep.ns (Mtime.to_uint64_ns mtime) >>= fun () -> Lwt.return Rekey ]
 
   let rec nexus t fd server input_buffer pending_promises =
     wrapr (Awa.Server.pop_msg2 server input_buffer)
