@@ -608,7 +608,7 @@ let all_tests = [
 ]
 
 let _ =
-  Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna);
+  Mirage_crypto_rng_unix.use_default ();
   Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> failwith "timeout"));
   Unix.chmod "data/awa_test_rsa" 0o600;
   List.iter run_test all_tests;
