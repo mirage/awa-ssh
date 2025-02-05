@@ -1,3 +1,10 @@
+## v0.5.0 (2025-02-05)
+
+* Fix regression from 6379b473 (server-sig-algs should be Hostkey.preferred_algs)
+  (#75, @reynir)
+* Avoid functors over Mirage_time.S and Mirage_clock.MCLOCK (#76 @hannesm)
+* Adapt to mirage-crypto-rng 1.2.0 (#76 @hannesm)
+
 ## v0.4.0 (2024-08-28)
 
 * Update to mirage-crypto 1.0.0 API (#73 @hannesm)
