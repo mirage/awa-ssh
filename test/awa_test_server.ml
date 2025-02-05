@@ -225,7 +225,7 @@ let rec wait_connection priv_key listen_fd server_port =
   wait_connection priv_key listen_fd server_port
 
 let jump () =
-  Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna);
+  Mirage_crypto_rng_unix.use_default ();
   let g = Mirage_crypto_rng.(create ~seed:"180586" (module Fortuna)) in
   let (ec_priv,_) = Mirage_crypto_ec.Ed25519.generate ~g () in
   let priv_key = Awa.Hostkey.Ed25519_priv (ec_priv) in

@@ -1,6 +1,6 @@
 
 let gen_key seed typ =
-  Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna);
+  Mirage_crypto_rng_unix.use_default ();
   let seed = match seed with
     | None -> Base64.encode_string (Mirage_crypto_rng.generate 30)
     | Some x -> x

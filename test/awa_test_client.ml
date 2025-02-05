@@ -39,7 +39,7 @@ let write_cstruct fd buf =
 
 let jump _ user pass seed typ keyfile authenticator host port =
   let ( let* ) = Result.bind in
-  Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna);
+  Mirage_crypto_rng_unix.use_default ();
   let fd = Unix.(socket PF_INET SOCK_STREAM 0) in
   Unix.(connect fd (ADDR_INET (inet_addr_of_string host, port)));
   match
