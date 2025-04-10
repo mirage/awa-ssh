@@ -160,15 +160,16 @@ module Make (F : Mirage_flow.S) = struct
   let shutdown t mode =
     match t.state with
     | `Active ssh | `Read_closed ssh | `Write_closed ssh ->
-      let ssh, msg =
+      let ssh, msgs =
         match t.state, mode with
         | (`Active ssh | `Read_closed ssh), `write -> Awa.Client.eof ssh
-        | _, `read_write -> Awa.Client.close ssh
-        | _ -> ssh, None
+        | _, `read_write ->
+          Awa.Client.close ssh |> fun (t, msg) -> t, Option.to_list msg
+        | _ -> ssh, []
       in
       t.state <- inject_state ssh (half_close t.state mode);
       (* as outlined above, this may fail since the TCP flow may already be (half-)closed *)
-      writev_flow t (Option.to_list msg) >>= fun _ ->
+      writev_flow t msgs >>= fun _ ->
       (* we don't [FLOW.shutdown _ mode] because we still need to read/write
          channel_eof/channel_close unless both directions are closed *)
       (match t.state with

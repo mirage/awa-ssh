@@ -75,7 +75,7 @@ let input_data t data =
   in
   Ok (t, data, msg)
 
-let output_data t data =
+let output_data ~flush t data =
   let fragment data =
     let max_pkt = Int32.to_int t.them.max_pkt in
     let i =
@@ -94,11 +94,20 @@ let output_data t data =
   in
   let tosend = cs_join t.tosend data in
   let len = min (Cstruct.length tosend) (Int32.to_int t.them.win) in
-  let data, tosend = Cstruct.split tosend len in
+  let data, tosend =
+    if flush then
+      tosend, Cstruct.create 0
+    else
+      Cstruct.split tosend len in
   let win = Int32.sub t.them.win (Int32.of_int len) in
   let* () = guard Int32.(win >= zero) "window underflow" in
   let t = { t with tosend; them = { t.them with win } } in
   Ok (t, fragment data)
+
+let flush t =
+  let data = t.tosend in
+  let t = { t with tosend = Cstruct.create 0 } in
+  output_data ~flush:true t data
 
 let adjust_window t len =
   let win = Int32.add t.them.win len in
@@ -106,7 +115,7 @@ let adjust_window t len =
   let* () = guard Int32.(win > zero) "window overflow" in
   let data = t.tosend in
   let t = { t with tosend = Cstruct.create 0; them = { t.them with win } } in
-  output_data t data
+  output_data ~flush:true t data
 
 (*
  * Channel database

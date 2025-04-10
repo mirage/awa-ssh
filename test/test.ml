@@ -479,7 +479,7 @@ let t_channel_output () =
   in
   (* Case 1: Small output, single message *)
   let d' = Cstruct.sub d 0 32 in
-  let* c', msgs' = Channel.output_data c d' in
+  let* c', msgs' = Channel.output_data ~flush:false c d' in
   assert ((List.length msgs') = 1);
   let msg' = List.hd msgs' in
   let* () =
@@ -497,7 +497,7 @@ let t_channel_output () =
   (* Make sure we didn't change defaults *)
   assert ((Int32.to_int Channel.(c.them.max_pkt)) = (64 * 1024));
   let d' = Cstruct.sub d 0 (96 * 1024) in
-  let* _c', msgs' = Channel.output_data c d' in
+  let* _c', msgs' = Channel.output_data ~flush:false c d' in
   assert ((List.length msgs') = 2);
   let msg1' = List.nth msgs' 0 in
   let msg2' = List.nth msgs' 1 in
@@ -520,7 +520,7 @@ let t_channel_output () =
     | _ -> Error "unexpected msg2'"
   in
   (* Case 3: See if peer window is respected, one byte will be outside the window *)
-  let* c', msgs' = Channel.output_data c d in
+  let* c', msgs' = Channel.output_data ~flush:false c d in
   let exp_nmsgs' = 1 + Cstruct.length d / Int32.to_int Ssh.channel_max_pkt_len in
   (* printf "exp_nmsgs = %d (%d/%d) l=%d\n%!"
    *   exp_nmsgs'
