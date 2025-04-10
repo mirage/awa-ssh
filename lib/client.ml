@@ -528,11 +528,13 @@ let eof ?(id = 0l) t =
   match
     let* () = guard (established t) "not yet established" in
     let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
+    let* c, frags = Channel.flush c in
+    let t' = { t with channels = Channel.update c t.channels } in
     let msg = Ssh.Msg_channel_eof c.them.id in
-    Ok (output_msg t msg)
+    Ok (output_msgs t' (List.append frags [msg]))
   with
-  | Error _ -> t, None
-  | Ok (t, msg) -> t, Some msg
+  | Error _ -> t, []
+  | Ok (t, msgs) -> t, msgs
 
 let close ?(id = 0l) t =
   match
