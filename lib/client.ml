@@ -520,7 +520,7 @@ let outgoing_data t ?(id = 0l) data =
   let* () = guard (established t) "not yet established" in
   let* () = guard (Cstruct.length data > 0) "empty data" in
   let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
-  let* c, frags = Channel.output_data c data in
+  let* c, frags = Channel.output_data ~flush:false c data in
   let t' = { t with channels = Channel.update c t.channels } in
   Ok (output_msgs t' frags)
 
