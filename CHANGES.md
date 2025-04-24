@@ -1,3 +1,9 @@
+## v0.5.1 (2025-04-24)
+
+* Drain channel.tosent before sending msg_channel_eof (#78 @gravicappa)
+* Server: delay authentication to effectful layer - patches from banawa
+  (#74 @reynir)
+
 ## v0.5.0 (2025-02-05)
 
 * Fix regression from 6379b473 (server-sig-algs should be Hostkey.preferred_algs)
