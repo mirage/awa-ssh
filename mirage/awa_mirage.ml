@@ -390,7 +390,7 @@ module Make (F : Mirage_flow.S) = struct
       | None -> nexus t fd server input_buffer (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
       | Some Awa.Server.Userauth (user, userauth) ->
         let accept = Auth.verify t.user_db user userauth in
-        (* FIXME: Result.get_ok *)
+        (* FIXME: Result.get_ok: Awa.Server.{accept,reject}_userauth should likely raise instead *)
         let server, reply =
           Result.get_ok
             (if accept then
