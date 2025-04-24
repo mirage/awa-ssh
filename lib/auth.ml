@@ -14,46 +14,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-type user = {
-  name     : string;
-  password : string option;
-  keys     : Hostkey.pub list;
-}
-
-type db = user list
-
-type state =
-  | Preauth
-  | Inprogress of (string * string * int)
-  | Done
-
-let make_user name ?password keys =
-  if password = None && keys = [] then
-    invalid_arg "password must be Some, and/or keys must not be empty";
-  { name; password; keys }
-
-let lookup_user name db =
-  List.find_opt (fun user -> user.name = name) db
-
-let lookup_key user key =
-  List.find_opt (fun key2 -> key = key2 ) user.keys
-
-let lookup_user_key user key db =
-  match lookup_user user db with
-  | None -> None
-  | Some user -> lookup_key user key
-
-let by_password name password db =
-  match lookup_user name db with
-  | None -> false
-  | Some user -> match user.password with
-    | Some password' ->
-      let open Digestif.SHA256 in
-      let a = to_raw_string (digest_string password')
-      and b = to_raw_string (digest_string password) in
-      Eqaf.equal a b
-    | None -> false
-
 let to_hash name alg pubkey session_id service =
   let open Wire in
   put_string session_id (Dbuf.create ()) |>
@@ -71,9 +31,6 @@ let sign name alg key session_id service =
   let data = to_hash name alg (Hostkey.pub_of_priv key) session_id service in
   Hostkey.sign alg key data
 
-let by_pubkey name alg pubkey session_id service signed db =
-  match lookup_user_key name pubkey db with
-  | None -> false
-  | Some pubkey ->
-    let unsigned = to_hash name alg pubkey session_id service in
-    Hostkey.verify alg pubkey ~unsigned ~signed
+let verify_signature name alg pubkey session_id service signed =
+  let unsigned = to_hash name alg pubkey session_id service in
+  Hostkey.verify alg pubkey ~unsigned ~signed

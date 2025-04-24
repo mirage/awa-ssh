@@ -3,6 +3,38 @@ open Lwt.Infix
 let src = Logs.Src.create "awa.mirage" ~doc:"Awa mirage"
 module Log = (val Logs.src_log src : Logs.LOG)
 
+module Auth = struct
+  type user = {
+    name     : string;
+    password : string option;
+    keys     : Awa.Hostkey.pub list;
+  }
+
+  type db = user list
+
+  let make_user name ?password keys =
+    if password = None && keys = [] then
+      invalid_arg "password must be Some, and/or keys must not be empty";
+    { name; password; keys }
+
+  let lookup_user name db =
+    List.find_opt (fun user -> user.name = name) db
+
+  let verify db user userauth =
+    match lookup_user user db, userauth with
+    | None, Awa.Server.Pubkey pubkeyauth ->
+      Awa.Server.verify_pubkeyauth ~user pubkeyauth && false
+    | (None | Some { password = None; _ }), Awa.Server.Password _ -> false
+    | Some u, Awa.Server.Pubkey pubkeyauth ->
+      Awa.Server.verify_pubkeyauth ~user pubkeyauth &&
+      List.exists (fun pubkey -> Awa.Hostkey.pub_eq pubkey pubkeyauth.pubkey) u.keys
+    | Some { password = Some password; _ }, Awa.Server.Password password' ->
+      let open Digestif.SHA256 in
+      let a = digest_string password
+      and b = digest_string password' in
+      Digestif.SHA256.equal a b
+end
+
 module Make (F : Mirage_flow.S) = struct
   type error  = [ `Msg of string
                 | `Read of F.error
@@ -251,6 +283,7 @@ module Make (F : Mirage_flow.S) = struct
   type exec_callback = request -> unit Lwt.t
 
   type t = {
+    user_db : Auth.db;
     exec_callback  : exec_callback;       (* callback to run on exec *)
     channels       : channel list;        (* Opened channels *)
     nexus_mbox     : nexus_msg Lwt_mvar.t;(* Nexus mailbox *)
@@ -355,6 +388,18 @@ module Make (F : Mirage_flow.S) = struct
       >>= fun server ->
       match event with
       | None -> nexus t fd server input_buffer (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
+      | Some Awa.Server.Userauth (user, userauth) ->
+        let accept = Auth.verify t.user_db user userauth in
+        (* FIXME: Result.get_ok: Awa.Server.{accept,reject}_userauth should likely raise instead *)
+        let server, reply =
+          Result.get_ok
+            (if accept then
+               Awa.Server.accept_userauth server userauth
+             else
+               Awa.Server.reject_userauth server userauth)
+        in
+        send_msg fd server reply >>= fun server ->
+        nexus t fd server input_buffer pending_promises
       | Some Awa.Server.Pty (term, width, height, max_width, max_height, _modes) ->
         t.exec_callback (Pty_req { width; height; max_width; max_height; term; }) >>= fun () ->
         nexus t fd server input_buffer pending_promises
@@ -402,8 +447,9 @@ module Make (F : Mirage_flow.S) = struct
         let t = { t with channels = c :: t.channels } in
         nexus t fd server input_buffer (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
 
-  let spawn_server ?stop server msgs fd exec_callback =
-    let t = { exec_callback;
+  let spawn_server ?stop server user_db msgs fd exec_callback =
+    let t = { user_db;
+              exec_callback;
               channels = [];
               nexus_mbox = Lwt_mvar.create_empty ()
             }

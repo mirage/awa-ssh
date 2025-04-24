@@ -335,7 +335,7 @@ let t_mpint () =
   test_ok
 
 let t_version () =
-  let t, _ = Server.make (Hostkey.Rsa_priv (Mirage_crypto_pk.Rsa.generate ~bits:2048 ())) [] in
+  let t, _ = Server.make (Hostkey.Rsa_priv (Mirage_crypto_pk.Rsa.generate ~bits:2048 ())) in
   let client_version = "SSH-2.0-OpenSSH_6.9\r\n" in
   let* t, msg, input_buffer =
     Server.pop_msg2 t (Cstruct.of_string client_version)
@@ -410,7 +410,7 @@ let t_signature () =
   test_ok
 
 let t_ignore_next_packet () =
-  let t, _ = Server.make (Hostkey.Rsa_priv (Mirage_crypto_pk.Rsa.generate ~bits:2048 ())) [] in
+  let t, _ = Server.make (Hostkey.Rsa_priv (Mirage_crypto_pk.Rsa.generate ~bits:2048 ())) in
   let t = Server.{ t with client_version = Some "SSH-2.0-client";
                           expect = Some(Ssh.MSG_KEXINIT) }
   in
