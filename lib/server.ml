@@ -552,7 +552,9 @@ let input_msg t msg now =
   | Msg_channel_close recp_channel ->
     let open Channel in
     (match lookup recp_channel t.channels with
-     | None -> make_noreply t        (* XXX or should we disconnect ? *)
+     | None ->
+       Log.warn (fun m -> m "Unexpected SSH_MSG_CHANNEL_CLOSE %lu" recp_channel);
+       make_noreply t        (* XXX or should we disconnect ? *)
      | Some c ->
        let t = { t with channels = remove recp_channel t.channels } in
        (match c.state with
@@ -602,3 +604,16 @@ let output_channel_data t id data =
   let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
   let* c, frags = Channel.output_data ~flush:false c data in
   Ok ({ t with channels = Channel.update c t.channels }, frags)
+
+let close t id =
+  match
+    let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
+    let msg = Ssh.Msg_channel_close c.them.id in
+    (* XXX: when can [output_msg] fail? what do we do then? *)
+    let* t, msg = output_msg t msg in
+    let c = { c with state = Sent_close } in
+    let t = { t with channels = Channel.update c t.channels } in
+    Ok (t, msg)
+  with
+  | Error _ -> t, None
+  | Ok (t, msg) -> t, Some msg

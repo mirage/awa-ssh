@@ -477,10 +477,15 @@ let input_msg t msg now =
     let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
     let channels = Channel.remove (Channel.id c) t.channels in
     let msg = "all the channels are closed now, nothing left to do here" in
-    Ok ({ t with channels },
+    let msgs =
+      match c.state with
+      | Open ->
         [ Msg_channel_close (Channel.id c) ;
-          Msg_disconnect (DISCONNECT_BY_APPLICATION, msg, "") ],
-        [ `Disconnected ])
+          Msg_disconnect (DISCONNECT_BY_APPLICATION, msg, "") ]
+      | Sent_close ->
+        [ Msg_disconnect (DISCONNECT_BY_APPLICATION, msg, "") ]
+    in
+    Ok ({ t with channels }, msgs, [ `Disconnected ])
   | _, Msg_disconnect (code, msg, lang) ->
     Log.err (fun m -> m "disconnected: %s %s%s"
                 (Ssh.disconnect_code_to_string code)
@@ -541,7 +546,10 @@ let close ?(id = 0l) t =
     let* () = guard (established t) "not yet established" in
     let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
     let msg = Ssh.Msg_channel_close c.them.id in
-    Ok (output_msg t msg)
+    let t, msg = output_msg t msg in
+    let c = { c with state = Sent_close } in
+    let t = { t with channels = Channel.update c t.channels } in
+    Ok (t, msg)
   with
   | Error _ -> t, None
   | Ok (t, msg) -> t, Some msg
