@@ -605,11 +605,11 @@ let output_channel_data t id data =
   let* c, frags = Channel.output_data ~flush:false c data in
   Ok ({ t with channels = Channel.update c t.channels }, frags)
 
-let close t id data =
+let close t id =
   match
     let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
     let msg = Ssh.Msg_channel_close c.them.id in
-    let t, msg = output_msg t msg in
+    let* t, msg = output_msg t msg in
     let c = { c with state = Sent_close } in
     let t = { t with channels = Channel.update c t.channels } in
     Ok (t, msg)
