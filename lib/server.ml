@@ -609,6 +609,7 @@ let close t id =
   match
     let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
     let msg = Ssh.Msg_channel_close c.them.id in
+    (* XXX: when can [output_msg] fail? what do we do then? *)
     let* t, msg = output_msg t msg in
     let c = { c with state = Sent_close } in
     let t = { t with channels = Channel.update c t.channels } in
