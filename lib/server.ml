@@ -47,6 +47,7 @@ type event =
   | Channel_data of (int32 * Cstruct.t)
   | Channel_eof of int32
   | Disconnected of string
+  | Disconnect of string
   | Userauth of string * userauth
   | Pty of (string * int32 * int32 * int32 * int32 * string)
   | Pty_set of (int32 * int32 * int32 * int32)
@@ -59,6 +60,7 @@ let pp_event ppf = function
   | Channel_data (c, data) -> Fmt.pf ppf "channel data %lu: %d bytes" c (Cstruct.length data)
   | Channel_eof c -> Fmt.pf ppf "channel end-of-file %lu" c
   | Disconnected s -> Fmt.pf ppf "disconnected with messsage %S" s
+  | Disconnect s -> Fmt.pf ppf "disconnect with message %S" s
   | Userauth (user, Password _) -> Fmt.pf ppf "userauth password for %S" user
   | Userauth (user, Pubkey _) -> Fmt.pf ppf "userauth pubkey for %S" user
   | Pty _ -> Fmt.pf ppf "pty"
@@ -189,7 +191,7 @@ let make_replies t msgs = Ok (t,  msgs, None)
 let make_event t e = Ok (t, [], Some e)
 let make_reply_with_event t msg e = Ok (t, [ msg ], Some e)
 let make_disconnect t code s =
-  Ok (t, [ Ssh.disconnect_msg code s ], Some (Disconnected s))
+  Ok (t, [ Ssh.disconnect_msg code s ], Some (Disconnect s))
 
 let input_userauth_request t username service auth_method =
   let open Ssh in
@@ -553,8 +555,10 @@ let input_msg t msg now =
     let open Channel in
     (match lookup recp_channel t.channels with
      | None ->
-       Log.warn (fun m -> m "Unexpected SSH_MSG_CHANNEL_CLOSE %lu" recp_channel);
-       make_noreply t        (* XXX or should we disconnect ? *)
+       let msg = Printf.sprintf "close packet referred to nonexistent channel %lu" recp_channel in
+       make_reply_with_event t
+         (Msg_disconnect (DISCONNECT_PROTOCOL_ERROR, msg, ""))
+         (Disconnect msg)
      | Some c ->
        let t = { t with channels = remove recp_channel t.channels } in
        (match c.state with

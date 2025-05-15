@@ -411,6 +411,12 @@ module Make (F : Mirage_flow.S) = struct
         nexus t fd server input_buffer pending_promises
       | Some Awa.Server.Disconnected _ ->
         Lwt_list.iter_p sshin_eof t.channels
+        >>= fun () -> F.close fd
+        >>= fun () -> Lwt.return t
+      | Some Awa.Server.Disconnect msg ->
+        Log.warn (fun m -> m "Disconnect: %s" msg);
+        F.close fd >>= fun () ->
+        Lwt_list.iter_p sshin_eof t.channels
         >>= fun () -> Lwt.return t
       | Some Awa.Server.Channel_eof id ->
         (match lookup_channel t id with

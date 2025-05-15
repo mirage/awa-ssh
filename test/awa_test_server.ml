@@ -152,6 +152,8 @@ let rec serve t user_auth cmd =
   | Disconnected s ->
     Logs.info (fun m -> m "Disconnected: %s" s);
     Ok ()
+  | Disconnect s ->
+    Error (Printf.sprintf "Disconnect: %S" s)
   | Channel_eof id ->
     Logs.info (fun m -> m "Channel %lu EOF" id);
     Ok ()
