@@ -445,10 +445,15 @@ let input_msg t msg now =
     Error "user authentication failed"
   | Opening_channel us, Msg_channel_open_confirmation (oid, tid, win, max, data) ->
     open_channel_success t us oid tid win max data
-  | _, Msg_global_request (_, want_reply, Unknown_request _) ->
-    Log.info (fun m -> m "ignoring unknown global request (want reply %B)"
+  | _, Msg_global_request (_, want_reply, req) ->
+    Log.info (fun m -> m "ignoring %s global request (want reply %B)"
+                 (match req with
+                  | Unknown_request _ -> "unknown"
+                  | Tcpip_forward _ -> "tcp/ip forward"
+                  | Cancel_tcpip_forward _ -> "cancel tcp/ip forward")
                  want_reply);
-    Ok (t, [], [])
+    let msgs = if want_reply then [ Ssh.Msg_request_failure ] else [] in
+    Ok (t, msgs, [])
   | _, Msg_debug (_, msg, lang) ->
     Log.info (fun m -> m "ignoring debug %s (lang %s)" msg lang);
     Ok (t, [], [])

@@ -587,6 +587,17 @@ let input_msg t msg now =
   | Msg_disconnect (_, s, _) -> make_event t (Disconnected s)
   | Msg_version v -> make_noreply { t with client_version = Some v;
                                            expect = Some MSG_KEXINIT }
+  | Msg_global_request (_, want_reply, req) ->
+    Log.info (fun m -> m "ignoring %s global request (want reply %B)"
+                 (match req with
+                  | Unknown_request _ -> "unknown"
+                  | Tcpip_forward _ -> "tcp/ip forward"
+                  | Cancel_tcpip_forward _ -> "cancel tcp/ip forward")
+                 want_reply);
+    if want_reply then
+      Ok (t, [ Msg_request_failure ], None)
+    else
+      Ok (t, [], None)
   | msg -> Error ("unhandled msg: " ^ Fmt.to_to_string pp_message msg)
 
 let output_msg t msg =
