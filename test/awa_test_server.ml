@@ -26,7 +26,7 @@ module Driver = struct
  *)
 
   type t = {
-    server         : Server.t;            (* Underlying server *)
+    server         : unit Server.t;       (* Underlying server *)
     input_buffer   : Cstruct.t;           (* Unprocessed input *)
     write_cb       : Cstruct.t -> unit;   (* Blocking write callback *)
     read_cb        : unit -> Cstruct.t;   (* Blocking read callback *)
@@ -82,7 +82,7 @@ module Driver = struct
   let user_auth t userauth success =
     let* server, reply =
       if success then
-        Awa.Server.accept_userauth t.server userauth
+        Awa.Server.accept_userauth t.server userauth ()
       else
         Awa.Server.reject_userauth t.server userauth
     in
