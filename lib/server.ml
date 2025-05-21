@@ -19,10 +19,10 @@ open Util
 let src = Logs.Src.create "awa.server" ~doc:"AWA server"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-type auth_state =
+type 'authie auth_state =
   | Preauth
   | Inprogress of (string * string * int)
-  | Done
+  | Done of 'authie
 
 type pubkeyauth = {
   pubkey : Hostkey.pub ;
@@ -66,7 +66,7 @@ let pp_event ppf = function
   | Set_env (k, v) -> Fmt.pf ppf "Set env %S=%S" k v
   | Start_shell c -> Fmt.pf ppf "start shell %lu" c
 
-type t = {
+type 'authie t = {
   client_version : string option;         (* Without crlf *)
   server_version : string;                (* Without crlf *)
   client_kexinit : Ssh.kexinit option;    (* Last KEXINIT received *)
@@ -82,7 +82,7 @@ type t = {
   keying         : bool;                  (* keying = sent KEXINIT *)
   key_eol        : Mtime.t option;        (* Keys end of life, in ns *)
   expect         : Ssh.message_id option; (* Messages to expect, None if any *)
-  auth_state     : auth_state;            (* username * service in progress *)
+  auth_state     : 'authie auth_state;    (* username * service in progress *)
   channels       : Channel.db;            (* Ssh channels *)
   ignore_next_packet : bool;              (* Ignore the next packet from the wire *)
   dh_group       : (Mirage_crypto_pk.Dh.group * int32 * int32 * int32) option; (* used for GEX (RFC 4419) *)
@@ -195,7 +195,7 @@ let input_userauth_request t username service auth_method =
   let open Ssh in
   let inc_nfailed t =
     match t.auth_state with
-    | Preauth | Done -> Error "Unexpected auth_state"
+    | Preauth | Done _ -> Error "Unexpected auth_state"
     | Inprogress (u, s, nfailed) ->
       Ok ({ t with auth_state = Inprogress (u, s, succ nfailed) })
   in
@@ -264,7 +264,7 @@ let input_userauth_request t username service auth_method =
 let input_userauth_request t username service auth_method =
   (* See if we can actually authenticate *)
   match t.auth_state with
-  | Done -> make_noreply t (* RFC tells us we must discard requests if already authenticated *)
+  | Done _ -> make_noreply t (* RFC tells us we must discard requests if already authenticated *)
   | Preauth -> (* Recurse, but now Inprogress *)
     let t = { t with auth_state = Inprogress (username, service, 0) } in
     input_userauth_request t username service auth_method
@@ -292,15 +292,15 @@ let reject_userauth t _userauth =
   | Inprogress (u, s, nfailed) ->
     let t = { t with auth_state = Inprogress (u, s, succ nfailed) } in
     Ok (t, Ssh.Msg_userauth_failure ([ "publickey"; "password" ], false))
-  | Done | Preauth ->
+  | Done _ | Preauth ->
     Error "userauth in unexpected state"
 
-let accept_userauth t _userauth =
+let accept_userauth t _userauth authie =
   match t.auth_state with
   | Inprogress _ ->
-    let t = { t with auth_state = Done; expect = None } in
+    let t = { t with auth_state = Done authie; expect = None } in
     Ok (t, Ssh.Msg_userauth_success)
-  | Done | Preauth ->
+  | Done _ | Preauth ->
     Error "userauth in unexpected state"
 
 let input_channel_open t send_channel init_win_size max_pkt_size data =

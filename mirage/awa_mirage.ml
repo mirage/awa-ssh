@@ -394,7 +394,7 @@ module Make (F : Mirage_flow.S) = struct
         let server, reply =
           Result.get_ok
             (if accept then
-               Awa.Server.accept_userauth server userauth
+               Awa.Server.accept_userauth server userauth ()
              else
                Awa.Server.reject_userauth server userauth)
         in
