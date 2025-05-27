@@ -1,3 +1,9 @@
+## v0.5.2 (2025-05-27)
+
+* Add `Server.close`, fix close message semantics (#79 @reynir, review @hannesm)
+* Add authentication information in `Server.auth_state` `Done _` constructor (#80 @reynir, review @hannesm)
+* Make `Awa_mirage.Auth.lookup_user` public as it were before #74 (#81 @palainp, review @reynir)
+
 ## v0.5.1 (2025-04-24)
 
 * Drain channel.tosent before sending msg_channel_eof (#78 @gravicappa)
