@@ -5,6 +5,7 @@ module Auth : sig
   type db = user list
 
   val make_user : string -> ?password:string -> Awa.Hostkey.pub list -> user
+  val lookup_user : string -> db -> user option
 end
 
 (** SSH module given a flow *)
