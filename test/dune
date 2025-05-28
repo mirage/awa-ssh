@@ -4,14 +4,14 @@
  (package awa)
  (deps
   (source_tree data))
- (libraries awa mtime.clock.os cstruct-unix mirage-crypto-rng.unix))
+ (libraries awa mirage-mtime cstruct-unix mirage-crypto-rng.unix))
 
 (executable
  (name awa_test_server)
  (public_name awa_test_server)
  (modules awa_test_server)
  (package awa)
- (libraries awa mtime.clock.os cstruct-unix mirage-crypto-rng.unix
+ (libraries awa mirage-mtime cstruct-unix mirage-crypto-rng.unix
    fmt.tty logs.fmt logs.cli fmt.cli))
 
 (executable
@@ -19,7 +19,7 @@
  (public_name awa_test_client)
  (modules awa_test_client)
  (package awa)
- (libraries awa mirage-crypto-rng.unix mtime.clock.os cmdliner fmt.tty
+ (libraries awa mirage-crypto-rng.unix mirage-mtime cmdliner fmt.tty
    logs.fmt logs.cli fmt.cli cstruct-unix))
 
 (executable
