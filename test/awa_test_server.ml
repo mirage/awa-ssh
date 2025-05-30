@@ -95,6 +95,16 @@ module Driver = struct
   let disconnect t =
     send_msg t (Ssh.disconnect_msg Ssh.DISCONNECT_BY_APPLICATION
                   "user disconnected")
+
+  let eof t id =
+    let server, msgs = Awa.Server.eof t.server id in
+    List.iter t.write_cb msgs;
+    { t with server }
+
+  let close t id =
+    let server, msg = Awa.Server.close t.server id in
+    Option.iter t.write_cb msg;
+    { t with server }
 end
 
 let ( let* ) = Result.bind
@@ -175,11 +185,21 @@ let rec serve t user_auth cmd =
     Logs.info (fun m -> m "channel exec %s" exec);
     begin match exec with
     | "suicide" ->
-      let* _ = Driver.disconnect t in
+      let* t =
+        let msg = Awa.Ssh.Msg_channel_request (id, false, Awa.Ssh.Exit_status 0l) in
+        Driver.send_msg t msg
+      in
+      let t = Driver.eof t id in
+      let _ = Driver.close t id in
       Ok ()
     | "ping" ->
       let* t = Driver.send_channel_data t id (Cstruct.of_string "pong\n") in
-      let* _ = Driver.disconnect t in
+      let* t =
+        let msg = Awa.Ssh.Msg_channel_request (id, false, Awa.Ssh.Exit_status 0l) in
+        Driver.send_msg t msg
+      in
+      let t = Driver.eof t id in
+      let _ = Driver.close t id in
       Logs.info (fun m -> m "sent pong");
       Ok ()
     | "echo" | "bc" as c -> serve t user_auth (Some c)
