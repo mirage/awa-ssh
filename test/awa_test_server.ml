@@ -191,7 +191,7 @@ let rec serve t user_auth cmd =
       in
       let t = Driver.eof t id in
       let _ = Driver.close t id in
-      Ok ()
+      serve t user_auth cmd
     | "ping" ->
       let* t = Driver.send_channel_data t id (Cstruct.of_string "pong\n") in
       let* t =
@@ -201,7 +201,7 @@ let rec serve t user_auth cmd =
       let t = Driver.eof t id in
       let _ = Driver.close t id in
       Logs.info (fun m -> m "sent pong");
-      Ok ()
+      serve t user_auth cmd
     | "echo" | "bc" as c -> serve t user_auth (Some c)
     | _ ->
       let msg = Printf.sprintf "Unknown command %s" exec in
