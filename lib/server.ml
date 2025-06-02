@@ -605,6 +605,26 @@ let output_channel_data t id data =
   let* c, frags = Channel.output_data ~flush:false c data in
   Ok ({ t with channels = Channel.update c t.channels }, frags)
 
+let eof t id =
+  match
+    let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
+    let* c, frags = Channel.flush c in
+    let t' = { t with channels = Channel.update c t.channels } in
+    let msg = Ssh.Msg_channel_eof c.them.id in
+    let* (t, rev_msgs) =
+      List.fold_left
+        (fun acc msg ->
+           let* (t, bufs) = acc in
+           let* (t, buf) = output_msg t msg in
+           Ok (t, buf :: bufs))
+        (Ok (t', []))
+        (List.append frags [msg])
+    in
+    Ok (t, List.rev rev_msgs)
+  with
+  | Error _ -> t, []
+  | Ok (t, msgs) -> t, msgs
+
 let close t id =
   match
     let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
