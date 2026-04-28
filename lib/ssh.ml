@@ -30,7 +30,7 @@ let max_channels = 1024               (* 1024 maximum channels per connection *)
 let min_dh, n, max_dh = 2048l, 3072l, 8192l
 
 let guard_sshlen len =
-  guard (len >= 0 && len <= max_len) (sprintf "Bad length: %d" len)
+  guard (len >= 0 && len <= max_len) (Printf.sprintf "Bad length: %d" len)
 
 let guard_sshlen_exn len =
   match guard_sshlen len with Ok () -> () | Error e -> invalid_arg e
@@ -148,7 +148,7 @@ let int_to_message_id = function
   | _ -> None
 
 type kexinit = {
-  cookie                   : Cstruct.t;
+  cookie                   : string;
   kex_algs                 : string list;
   ext_info                 : [`Ext_info_c | `Ext_info_s] option;
   server_host_key_algs     : string list;
@@ -161,7 +161,7 @@ type kexinit = {
   languages_ctos           : string list;
   languages_stoc           : string list;
   first_kex_packet_follows : bool;
-  rawkex                   : Cstruct.t;   (* raw kexinit *)
+  rawkex                   : string;   (* raw kexinit *)
 }
 
 let pp_kexinit ppf kex =
@@ -177,14 +177,14 @@ let pp_kexinit ppf kex =
               compression algorithms client to server %a@.compression algorithms server to client %a@. \
               languages client to server %a@.languages server to client %a@. \
               first key exchange packet follows %B@.raw kex %a"
-    Cstruct.hexdump_pp kex.cookie
+    Ohex.pp kex.cookie
     pp_sl kex.kex_algs (string_of_ext_info kex.ext_info) pp_sl kex.server_host_key_algs
     pp_sl kex.encryption_algs_ctos pp_sl kex.encryption_algs_stoc
     pp_sl kex.mac_algs_ctos pp_sl kex.mac_algs_stoc
     pp_sl kex.compression_algs_ctos pp_sl kex.compression_algs_stoc
     pp_sl kex.languages_ctos pp_sl kex.languages_stoc
     kex.first_kex_packet_follows
-    Cstruct.hexdump_pp kex.rawkex
+    Ohex.pp kex.rawkex
 
 type extension = Extension of { name : string; value : string }
 
@@ -299,14 +299,14 @@ type channel_request =
   | Signal of string
   | Exit_status of int32
   | Exit_signal of (string * bool * string * string)
-  | Raw_data of Cstruct.t
+  | Raw_data of string
 
 type channel_open =
   | Session
   | X11 of (string * int32)
   | Forwarded_tcpip of (string * int32 * string * int32)
   | Direct_tcpip of (string * int32 * string * int32)
-  | Raw_data of Cstruct.t
+  | Raw_data of string
 
 (*
  * Protocol Authentication
@@ -314,7 +314,7 @@ type channel_open =
 type password = string
 
 type auth_method =
-  | Pubkey of string * Cstruct.t * (string * string) option
+  | Pubkey of string * string * (string * string) option
   | Password of password * password option
   | Keyboard_interactive of string option * string list
   | Authnone
@@ -339,7 +339,7 @@ let auth_method_equal a b =
       sig_alg_a = sig_alg_b && String.equal sig_a sig_b
     in
     String.equal sig_alg_raw_a sig_alg_raw_b &&
-    Cstruct.equal key_a key_b &&
+    String.equal key_a key_b &&
     opt_eq sig_equal signature_a signature_b
   | Password (p_a, popt_a), Password (p_b, popt_b) ->
     String.equal p_a p_b && opt_eq String.equal popt_a popt_b
@@ -369,25 +369,25 @@ type message =
   | Msg_kexdh_gex_group of mpint * mpint
   | Msg_kexdh_gex_init of mpint
   | Msg_kexdh_gex_reply of Hostkey.pub * mpint * (Hostkey.alg * string)
-  | Msg_kex of message_id * Cstruct.t
+  | Msg_kex of message_id * string
   | Msg_userauth_request of (string * string * auth_method)
   | Msg_userauth_failure of (string list * bool)
   | Msg_userauth_success
   | Msg_userauth_banner of (string * string)
-  | Msg_userauth_1 of Cstruct.t
-  | Msg_userauth_2 of Cstruct.t
+  | Msg_userauth_1 of string
+  | Msg_userauth_2 of string
   | Msg_userauth_pk_ok of Hostkey.pub
   | Msg_userauth_info_request of string * string * string * (string * bool) list
   | Msg_userauth_info_response of password list
   | Msg_global_request of (string * bool * global_request)
-  | Msg_request_success of Cstruct.t option
+  | Msg_request_success of string option
   | Msg_request_failure
   | Msg_channel_open of (int32 * int32 * int32 * channel_open)
-  | Msg_channel_open_confirmation of (int32 * int32 * int32 * int32 * Cstruct.t)
+  | Msg_channel_open_confirmation of (int32 * int32 * int32 * int32 * string)
   | Msg_channel_open_failure of (int32 * int32 * string * string)
   | Msg_channel_window_adjust of (int32 * int32)
-  | Msg_channel_data of (int32 * Cstruct.t)
-  | Msg_channel_extended_data of (int32 * int32 * Cstruct.t)
+  | Msg_channel_data of (int32 * string)
+  | Msg_channel_extended_data of (int32 * int32 * string)
   | Msg_channel_eof of int32
   | Msg_channel_close of int32
   | Msg_channel_request of (int32 * bool * channel_request)

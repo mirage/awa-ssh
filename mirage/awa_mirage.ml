@@ -127,7 +127,7 @@ module Make (F : Mirage_flow.S) = struct
       | Ok (`Data data) ->
         match t.state with
         | `Active ssh | `Write_closed ssh ->
-            begin match Awa.Client.incoming ssh (now ()) data with
+            begin match Awa.Client.incoming ssh (now ()) (Cstruct.to_string data) with
             | Error msg ->
               Log.warn (fun m -> m "error %s while processing data" msg);
               t.state <- `Error (`Msg msg);
@@ -135,7 +135,7 @@ module Make (F : Mirage_flow.S) = struct
             | Ok (ssh', out, events) ->
               t.state <-
                 inject_state ssh' (if List.mem `Disconnected events then half_close t.state `read else t.state);
-              writev_flow t out >>= fun _ ->
+              writev_flow t (List.map Cstruct.of_string out) >>= fun _ ->
               Lwt.return (Ok events)
           end
         | _ -> Lwt.return (Error ())
@@ -158,14 +158,14 @@ module Make (F : Mirage_flow.S) = struct
     | Ok events ->
       let r = List.fold_left (fun acc e ->
           match acc, e with
-          | `Data d, `Channel_data (_, more) -> `Data (Cstruct.append d more)
+          | `Data d, `Channel_data (_, more) -> `Data (Cstruct.append d (Cstruct.of_string more))
             (* TODO verify that received on same channel! *)
           | `Data d, _ -> `Data d
-          | `Nothing, `Channel_data (_, data) -> `Data data
+          | `Nothing, `Channel_data (_, data) -> `Data (Cstruct.of_string data)
           | `Nothing, `Channel_eof _ -> `Eof
           | `Nothing, `Disconnected -> `Eof
           | a, `Channel_stderr (id, data) ->
-            Log.warn (fun m -> m "%ld stderr %s" id (Cstruct.to_string data));
+            Log.warn (fun m -> m "%ld stderr %s" id data);
             a
           | a, _ -> a)
           `Nothing events
@@ -185,7 +185,7 @@ module Make (F : Mirage_flow.S) = struct
        t.state <- inject_state ssh t.state;
        t.state <- `Closed;
        (* as outlined above, this may fail since the TCP flow may already be (half-)closed *)
-       writev_flow t (Option.to_list msg) >|= ignore
+       writev_flow t (List.map Cstruct.of_string (Option.to_list msg)) >|= ignore
      | `Error _ | `Closed -> Lwt.return_unit) >>= fun () ->
     F.close t.flow
 
@@ -201,7 +201,7 @@ module Make (F : Mirage_flow.S) = struct
       in
       t.state <- inject_state ssh (half_close t.state mode);
       (* as outlined above, this may fail since the TCP flow may already be (half-)closed *)
-      writev_flow t msgs >>= fun _ ->
+      writev_flow t (List.map Cstruct.of_string msgs) >>= fun _ ->
       (* we don't [FLOW.shutdown _ mode] because we still need to read/write
          channel_eof/channel_close unless both directions are closed *)
       (match t.state with
@@ -221,12 +221,12 @@ module Make (F : Mirage_flow.S) = struct
             match Awa.Client.outgoing_data ssh data with
             | Ok (ssh', datas) ->
               t.state <- inject_state ssh' t.state;
-              writev_flow t datas >|= fun () ->
+              writev_flow t (List.map Cstruct.of_string datas) >|= fun () ->
               ssh'
             | Error msg ->
               t.state <- `Error (`Msg msg) ;
               Lwt.return (Error (`Msg msg)))
-        (Ok ssh) bufs >|= fun _ -> ()
+        (Ok ssh) (List.map Cstruct.to_string bufs) >|= fun _ -> ()
     | `Write_closed _ | `Closed -> Lwt.return (Error `Closed)
     | `Error e -> Lwt.return (Error (e :> write_error))
 
@@ -239,13 +239,13 @@ module Make (F : Mirage_flow.S) = struct
       flow   = flow ;
       state  = `Active client ;
     } in
-    writev_flow t msgs >>= fun () ->
+    writev_flow t (List.map Cstruct.of_string msgs) >>= fun () ->
     drain_handshake t >>= fun id ->
     match t.state with
     | `Active ssh ->
       (match Awa.Client.outgoing_request ssh ~id req with
        | Error msg -> t.state <- `Error (`Msg msg) ; Lwt.return (Error (`Msg msg))
-       | Ok (ssh', data) -> t.state <- `Active ssh' ; write_flow t data) >|= fun () ->
+       | Ok (ssh', data) -> t.state <- `Active ssh' ; write_flow t (Cstruct.of_string data)) >|= fun () ->
       t
     | `Read_closed _ -> Lwt.return (Error (`Msg "read closed"))
     | `Write_closed _ -> Lwt.return (Error (`Msg "write closed"))
@@ -296,7 +296,7 @@ module Make (F : Mirage_flow.S) = struct
   let send_msg flow server msg =
     wrapr (Awa.Server.output_msg server msg)
     >>= fun (server, msg_buf) ->
-    F.write flow msg_buf >>= function
+    F.write flow (Cstruct.of_string msg_buf) >>= function
       | Ok () -> Lwt.return server
       | Error w ->
         Log.err (fun m -> m "error %a while writing" F.pp_write_error w);
@@ -369,11 +369,11 @@ module Make (F : Mirage_flow.S) = struct
         | Net_eof :: _ -> Lwt.return t
         (* Here we have the net_read fulfiled, we can let the timeout + Lwt_mvar.take continue and add a new net_read *)
         | Net_io buf :: remaining_fulfiled_promises ->
-          loop t fd server (Awa.Util.cs_join input_buffer buf) remaining_fulfiled_promises (List.append pending_promises [net_read fd])
+          loop t fd server (input_buffer ^ Cstruct.to_string buf) remaining_fulfiled_promises (List.append pending_promises [net_read fd])
         (* Here we have the Lwt_mvar.take fulfiled, we can let the timeout + net_read continue and add a new Lwt_mvar.take *)
         | Sshout (id, buf) :: remaining_fulfiled_promises
         | Ssherr (id, buf) :: remaining_fulfiled_promises ->
-          wrapr (Awa.Server.output_channel_data server id buf)
+          wrapr (Awa.Server.output_channel_data server id (Cstruct.to_string buf))
           >>= fun (server, msgs) ->
           send_msgs fd server msgs >>= fun server ->
           loop t fd server input_buffer remaining_fulfiled_promises (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
@@ -418,7 +418,7 @@ module Make (F : Mirage_flow.S) = struct
          | None -> Lwt.return t)
       | Some Awa.Server.Channel_data (id, data) ->
         (match lookup_channel t id with
-         | Some c -> sshin_data c data
+         | Some c -> sshin_data c (Cstruct.of_string data)
          | None -> Lwt.return_unit)
         >>= fun () ->
         nexus t fd server input_buffer (List.append pending_promises [ Lwt_mvar.take t.nexus_mbox ])
@@ -464,6 +464,6 @@ module Make (F : Mirage_flow.S) = struct
     (* the ssh communication will start with 'net_read' and can only add a 'Lwt.take' promise when
      * one Awa.Server.Channel_{exec,subsystem} is received
      *)
-    nexus t fd server (Cstruct.create 0) ([ switched_off; net_read fd ] @ rekey_promise server)
+    nexus t fd server "" ([ switched_off; net_read fd ] @ rekey_promise server)
 
 end

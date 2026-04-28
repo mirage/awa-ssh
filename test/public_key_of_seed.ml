@@ -1,5 +1,3 @@
-let b64s x = Cstruct.to_string x |> Base64.encode_string
-
 let () =
   match Awa.Keys.of_string Sys.argv.(1) with
   | Ok pk ->
@@ -7,7 +5,7 @@ let () =
     let public = Awa.Wire.blob_of_pubkey pub in
     Format.printf "%s %s awa@awa.local\n%!"
       (Awa.Hostkey.sshname pub)
-      (b64s public)
+      (Base64.encode_string public)
   | Error (`Msg err) ->
     Format.eprintf "%s: %s.\n%!" Sys.argv.(0) err ;
     exit 1

@@ -21,8 +21,6 @@ depends: [
   "mirage-crypto-pk"
   "mirage-crypto-ec" {>= "1.0.0"}
   "x509" {>= "1.0.0"}
-  "cstruct" {>= "6.0.0"}
-  "cstruct-unix"
   "mtime" {>= "1.0.0"}
   "logs"
   "fmt"
@@ -31,6 +29,7 @@ depends: [
   "zarith"
   "eqaf" {>= "0.8"}
   "mirage-mtime" {>= "4.0.0"}
+  "ohex" {>= "0.2.0"}
 ]
 conflicts: [ "result" {< "1.5"} ]
 synopsis: "SSH implementation in OCaml"

@@ -26,11 +26,11 @@ module Driver = struct
  *)
 
   type t = {
-    server         : unit Server.t;       (* Underlying server *)
-    input_buffer   : Cstruct.t;           (* Unprocessed input *)
-    write_cb       : Cstruct.t -> unit;   (* Blocking write callback *)
-    read_cb        : unit -> Cstruct.t;   (* Blocking read callback *)
-    time_cb        : unit -> Mtime.t;     (* Monotonic time in ns *)
+    server         : unit Server.t;    (* Underlying server *)
+    input_buffer   : string;           (* Unprocessed input *)
+    write_cb       : string -> unit;   (* Blocking write callback *)
+    read_cb        : unit -> string;   (* Blocking read callback *)
+    time_cb        : unit -> Mtime.t;  (* Monotonic time in ns *)
   }
 
   let send_msg t msg =
@@ -47,7 +47,7 @@ module Driver = struct
 
   let of_server server msgs write_cb read_cb time_cb =
     let t = { server;
-              input_buffer = Cstruct.create 0;
+              input_buffer = "";
               write_cb;
               read_cb;
               time_cb }
@@ -61,14 +61,14 @@ module Driver = struct
 
   let rec poll t =
     Logs.info (fun m -> m "poll called, input buffer %d"
-                  (Cstruct.length t.input_buffer));
+                  (String.length t.input_buffer));
     let now = t.time_cb () in
     let server = t.server in
     let* server, msg, input_buffer = Server.pop_msg2 server t.input_buffer in
     match msg with
     | None ->
-      Logs.info (fun m -> m "no msg :/, input %d" (Cstruct.length input_buffer));
-      let input_buffer = cs_join input_buffer (t.read_cb ()) in
+      Logs.info (fun m -> m "no msg :/, input %d" (String.length input_buffer));
+      let input_buffer = input_buffer ^ (t.read_cb ()) in
       poll { t with server; input_buffer }
     | Some msg ->
       Logs.debug (fun m -> m "<<< %a" Ssh.pp_message msg);
@@ -110,31 +110,28 @@ end
 let ( let* ) = Result.bind
 
 (* Driver callbacks  *)
-let read_cstruct fd () =
+let read_data fd () =
   let len = Ssh.max_pkt_len in
   let buf = Bytes.create len in
   let n = Unix.read fd buf 0 len in
   if n = 0 then
     failwith "got EOF"
   else
-    let cbuf = Cstruct.create n in
-    Cstruct.blit_from_bytes buf 0 cbuf 0 n;
-    Logs.debug (fun m -> m "read %u bytes" (Cstruct.length cbuf));
-    cbuf
+    let s = String.sub (Bytes.unsafe_to_string buf) 0 n in
+    Logs.debug (fun m -> m "read %u bytes" (String.length s));
+    s
 
-let write_cstruct fd buf =
-  let len = Cstruct.length buf in
-  let bytes = Bytes.create len in
-  Cstruct.blit_to_bytes buf 0 bytes 0 len;
-  let n = Unix.write fd bytes 0 len in
+let write_data fd buf =
+  let len = String.length buf in
+  let n = Unix.write fd (Bytes.unsafe_of_string buf) 0 len in
   assert (n > 0)
 
 let echo t id data =
   Driver.send_channel_data t id data
 
 let bc t id data =
-  let len = Cstruct.length data in
-  let line = Cstruct.sub data 0 (len - 1) |> Cstruct.to_string in
+  let len = String.length data in
+  let line = String.sub data 0 (len - 1) in
   let args = String.split_on_char ' ' line in
   let reply =
     if List.length args <> 3 then
@@ -150,7 +147,7 @@ let bc t id data =
       | "/" -> if b = 0 then "Don't be an ass !\n" else Printf.sprintf "%d\n" (a / b)
       | op -> Printf.sprintf "Unknown operator %s\n" op
   in
-  Driver.send_channel_data t id (Cstruct.of_string reply)
+  Driver.send_channel_data t id reply
 
 let rec serve t user_auth cmd =
   let open Server in
@@ -166,11 +163,11 @@ let rec serve t user_auth cmd =
     Logs.info (fun m -> m "Channel %lu EOF" id);
     Ok ()
   | Channel_data (id, data) ->
-    Logs.info (fun m -> m "channel data %d" (Cstruct.length data));
+    Logs.info (fun m -> m "channel data %d" (String.length data));
     (match cmd with
      | None -> serve t user_auth cmd
      | Some "echo" ->
-       if (Cstruct.to_string data) = "rekey\n" then
+       if data = "rekey\n" then
          let* t = Driver.rekey t in
          serve t user_auth cmd
        else
@@ -193,7 +190,7 @@ let rec serve t user_auth cmd =
       let _ = Driver.close t id in
       serve t user_auth cmd
     | "ping" ->
-      let* t = Driver.send_channel_data t id (Cstruct.of_string "pong\n") in
+      let* t = Driver.send_channel_data t id "pong\n" in
       let* t =
         let msg = Awa.Ssh.Msg_channel_request (id, false, Awa.Ssh.Exit_status 0l) in
         Driver.send_msg t msg
@@ -205,7 +202,7 @@ let rec serve t user_auth cmd =
     | "echo" | "bc" as c -> serve t user_auth (Some c)
     | _ ->
       let msg = Printf.sprintf "Unknown command %s" exec in
-      let* t = Driver.send_channel_data t id (Cstruct.of_string msg) in
+      let* t = Driver.send_channel_data t id msg in
       Logs.info (fun m -> m "%s" msg);
       let* t = Driver.disconnect t in
       serve t user_auth cmd end
@@ -227,12 +224,18 @@ let rec serve t user_auth cmd =
     let* _ = Driver.send_msg t msg in
     Ok ()
 
+let string_of_file file =
+  try
+    let fh = open_in file in
+    let content = really_input_string fh (in_channel_length fh) in
+    close_in_noerr fh;
+    content
+  with _ -> invalid_arg ("Error reading file " ^ file)
+
 let user_auth =
   (* User awa auths by pubkey *)
-  let fd = Unix.(openfile "test/data/awa_test_rsa.pub" [O_RDONLY] 0) in
-  let file_buf = Unix_cstruct.of_fd fd in
-  let key = Result.get_ok (Wire.pubkey_of_openssh file_buf) in
-  Unix.close fd;
+  let data = string_of_file "test/data/awa_test_rsa.pub" in
+  let key = Result.get_ok (Wire.pubkey_of_openssh data) in
   fun user userauth ->
   match user, userauth with
   | "foo", Awa.Server.Password "bar" ->
@@ -249,8 +252,8 @@ let rec wait_connection priv_key listen_fd server_port =
   let server, msgs = Server.make priv_key in
   let* t =
     Driver.of_server server msgs
-      (write_cstruct client_fd)
-      (read_cstruct client_fd)
+      (write_data client_fd)
+      (read_data client_fd)
       Mtime_clock.now
   in
   let () = match serve t user_auth None with
