@@ -121,7 +121,7 @@ let encrypt keys msg =
   let block_len = max 8 (Cipher.block_len cipher.Cipher.cipher) in
   (* packet_length + padding_length + payload - sequence_length *)
   let buf = Bytes.create 0xffff in (* TODO: length *)
-  let off = Wire.put_message (buf, 0) msg in
+  let off = Wire.put_message (buf, sizeof_pkt_hdr) msg in
   let len = if Cipher.aead cipher.Cipher.cipher then off - 4 else off in
   (* calculate padding *)
   let padlen =

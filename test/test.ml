@@ -153,7 +153,6 @@ let t_parsing () =
     let msg2 = Result.get_ok @@ Packet.to_msg pkt in
     assert (String.length buf = 0);
     match msg, msg2 with
-    (* Can't compare Cstruct.t, must unpack and Cstruct.equal () *)
     | Msg_userauth_request (user_a, service_a, authmethod_a),
       Msg_userauth_request (user_b, service_b, authmethod_b) ->
       assert ((user_a, service_a) = (user_b, service_b));
@@ -198,6 +197,7 @@ let t_parsing () =
     [ Msg_disconnect (DISCONNECT_PROTOCOL_ERROR, "foo", "bar");
       Msg_ignore "Fora Temer";
       Msg_unimplemented long;
+      Msg_debug (true, "Fora", "Temer");
       Msg_debug (false, "Fora", "Temer");
       Msg_service_request "Fora Temer";
       Msg_service_accept "Ricardo Flores Magon";

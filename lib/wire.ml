@@ -28,7 +28,7 @@ let put_uint32 (buf, off) value =
 
 let get_uint8 buf off =
   trap_error (fun () ->
-      Ok (String.get_uint8 buf 0, off + 1))
+      Ok (String.get_uint8 buf off, off + 1))
 
 let put_uint8 (buf, off) value =
   Bytes.set_uint8 buf off value;
@@ -425,7 +425,7 @@ let get_message buf =
             first_kex_packet_follows;
             rawkex = buf })
   | MSG_EXT_INFO ->
-    let* nr_extensions, off = get_uint32 buf 0 in
+    let* nr_extensions, off = get_uint32 buf off in
     let* nr_extensions = match Int32.unsigned_to_int nr_extensions with
       | None -> Error "Ridiculous number of extensions advertised"
       | Some n -> Ok n
@@ -444,7 +444,7 @@ let get_message buf =
   | MSG_KEX_0 | MSG_KEX_1 | MSG_KEX_2 | MSG_KEX_3 | MSG_KEX_4 ->
     Ok (Msg_kex (msgid, buf))
   | MSG_USERAUTH_REQUEST ->
-    let* user, off = get_string buf 0 in
+    let* user, off = get_string buf off in
     let* service, off = get_string buf off in
     let* auth_method, off = get_string buf off in
     let* auth_method, _ =
@@ -508,7 +508,9 @@ let get_message buf =
     in
     Ok (Msg_global_request (request, want_reply, global_request))
   | MSG_REQUEST_SUCCESS ->
-    let req_data = if String.length buf > 0 then Some buf else None in
+    let req_data =
+      if String.length buf > off then Some (String.sub buf off (String.length buf - off)) else None
+    in
     Ok (Msg_request_success req_data)
   | MSG_REQUEST_FAILURE -> Ok Msg_request_failure
   | MSG_CHANNEL_OPEN ->
