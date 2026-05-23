@@ -1,3 +1,8 @@
+## v0.6.0 (2026-05-23)
+
+* Server: add function eof, use it in test server (#83 @reynir)
+* Core: use string and Buffer.t instead of cstruct.t (#85 @hannesm)
+
 ## v0.5.2 (2025-05-27)
 
 * Add `Server.close`, fix close message semantics (#79 @reynir, review @hannesm)
