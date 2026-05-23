@@ -23,8 +23,8 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 type event = [
   | `Established of int32
-  | `Channel_data of int32 * Cstruct.t
-  | `Channel_stderr of int32 * Cstruct.t
+  | `Channel_data of int32 * string
+  | `Channel_stderr of int32 * string
   | `Channel_eof of int32
   | `Channel_exit_status of int32 * int32
   | `Disconnected
@@ -33,9 +33,9 @@ type event = [
 let pp_event ppf = function
   | `Established id -> Format.fprintf ppf "established id %lu" id
   | `Channel_data (id, data) ->
-    Format.fprintf ppf "data %lu: %s" id (Cstruct.to_string data)
+    Format.fprintf ppf "data %lu: %s" id data
   | `Channel_stderr (id, data) ->
-    Format.fprintf ppf "stderr %lu: %s" id (Cstruct.to_string data)
+    Format.fprintf ppf "stderr %lu: %s" id data
   | `Channel_eof id -> Format.fprintf ppf "eof %lu" id
   | `Channel_exit_status (id, r) -> Format.fprintf ppf "exit %lu with %lu" id r
   | `Disconnected -> Format.fprintf ppf "disconnected"
@@ -85,7 +85,7 @@ type t = {
   key_eol        : Mtime.t option;
   channels       : Channel.db;
   sig_algs : Hostkey.alg list ;
-  linger  : Cstruct.t;
+  linger  : string;
   user : string ;
   auth_method : [ `Pubkey of Hostkey.priv | `Password of string ] ;
   authenticator : Keys.authenticator ;
@@ -107,7 +107,7 @@ let rotate_keys_stoc t new_keys_stoc =
 let debug_msg prefix = function
   | Ssh.Msg_channel_data (id, data) ->
     Log.debug (fun m -> m "%s (Msg_data %d bytes for %lu)" prefix
-                  (Cstruct.length data) id)
+                  (String.length data) id)
   | msg -> Log.debug (fun m -> m "%s %a" prefix Ssh.pp_message msg)
 
 let output_msg t msg =
@@ -147,7 +147,7 @@ let make ?(authenticator = `No_authentication) ~user auth_method =
             keys_stoc = Kex.make_plaintext ();
             keying = true;
             key_eol = None;
-            linger = Cstruct.empty;
+            linger = "";
             channels = Channel.empty_db;
             sig_algs = [];
             user ; auth_method ; authenticator ;
@@ -496,7 +496,7 @@ let input_msg t msg now =
     Error "unexpected state and message"
 
 let rec incoming t now buf =
-  let buf = Cstruct.append t.linger buf in
+  let buf = t.linger ^ buf in
   let* t, msg =
     match t.state with
     | Init _ ->
@@ -512,7 +512,7 @@ let rec incoming t now buf =
     debug_msg "<<<" msg;
     let* t', replies, events = input_msg t msg now in
     let t'', replies = output_msgs t' replies in
-    let* t''', replies', events' = incoming t'' now Cstruct.empty in
+    let* t''', replies', events' = incoming t'' now "" in
     Ok (t''', replies @ replies', events @ events')
 
 let outgoing_request t ?(id = 0l) ?(want_reply = false) req =
@@ -523,7 +523,7 @@ let outgoing_request t ?(id = 0l) ?(want_reply = false) req =
 
 let outgoing_data t ?(id = 0l) data =
   let* () = guard (established t) "not yet established" in
-  let* () = guard (Cstruct.length data > 0) "empty data" in
+  let* () = guard (String.length data > 0) "empty data" in
   let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
   let* c, frags = Channel.output_data ~flush:false c data in
   let t' = { t with channels = Channel.update c t.channels } in

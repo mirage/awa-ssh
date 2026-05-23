@@ -18,24 +18,29 @@ let () = Printexc.record_backtrace true
 
 open Awa
 
-let read_cstruct fd =
+let read_data fd =
   let len = Ssh.max_pkt_len in
   let buf = Bytes.create len in
   let n = Unix.read fd buf 0 len in
   if n = 0 then
     failwith "got EOF"
   else
-    let cbuf = Cstruct.create n in
-    Cstruct.blit_from_bytes buf 0 cbuf 0 n;
-    Logs.debug (fun m -> m "read %d bytes" (Cstruct.length cbuf));
-    cbuf
+    let s = String.sub (Bytes.unsafe_to_string buf) 0 n in
+    Logs.debug (fun m -> m "read %u bytes" (String.length s));
+    s
 
-let write_cstruct fd buf =
-  let len = Cstruct.length buf in
-  let bytes = Bytes.create len in
-  Cstruct.blit_to_bytes buf 0 bytes 0 len;
-  let n = Unix.write fd bytes 0 len in
+let write_data fd buf =
+  let len = String.length buf in
+  let n = Unix.write fd (Bytes.unsafe_of_string buf) 0 len in
   assert (n > 0)
+
+let string_of_file file =
+  try
+    let fh = open_in file in
+    let content = really_input_string fh (in_channel_length fh) in
+    close_in_noerr fh;
+    content
+  with _ -> invalid_arg ("Error reading file " ^ file)
 
 let jump _ user pass seed typ keyfile authenticator host port =
   let ( let* ) = Result.bind in
@@ -49,14 +54,12 @@ let jump _ user pass seed typ keyfile authenticator host port =
           match keyfile with
           | None -> Ok (Keys.of_seed typ seed)
           | Some f ->
-            let fd = Unix.(openfile f [O_RDONLY] 0) in
-            let file_buf = Unix_cstruct.of_fd fd in
-            let r = match Wire.privkey_of_openssh file_buf, Wire.privkey_of_pem (Cstruct.to_string file_buf) with
+            let data = string_of_file f in
+            let r = match Wire.privkey_of_openssh data, Wire.privkey_of_pem data with
               | Ok (k, _), _ -> Ok k
               | _, Ok k -> Ok k
               | Error m, _ -> Error m
             in
-            Unix.close fd;
             r
         in
         Logs.info (fun m -> m "using publickey authentication");
@@ -67,22 +70,22 @@ let jump _ user pass seed typ keyfile authenticator host port =
     in
     let* authenticator = Keys.authenticator_of_string authenticator in
     let t, out = Client.make ~authenticator ~user auth in
-    List.iter (write_cstruct fd) out;
+    List.iter (write_data fd) out;
     let rec read_react t =
-      let data = read_cstruct fd in
+      let data = read_data fd in
       let now = Mtime_clock.now () in
       let* t, replies, events = Client.incoming t now data in
-      List.iter (write_cstruct fd) replies;
+      List.iter (write_data fd) replies;
       let t, cont = List.fold_left (fun (t, cont) -> function
           | `Established id ->
             begin match Client.outgoing_request t ~id (Ssh.Exec "ls\ /tmp/bla") with
               | Error e ->
                 Logs.err (fun m -> m "couldn't request ls: %s" e) ; t, cont
-              | Ok (t', data) -> write_cstruct fd data ; t', cont
+              | Ok (t', data) -> write_data fd data ; t', cont
             end
           | `Disconnected -> Unix.close fd ; t, false
           | `Channel_data (_, data) ->
-            Logs.app (fun m -> m "channel data: %s" (Cstruct.to_string data)) ;
+            Logs.app (fun m -> m "channel data: %s" data) ;
             t, cont
           | e ->
             Logs.info (fun m -> m "received event %a" Client.pp_event e) ;

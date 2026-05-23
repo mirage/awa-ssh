@@ -35,7 +35,7 @@ let hostkey_matches a key =
       false
     end
   | `Fingerprint (typ, s) ->
-    let hash = Digestif.SHA256.(to_raw_string (digest_string (Cstruct.to_string (Wire.blob_of_pubkey key)))) in
+    let hash = Digestif.SHA256.(to_raw_string (digest_string (Wire.blob_of_pubkey key))) in
     Log.app (fun m -> m "authenticating server fingerprint SHA256:%s"
                 (Base64.encode_string ~pad:false hash));
     let typ_matches = match typ, key with
@@ -71,7 +71,7 @@ let authenticator_of_string str =
     | _ ->
       match Base64.decode ~pad:false str with
       | Ok k ->
-        let* key = Wire.pubkey_of_blob_error_as_string (Cstruct.of_string k) in
+        let* key = Wire.pubkey_of_blob_error_as_string (k, 0) in
         Ok (`Key key)
       | Error (`Msg msg) ->
         Error (str ^ " is invalid or unsupported authenticator, b64 failed: " ^ msg)
@@ -83,13 +83,13 @@ let of_seed ?bits typ seed =
     let pub = Mirage_crypto_pk.Rsa.pub_of_priv k in
     let pubkey = Wire.blob_of_pubkey (Hostkey.Rsa_pub pub) in
     Log.info (fun m -> m "using ssh-rsa %s"
-                 (Cstruct.to_string pubkey |> Base64.encode_string));
+                 (pubkey |> Base64.encode_string));
     Hostkey.Rsa_priv k
   | `ED25519 k ->
     let pub = Mirage_crypto_ec.Ed25519.pub_of_priv k in
     let pubkey = Wire.blob_of_pubkey (Hostkey.Ed25519_pub pub) in
     Log.info (fun m -> m "using ssh-ed25519 %s"
-                 (Cstruct.to_string pubkey |> Base64.encode_string));
+                 (pubkey |> Base64.encode_string));
     Hostkey.Ed25519_priv k
   | _ -> assert false (* XXX(dinosaure): should never occur, may be a GADT is needed here! *)
 

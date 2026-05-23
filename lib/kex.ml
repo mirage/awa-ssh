@@ -114,7 +114,7 @@ let supported =
 
 let make_kexinit ?ext_info host_key_algs algs () =
   let k =
-    { cookie = Cstruct.of_string (Mirage_crypto_rng.generate 16);
+    { cookie = Mirage_crypto_rng.generate 16;
       kex_algs = List.map alg_to_string algs;
       ext_info;
       server_host_key_algs = List.map Hostkey.alg_to_string host_key_algs;
@@ -127,7 +127,7 @@ let make_kexinit ?ext_info host_key_algs algs () =
       languages_ctos = [];
       languages_stoc = [];
       first_kex_packet_follows = false;
-      rawkex = Cstruct.create 0 }
+      rawkex = "" }
   in
   (* Patch k with rawkex, for completion sake *)
   { k with rawkex = Wire.blob_of_kexinit k }
@@ -300,7 +300,11 @@ let derive_keys digesti k h session_id neg now =
   let cipher_stoc = neg.encryption_alg_stoc in
   let mac_ctos = neg.mac_alg_ctos in
   let mac_stoc = neg.mac_alg_stoc in
-  let k = Cstruct.to_string (Wire.(Dbuf.to_cstruct @@ put_mpint k (Dbuf.create ()))) in
+  let k =
+    let b = Buffer.create 14 in
+    Wire.put_mpint b k;
+    Buffer.contents b
+  in
   let hash ch need =
     let rec expand kn =
       if String.length kn >= need then
@@ -363,39 +367,35 @@ module Dh = struct
   let compute_hash ?(signed = false) neg ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
     let (module H) = hash_of_alg neg.kex_alg in
     let open Wire in
-    put_cstring (Cstruct.of_string v_c) (Dbuf.create ()) |>
-    put_cstring (Cstruct.of_string v_s) |>
-    put_cstring i_c |>
-    put_cstring i_s |>
-    put_cstring (Wire.blob_of_pubkey k_s) |>
-    put_mpint ~signed e |>
-    put_mpint ~signed f |>
-    put_mpint k |>
-    Dbuf.to_cstruct |>
-    Cstruct.to_string |>
-    H.digest_string |>
-    H.to_raw_string
+    let b = Buffer.create 14 in
+    put_string b v_c;
+    put_string b v_s;
+    put_string b i_c;
+    put_string b i_s;
+    put_string b (blob_of_pubkey k_s);
+    put_mpint ~signed b e;
+    put_mpint ~signed b f;
+    put_mpint b k;
+    Buffer.contents b |> H.digest_string |> H.to_raw_string
 
   let compute_hash_gex neg ~v_c ~v_s ~i_c ~i_s ~k_s ~min ~n ~max ~p ~g ~e ~f ~k =
     let (module H) = hash_of_alg neg.kex_alg in
     let open Wire in
-    put_cstring (Cstruct.of_string v_c) (Dbuf.create ()) |>
-    put_cstring (Cstruct.of_string v_s) |>
-    put_cstring i_c |>
-    put_cstring i_s |>
-    put_cstring (Wire.blob_of_pubkey k_s) |>
-    put_uint32 min |>
-    put_uint32 n |>
-    put_uint32 max |>
-    put_mpint p |>
-    put_mpint g |>
-    put_mpint e |>
-    put_mpint f |>
-    put_mpint k |>
-    Dbuf.to_cstruct |>
-    Cstruct.to_string |>
-    H.digest_string |>
-    H.to_raw_string
+    let b = Buffer.create 14 in
+    put_string b v_c;
+    put_string b v_s;
+    put_string b i_c;
+    put_string b i_s;
+    put_string b (blob_of_pubkey k_s);
+    put_uint32 b min;
+    put_uint32 b n;
+    put_uint32 b max;
+    put_mpint b p;
+    put_mpint b g;
+    put_mpint b e;
+    put_mpint b f;
+    put_mpint b k;
+    Buffer.contents b |> H.digest_string |> H.to_raw_string
 
   let secret_pub alg =
     let secret, pub = Mirage_crypto_pk.Dh.gen_key (group_of_alg alg) in

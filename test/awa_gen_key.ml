@@ -18,7 +18,7 @@ let gen_key seed typ =
   let pub = Awa.Hostkey.pub_of_priv hostkey in
   let public = Awa.Wire.blob_of_pubkey pub in
   Printf.printf "%s %s awa@awa.local\n" (Awa.Hostkey.sshname pub)
-    (Base64.encode_string (Cstruct.to_string public));
+    (Base64.encode_string public);
   Ok ()
 
 open Cmdliner

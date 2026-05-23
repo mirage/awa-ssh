@@ -32,7 +32,7 @@ type channel = {
   us    : channel_end;
   them  : channel_end;
   state : state;
-  tosend: Cstruct.t;
+  tosend: string;
 }
 
 let compare a b =
@@ -47,17 +47,23 @@ end
 
 let make_end id win max_pkt = { id; win; max_pkt }
 
-let make ~us ~them = { us; them; state = Open; tosend = Cstruct.create 0 }
+let make ~us ~them = { us; them; state = Open; tosend = "" }
+
+let maybe_split off data =
+  if off < String.length data then
+    String.sub data 0 off, (String.length data - off)
+  else
+    data, 0
 
 (* Returns new t, data normalized, and adjust window if <> zero *)
 let input_data t data =
   (* Normalize data, discard if greater than window *)
-  let len = min (Cstruct.length data |> Int32.of_int) t.us.win in
-  let data, left = Cstruct.split data (Int32.to_int len) in
-  if Cstruct.length left > 0 then
+  let len = min (String.length data) (Int32.to_int t.us.win) in
+  let data, left = maybe_split len data in
+  if left > 0 then
     Printf.printf "channel input_data: discarding %d bytes (window size)\n%!"
-      (Cstruct.length left);
-  let new_win = Int32.sub t.us.win len in
+      left;
+  let new_win = Int32.sub t.us.win (Int32.of_int len) in
   let* () = guard Int32.(new_win >= zero) "window underflow" in
   let win, adjust =
     if new_win < Ssh.channel_win_adj_threshold then
@@ -78,27 +84,30 @@ let input_data t data =
 let output_data ~flush t data =
   let fragment data =
     let max_pkt = Int32.to_int t.them.max_pkt in
-    let i =
-      Cstruct.iter
-        (fun buf ->
-           if (Cstruct.length buf) = 0 then
-             None
-           else
-             Some (min (Cstruct.length buf) max_pkt))
-        (fun buf -> buf)
-        data
+    let rec go off =
+      if String.length data - off > max_pkt then
+        let frag = String.sub data off max_pkt in
+        Ssh.Msg_channel_data (t.them.id, frag) :: go (off + max_pkt)
+      else
+        let frag = String.sub data off (String.length data - off) in
+        [ Ssh.Msg_channel_data (t.them.id, frag) ]
     in
-    Cstruct.fold (fun frags frag ->
-        Ssh.Msg_channel_data (t.them.id, frag) :: frags)
-      i [] |> List.rev
+    go 0
   in
-  let tosend = cs_join t.tosend data in
-  let len = min (Cstruct.length tosend) (Int32.to_int t.them.win) in
+  let tosend =
+    if String.length t.tosend > 0 then
+      t.tosend ^ data
+    else
+      data
+  in
+  let len = min (String.length tosend) (Int32.to_int t.them.win) in
   let data, tosend =
     if flush then
-      tosend, Cstruct.create 0
+      tosend, ""
     else
-      Cstruct.split tosend len in
+      let data, left = maybe_split len tosend in
+      data, String.sub tosend len left
+  in
   let win = Int32.sub t.them.win (Int32.of_int len) in
   let* () = guard Int32.(win >= zero) "window underflow" in
   let t = { t with tosend; them = { t.them with win } } in
@@ -106,7 +115,7 @@ let output_data ~flush t data =
 
 let flush t =
   let data = t.tosend in
-  let t = { t with tosend = Cstruct.create 0 } in
+  let t = { t with tosend = "" } in
   output_data ~flush:true t data
 
 let adjust_window t len =
@@ -114,7 +123,7 @@ let adjust_window t len =
   (* XXX this does not handle up to 4GB correctly. *)
   let* () = guard Int32.(win > zero) "window overflow" in
   let data = t.tosend in
-  let t = { t with tosend = Cstruct.create 0; them = { t.them with win } } in
+  let t = { t with tosend = ""; them = { t.them with win } } in
   output_data ~flush:true t data
 
 (*

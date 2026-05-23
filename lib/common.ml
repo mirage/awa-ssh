@@ -1,7 +1,7 @@
 open Util
 
 let output_msg keys = function
-  | Ssh.Msg_version v -> Cstruct.of_string (v ^ "\r\n"), keys
+  | Ssh.Msg_version v -> v ^ "\r\n", keys
   | msg -> Packet.encrypt keys msg
 
 let version buf =

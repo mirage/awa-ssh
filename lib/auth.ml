@@ -16,16 +16,16 @@
 
 let to_hash name alg pubkey session_id service =
   let open Wire in
-  put_string session_id (Dbuf.create ()) |>
-  put_message_id Ssh.MSG_USERAUTH_REQUEST |>
-  put_string name |>
-  put_string service |>
-  put_string "publickey" |>
-  put_bool true |>
-  put_string (Hostkey.alg_to_string alg) |>
-  put_pubkey pubkey |>
-  Dbuf.to_cstruct |>
-  Cstruct.to_string
+  let b = Buffer.create 16 in
+  put_string b session_id;
+  put_message_id b Ssh.MSG_USERAUTH_REQUEST;
+  put_string b name;
+  put_string b service;
+  put_string b "publickey";
+  put_bool b true;
+  put_string b (Hostkey.alg_to_string alg);
+  put_pubkey b pubkey;
+  Buffer.contents b
 
 let sign name alg key session_id service =
   let data = to_hash name alg (Hostkey.pub_of_priv key) session_id service in

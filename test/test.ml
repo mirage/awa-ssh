@@ -97,7 +97,7 @@ let t_banner () =
   ]
   in
   List.iter (fun s ->
-      match Wire.get_version (Cstruct.of_string s) with
+      match Wire.get_version s with
       | Ok (Some _, _) -> ()
       | Ok (None, _) -> failwith "expected some"
       | Error e -> failwith e)
@@ -110,7 +110,7 @@ let t_banner () =
   ]
   in
   List.iter (fun s ->
-      match Wire.get_version (Cstruct.of_string s) with
+      match Wire.get_version s with
       | Ok (Some _, _) -> failwith ("expected none or error: " ^ s)
       | Ok (None, _) -> ()
       | Error _ -> ())
@@ -128,59 +128,58 @@ let t_parsing () =
   let* pkt, rbuf = guard_some r "decrypt gave no packet" in
   let* msg2 = Packet.to_msg pkt in
   let* () = guard (msg = msg2) "decrypted msg differs from encrypted" in
-  let* () = guard (Cstruct.length rbuf = 0) "buffer is not fully parsed" in
+  let* () = guard (String.length rbuf = 0) "buffer is not fully parsed" in
   (*
    * Case 2: 1 byte left
    *)
   let msg = Msg_ignore "a" in
   let buf, _ = Packet.encrypt (Kex.make_plaintext ()) msg in
-  let buf = Cstruct.append buf (Cstruct.of_string "b") in
+  let buf = buf ^ "b" in
   let pkt, rbuf = get_some @@ Result.get_ok @@ decrypt_plain buf in
   let msg2 = Result.get_ok @@ Packet.to_msg pkt in
   assert (msg = msg2);
-  assert (Cstruct.length rbuf = 1);
+  assert (String.length rbuf = 1);
 
   (* Case 3: Test a zero pkt_len *)
   let buf = Bytes.create 64 in
   Packet.set_pkt_len buf 0;
   Packet.set_pad_len buf 0;
-  let e = Result.get_error (decrypt_plain (Cstruct.of_bytes buf)) in
+  let e = Result.get_error (decrypt_plain (Bytes.unsafe_to_string buf)) in
   assert (e = "decrypt: Bogus pkt len");
 
   let id msg =
     let buf = encrypt_plain msg in
     let pkt, buf = get_some @@ Result.get_ok @@ decrypt_plain buf in
     let msg2 = Result.get_ok @@ Packet.to_msg pkt in
-    assert (Cstruct.length buf = 0);
+    assert (String.length buf = 0);
     match msg, msg2 with
-    (* Can't compare Cstruct.t, must unpack and Cstruct.equal () *)
     | Msg_userauth_request (user_a, service_a, authmethod_a),
       Msg_userauth_request (user_b, service_b, authmethod_b) ->
       assert ((user_a, service_a) = (user_b, service_b));
       assert (auth_method_equal authmethod_a authmethod_b);
     | Msg_kex (ida, dataa), Msg_kex (idb, datab) ->
-      assert (ida = idb && Cstruct.equal dataa datab)
+      assert (ida = idb && String.equal dataa datab)
     | Msg_channel_open_confirmation (a1, a2, a3, a4, a5),
       Msg_channel_open_confirmation (b1, b2, b3, b4, b5) ->
       assert (a1 = b1);
       assert (a2 = b2);
       assert (a3 = b3);
       assert (a4 = b4);
-      assert (Cstruct.equal a5 b5);
+      assert (String.equal a5 b5);
     | Msg_channel_request (a1, a2, Raw_data a3),
       Msg_channel_request (b1, b2, Raw_data b3) ->
       assert (a1 = b1);
       assert (a2 = b2);
-      assert (Cstruct.equal a3 b3);
+      assert (String.equal a3 b3);
     | Msg_channel_data (a1, a2),
       Msg_channel_data (b1, b2) ->
       assert (a1 = b1);
-      assert (Cstruct.equal a2 b2);
+      assert (String.equal a2 b2);
     | Msg_channel_extended_data (a1, a2, a3),
       Msg_channel_extended_data (b1, b2, b3) ->
       assert (a1 = b1);
       assert (a2 = b2);
-      assert (Cstruct.equal a3 b3);
+      assert (String.equal a3 b3);
     | msg, msg2 -> assert (msg = msg2)
   in
   let long = Int32.of_int 180586 in
@@ -198,6 +197,7 @@ let t_parsing () =
     [ Msg_disconnect (DISCONNECT_PROTOCOL_ERROR, "foo", "bar");
       Msg_ignore "Fora Temer";
       Msg_unimplemented long;
+      Msg_debug (true, "Fora", "Temer");
       Msg_debug (false, "Fora", "Temer");
       Msg_service_request "Fora Temer";
       Msg_service_accept "Ricardo Flores Magon";
@@ -232,12 +232,12 @@ let t_parsing () =
         (long, long, long,
          X11 ("::1", long));
       Msg_channel_open_confirmation
-        (long, long, long, long, Cstruct.of_string "Freedom of Mind");
+        (long, long, long, long, "Freedom of Mind");
       Msg_channel_open_failure
         (long, long, "Because you stink", "enEN");
       Msg_channel_window_adjust (long, Int32.succ long);
-      Msg_channel_data (long, Cstruct.of_string "DATADATA");
-      Msg_channel_extended_data (long, long, Cstruct.of_string "DATADATA");
+      Msg_channel_data (long, "DATADATA");
+      Msg_channel_extended_data (long, long, "DATADATA");
       Msg_channel_eof long;
       Msg_channel_close long;
       Msg_channel_request (long, false, Pty_req ("a", long, long, long, long, "b"));
@@ -259,25 +259,32 @@ let t_parsing () =
   List.iter (fun m -> id m) l;
   test_ok
 
+let string_of_file file =
+  try
+    let fh = open_in file in
+    let content = really_input_string fh (in_channel_length fh) in
+    close_in_noerr fh;
+    content
+  with _ -> invalid_arg ("Error reading file " ^ file)
+
 let t_key_exchange () =
   (* Read a pcap file and see if it makes sense. *)
-  let file = "data/kex.packet" in
-  let fd = Unix.(openfile file [O_RDONLY] 0) in
-  let buf = Unix_cstruct.of_fd fd in
-  let pkt, _ = get_some @@ Result.get_ok @@ decrypt_plain buf in
+  let data = string_of_file "data/kex.packet" in
+  let pkt, _ = get_some @@ Result.get_ok @@ decrypt_plain data in
   let msg = Result.get_ok @@ Packet.to_msg pkt in
   let () = match msg with
     | Ssh.Msg_kexinit _ -> ()
     | _ -> failwith "Expected Msg_kexinit"
   in
-  Unix.close fd;
   test_ok
 
 let t_namelist () =
   let s = ["The";"Conquest";"Of";"Bread"] in
-  let buf = Dbuf.to_cstruct @@ Wire.put_nl s (Dbuf.create ()) in
-  assert (Cstruct.length buf = 4 + String.length (String.concat "," s));
-  assert (s = fst (Result.get_ok (Wire.get_nl buf)));
+  let b = Buffer.create 14 in
+  Wire.put_nl b s;
+  let buf = Buffer.contents b in
+  assert (String.length buf = 4 + String.length (String.concat "," s));
+  assert (s = fst (Result.get_ok (Wire.get_nl buf 0)));
   test_ok
 
 let t_mpint () =
@@ -288,14 +295,15 @@ let t_mpint () =
   (*
    * Case 1: Make sure zeroes are stripped from the beggining.
    *)
-  let head = Cstruct.create 4 in
-  let data = Cstruct.create 4 in
-  Cstruct.set_uint8 data 0 0x00;
-  Cstruct.set_uint8 data 1 0x00;
-  Cstruct.set_uint8 data 2 0xff;
-  Cstruct.set_uint8 data 3 0x02;
-  Cstruct.BE.set_uint32 head 0 (Int32.of_int (Cstruct.length data));
-  let mpint = fst @@ Result.get_ok @@ Wire.get_mpint (Cstruct.append head data) in
+  let head = Bytes.create 4 in
+  let data = Bytes.create 4 in
+  Bytes.set_uint8 data 0 0x00;
+  Bytes.set_uint8 data 1 0x00;
+  Bytes.set_uint8 data 2 0xff;
+  Bytes.set_uint8 data 3 0x02;
+  Bytes.set_int32_be head 0 (Int32.of_int (Bytes.length data));
+  let data = Bytes.unsafe_to_string (Bytes.cat head data) in
+  let mpint = fst @@ Result.get_ok @@ Wire.get_mpint data 0 in
   let buf = Mirage_crypto_pk.Z_extra.to_octets_be mpint in
   assert (String.length buf = 2); (* Cuts the first two zeros *)
   assert_byte buf 0 0xff;
@@ -304,33 +312,34 @@ let t_mpint () =
   (*
    * Case 2: Test identity
    *)
-  assert (mpint =
-          (fst @@ Result.get_ok
-             (Wire.get_mpint
-                (Dbuf.to_cstruct @@
-                      Wire.put_mpint mpint (Dbuf.create ())))));
+  let buf = Buffer.create 7 in
+  Wire.put_mpint buf mpint;
+  let raw = Buffer.contents buf in
+  assert (mpint = (fst @@ Result.get_ok (Wire.get_mpint raw 0)));
 
   (*
    * Case 3: Test the other way from 1, one zero must be prepended
    * since the first byte is negative (0xff).
    *)
-  let buf = Dbuf.to_cstruct @@ Wire.put_mpint mpint (Dbuf.create ()) in
+  Buffer.reset buf;
+  Wire.put_mpint buf mpint;
+  let raw = Buffer.contents buf in
   (* 4 for header + 1 zero prepended + 2 data*)
-  assert (Cstruct.length buf = 4 + 1 + 2);
-  let buf' = Cstruct.to_string buf in
-  assert_byte buf' 0 0x00;
-  assert_byte buf' 1 0x00;
-  assert_byte buf' 2 0x00;
-  assert_byte buf' 3 0x03;
-  assert_byte buf' 4 0x00;
-  assert_byte buf' 5 0xff;
-  assert_byte buf' 6 0x02;
+  assert (String.length raw = 4 + 1 + 2);
+  assert_byte raw 0 0x00;
+  assert_byte raw 1 0x00;
+  assert_byte raw 2 0x00;
+  assert_byte raw 3 0x03;
+  assert_byte raw 4 0x00;
+  assert_byte raw 5 0xff;
+  assert_byte raw 6 0x02;
 
   (*
    * Case 4: Make sure negative are errors.
    *)
-  Cstruct.set_uint8 buf 4 0x80;
-  let e = Result.get_error (Wire.get_mpint buf) in
+  let raw = Bytes.of_string raw in
+  Bytes.set_uint8 raw 4 0x80;
+  let e = Result.get_error (Wire.get_mpint (Bytes.unsafe_to_string raw) 0) in
   assert (e = "Negative mpint");
   test_ok
 
@@ -338,11 +347,11 @@ let t_version () =
   let t, _ = Server.make (Hostkey.Rsa_priv (Mirage_crypto_pk.Rsa.generate ~bits:2048 ())) in
   let client_version = "SSH-2.0-OpenSSH_6.9\r\n" in
   let* t, msg, input_buffer =
-    Server.pop_msg2 t (Cstruct.of_string client_version)
+    Server.pop_msg2 t client_version
   in
   match get_some msg with
   | Ssh.Msg_version v ->
-    assert (Cstruct.length input_buffer = 0);
+    assert (String.length input_buffer = 0);
     assert (v = "SSH-2.0-OpenSSH_6.9");
     let t, _, _ = Result.get_ok (Server.input_msg t (Ssh.Msg_version v) now) in
     assert (t.Server.client_version = (Some "SSH-2.0-OpenSSH_6.9"));
@@ -363,7 +372,7 @@ let t_crypto () =
         assert (s = txt)
       | _ -> failwith "bad msg"
     in
-    assert (Cstruct.length buf = 0)
+    assert (String.length buf = 0)
     (* Side effect below ! *)
     (* Nocrypto.Cipher_block.Counter.add16 keys.Kex.iv 0 Int64.(succ one); *)
     (* assert (Cstruct.equal keys.Kex.iv keys_next.Kex.iv); *)
@@ -383,13 +392,19 @@ let t_crypto () =
     Cipher.preferred;
   test_ok
 
+let string_of_file file =
+  try
+    let fh = open_in file in
+    let content = really_input_string fh (in_channel_length fh) in
+    close_in_noerr fh;
+    content
+  with _ -> invalid_arg ("Error reading file " ^ file)
+
 let t_openssh_pub () =
-  let fd = Unix.(openfile "data/awa_test_rsa.pub" [O_RDONLY] 0) in
-  let file_buf = Unix_cstruct.of_fd fd in
-  let key = Result.get_ok (Wire.pubkey_of_openssh file_buf) in
+  let file_data = string_of_file "data/awa_test_rsa.pub" in
+  let key = Result.get_ok (Wire.pubkey_of_openssh file_data) in
   let buf = Wire.openssh_of_pubkey key in
-  assert (Cstruct.equal file_buf buf);
-  Unix.close fd;
+  assert (String.equal file_data buf);
   test_ok
 
 let t_signature () =
@@ -443,31 +458,31 @@ let t_channel_input () =
   let c = Channel.make ~us:x ~them:x in
   let d =
     Mirage_crypto_rng.generate
-      Int32.(add Ssh.channel_win_len Int32.one |> Int32.to_int) |> Cstruct.of_string
+      Int32.(add Ssh.channel_win_len Int32.one |> Int32.to_int)
   in
   (* Case 1: No adjustments, just window consumption *)
-  let d' = Cstruct.sub d 0 32 in
+  let d' = String.sub d 0 32 in
   let* c', dn', adj' = Channel.input_data c d' in
-  assert (Cstruct.length d' = 32);
-  assert (Cstruct.equal d' dn');
+  assert (String.length d' = 32);
+  assert (String.equal d' dn');
   assert (adj' = None);
   (* Make sure our window was drained by 32 bytes *)
   assert Channel.(c'.us.win = (Int32.sub c.them.win
-                                 (Cstruct.length d' |> Int32.of_int)));
+                                 (String.length d' |> Int32.of_int)));
   (* Case 2, Input 2/3 of the window, adjustment must match full window  *)
-  let len' = Cstruct.length d / 4 * 3 in
-  let d' = Cstruct.sub d 0 len' in
+  let len' = String.length d / 4 * 3 in
+  let d' = String.sub d 0 len' in
   let* c', dn', adj' = Channel.input_data c d' in
   assert Channel.(c'.us.win = Ssh.channel_win_len);
-  assert (Cstruct.length d' = len');
-  assert (Cstruct.equal d' dn');
+  assert (String.length d' = len');
+  assert (String.equal d' dn');
   let adj'' = Some (Ssh.Msg_channel_window_adjust
                       (Int32.zero, Int32.of_int len')) in
   assert (adj' = adj'');
   (* Case 3, Make sure we discard data above our window *)
   let* _c', dn', _adj' = Channel.input_data c d in
-  assert (not (Cstruct.equal d dn'));
-  assert (Cstruct.length d = Cstruct.length dn' + 1);
+  assert (not (String.equal d dn'));
+  assert (String.length d = String.length dn' + 1);
   test_ok
 
 let t_channel_output () =
@@ -475,10 +490,10 @@ let t_channel_output () =
   let c = Channel.make ~us:x ~them:x in
   let d =
     Mirage_crypto_rng.generate
-      Int32.(add Ssh.channel_win_len Int32.one |> Int32.to_int) |> Cstruct.of_string
+      Int32.(add Ssh.channel_win_len Int32.one |> Int32.to_int)
   in
   (* Case 1: Small output, single message *)
-  let d' = Cstruct.sub d 0 32 in
+  let d' = String.sub d 0 32 in
   let* c', msgs' = Channel.output_data ~flush:false c d' in
   assert ((List.length msgs') = 1);
   let msg' = List.hd msgs' in
@@ -486,17 +501,17 @@ let t_channel_output () =
     match msg' with
     | Ssh.Msg_channel_data (id, buf) ->
       assert (id = Int32.zero);
-      assert (Cstruct.equal buf d');
+      assert (String.equal buf d');
       Ok ()
     | _ -> Error "Unexpected msg'"
   in
   (* Add data len back, see if we have the full window available *)
-  assert (Channel.(Int32.add c'.them.win (Int32.of_int (Cstruct.length d'))) =
+  assert (Channel.(Int32.add c'.them.win (Int32.of_int (String.length d'))) =
           Ssh.channel_win_len);
   (* Case 2: Enough output for 2 messages, first is 64, second 32 *)
   (* Make sure we didn't change defaults *)
   assert ((Int32.to_int Channel.(c.them.max_pkt)) = (64 * 1024));
-  let d' = Cstruct.sub d 0 (96 * 1024) in
+  let d' = String.sub d 0 (96 * 1024) in
   let* _c', msgs' = Channel.output_data ~flush:false c d' in
   assert ((List.length msgs') = 2);
   let msg1' = List.nth msgs' 0 in
@@ -505,7 +520,7 @@ let t_channel_output () =
     match msg1' with
     | Ssh.Msg_channel_data (id, buf) ->
       assert (id = Int32.zero);
-      assert (Cstruct.equal buf (Cstruct.sub d 0 (64 * 1024)));
+      assert (String.equal buf (String.sub d 0 (64 * 1024)));
       Ok ()
     | _ -> Error "unexpected msg1'"
   in
@@ -513,15 +528,14 @@ let t_channel_output () =
     match msg2' with
     | Ssh.Msg_channel_data (id, buf) ->
       assert (id = Int32.zero);
-      let d'' = Cstruct.shift d (64 * 1024) in
-      let d'' = Cstruct.sub d'' 0 (32 * 1024) in
-      assert (Cstruct.equal buf d'');
+      let d'' = String.sub d (64 * 1024) (32 * 1024) in
+      assert (String.equal buf d'');
       Ok ()
     | _ -> Error "unexpected msg2'"
   in
   (* Case 3: See if peer window is respected, one byte will be outside the window *)
   let* c', msgs' = Channel.output_data ~flush:false c d in
-  let exp_nmsgs' = 1 + Cstruct.length d / Int32.to_int Ssh.channel_max_pkt_len in
+  let exp_nmsgs' = 1 + String.length d / Int32.to_int Ssh.channel_max_pkt_len in
   (* printf "exp_nmsgs = %d (%d/%d) l=%d\n%!"
    *   exp_nmsgs'
    *   (Cstruct.len d)
@@ -533,22 +547,19 @@ let t_channel_output () =
       | _ -> invalid_arg "unexpected buf")
       msgs'
   in
-  let rebuild' =
-    List.fold_left (fun a buf -> Cstruct.append a buf)
-      (Cstruct.create 0) bufs'
-  in
+  let rebuild' = String.concat "" bufs' in
   (* dwin is all of d that fit the window, one byte was out *)
-  let dwin' = Cstruct.sub d 0 (Cstruct.length d - 1) in
-  assert (Cstruct.equal rebuild' dwin');
+  let dwin' = String.sub d 0 (String.length d - 1) in
+  assert (String.equal rebuild' dwin');
   (* Now check if the byte outside of the window is there, and makes sense *)
-  assert (Cstruct.length c'.Channel.tosend = 1);
+  assert (String.length c'.Channel.tosend = 1);
   assert (Channel.(c'.them.win) = Int32.zero);
-  let d'' = Cstruct.shift d (Cstruct.length d - 1) in
-  assert (Cstruct.equal d'' Channel.(c'.tosend));
+  let d'' = String.sub d (String.length d - 1) 1 in
+  assert (String.equal d'' Channel.(c'.tosend));
   (* Case 4: Widen the window, see if we get our byte back *)
   let* c'', msgs' = Channel.adjust_window c' (Int32.of_int 100) in
   assert ((List.length msgs') = 1);
-  assert (Cstruct.length c''.Channel.tosend = 0);
+  assert (String.length c''.Channel.tosend = 0);
   assert (Channel.(c''.them.win) = (Int32.of_int 99));
   test_ok
 

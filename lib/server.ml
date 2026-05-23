@@ -44,7 +44,7 @@ type userauth =
 type event =
   | Channel_exec of (int32 * string)
   | Channel_subsystem of (int32 * string)
-  | Channel_data of (int32 * Cstruct.t)
+  | Channel_data of (int32 * string)
   | Channel_eof of int32
   | Disconnected of string
   | Userauth of string * userauth
@@ -56,7 +56,7 @@ type event =
 let pp_event ppf = function
   | Channel_exec (c, cmd) -> Fmt.pf ppf "channel exec %lu: %S" c cmd
   | Channel_subsystem (c, cmd) -> Fmt.pf ppf "channel subsystem %lu: %S" c cmd
-  | Channel_data (c, data) -> Fmt.pf ppf "channel data %lu: %d bytes" c (Cstruct.length data)
+  | Channel_data (c, data) -> Fmt.pf ppf "channel data %lu: %d bytes" c (String.length data)
   | Channel_eof c -> Fmt.pf ppf "channel end-of-file %lu" c
   | Disconnected s -> Fmt.pf ppf "disconnected with messsage %S" s
   | Userauth (user, Password _) -> Fmt.pf ppf "userauth password for %S" user
@@ -215,7 +215,7 @@ let input_userauth_request t username service auth_method =
   let* () = guard (service = "ssh-connection") "Bad service" in
   match auth_method with
   | Pubkey (pkalg, pubkey_raw, None) -> (* Public key probing *)
-    begin match Wire.pubkey_of_blob pubkey_raw with
+    begin match Wire.pubkey_of_blob (pubkey_raw, 0) with
       | Ok pubkey when Hostkey.comptible_alg pubkey pkalg ->
         try_probe t pubkey
       | Ok _ ->
@@ -230,7 +230,7 @@ let input_userauth_request t username service auth_method =
         disconnect t DISCONNECT_PROTOCOL_ERROR "public key decoding failed"
     end
   | Pubkey (pkalg, pubkey_raw, Some (sig_alg, signed)) -> (* Public key authentication *)
-    begin match Wire.pubkey_of_blob pubkey_raw with
+    begin match Wire.pubkey_of_blob (pubkey_raw, 0) with
       | Ok pubkey when Hostkey.comptible_alg pubkey pkalg &&
                        String.equal pkalg sig_alg ->
         (* NOTE: for backwards compatibility with older OpenSSH clients we
@@ -275,7 +275,7 @@ let input_userauth_request t username service auth_method =
     in
     if service <> "ssh-connection" then
       disconnect t DISCONNECT_SERVICE_NOT_AVAILABLE
-        (sprintf "Don't know service `%s`" service)
+        (Printf.sprintf "Don't know service `%s`" service)
     else if prev_username <> username || prev_service <> service then
       disconnect t DISCONNECT_PROTOCOL_ERROR
         "Username or service changed during authentication"
@@ -542,7 +542,7 @@ let input_msg t msg now =
         (Msg_service_accept service)
     else
       make_disconnect t DISCONNECT_SERVICE_NOT_AVAILABLE
-        (sprintf "service %s not available" service)
+        (Printf.sprintf "service %s not available" service)
   | Msg_userauth_request (username, service, auth_method) ->
     input_userauth_request t username service auth_method
   | Msg_channel_open (send_channel, init_win_size, max_pkt_size, data) ->
@@ -600,7 +600,7 @@ let output_msg t msg =
   | _ -> Ok (t, buf)
 
 let output_channel_data t id data =
-  let* () = guard (Cstruct.length data > 0) "empty data" in
+  let* () = guard (String.length data > 0) "empty data" in
   let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
   let* c, frags = Channel.output_data ~flush:false c data in
   Ok ({ t with channels = Channel.update c t.channels }, frags)

@@ -93,8 +93,6 @@ let priv_to_typ = function
 
 let alg_matches typ alg = List.mem alg (algs_of_typ typ)
 
-let signature_equal = Cstruct.equal
-
 let sign alg priv blob =
   match priv with
   | Rsa_priv priv ->
