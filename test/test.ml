@@ -280,9 +280,9 @@ let t_key_exchange () =
 
 let t_namelist () =
   let s = ["The";"Conquest";"Of";"Bread"] in
-  let b = Bytes.create 0xffff in (* TODO length *)
-  let off = Wire.put_nl (b, 0) s in
-  let buf = String.sub (Bytes.unsafe_to_string b) 0 off in
+  let b = Buffer.create 14 in
+  Wire.put_nl b s;
+  let buf = Buffer.contents b in
   assert (String.length buf = 4 + String.length (String.concat "," s));
   assert (s = fst (Result.get_ok (Wire.get_nl buf 0)));
   test_ok
@@ -312,31 +312,32 @@ let t_mpint () =
   (*
    * Case 2: Test identity
    *)
-  let raw = Bytes.create 7 in
-  let _off = Wire.put_mpint (raw, 0) mpint in
-  assert (mpint =
-          (fst @@ Result.get_ok
-             (Wire.get_mpint (Bytes.unsafe_to_string raw) 0)));
+  let buf = Buffer.create 7 in
+  Wire.put_mpint buf mpint;
+  let raw = Buffer.contents buf in
+  assert (mpint = (fst @@ Result.get_ok (Wire.get_mpint raw 0)));
 
   (*
    * Case 3: Test the other way from 1, one zero must be prepended
    * since the first byte is negative (0xff).
    *)
-  let off = Wire.put_mpint (raw, 0) mpint in
+  Buffer.reset buf;
+  Wire.put_mpint buf mpint;
+  let raw = Buffer.contents buf in
   (* 4 for header + 1 zero prepended + 2 data*)
-  assert (off = 4 + 1 + 2);
-  let buf' = Bytes.unsafe_to_string raw in
-  assert_byte buf' 0 0x00;
-  assert_byte buf' 1 0x00;
-  assert_byte buf' 2 0x00;
-  assert_byte buf' 3 0x03;
-  assert_byte buf' 4 0x00;
-  assert_byte buf' 5 0xff;
-  assert_byte buf' 6 0x02;
+  assert (String.length raw = 4 + 1 + 2);
+  assert_byte raw 0 0x00;
+  assert_byte raw 1 0x00;
+  assert_byte raw 2 0x00;
+  assert_byte raw 3 0x03;
+  assert_byte raw 4 0x00;
+  assert_byte raw 5 0xff;
+  assert_byte raw 6 0x02;
 
   (*
    * Case 4: Make sure negative are errors.
    *)
+  let raw = Bytes.of_string raw in
   Bytes.set_uint8 raw 4 0x80;
   let e = Result.get_error (Wire.get_mpint (Bytes.unsafe_to_string raw) 0) in
   assert (e = "Negative mpint");

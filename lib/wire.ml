@@ -22,17 +22,15 @@ let get_uint32 buf off =
   trap_error (fun () ->
       Ok (String.get_int32_be buf off, off + 4))
 
-let put_uint32 (buf, off) value =
-  Bytes.set_int32_be buf off value;
-  off + 4
+let put_uint32 buf value =
+  Buffer.add_int32_be buf value
 
 let get_uint8 buf off =
   trap_error (fun () ->
       Ok (String.get_uint8 buf off, off + 1))
 
-let put_uint8 (buf, off) value =
-  Bytes.set_uint8 buf off value;
-  off + 1
+let put_uint8 buf value =
+  Buffer.add_uint8 buf value
 
 let get_bool buf off =
   let* b, off' = get_uint8 buf off in
@@ -49,19 +47,13 @@ let get_string buf off =
       Ssh.guard_sshlen_exn len;
       Ok ((String.sub buf off' len), off' + len))
 
-let put_string (buf, off) s =
+let put_string buf s =
   let len = String.length s in
-  let off = put_uint32 (buf, off) (Int32.of_int len) in
-  Bytes.blit_string s 0 buf off len;
-  off + len
-
-let put_raw (buf, off) data =
-  let len = String.length data in
-  Bytes.blit_string data 0 buf off len;
-  off + len
+  put_uint32 buf (Int32.of_int len);
+  Buffer.add_string buf s
 
 let put_random t len =
-  put_raw t (Mirage_crypto_rng.generate len)
+  Buffer.add_string t (Mirage_crypto_rng.generate len)
 
 let get_mpint ?(signed = true) buf off =
   trap_error (fun () ->
@@ -79,18 +71,16 @@ let get_mpint ?(signed = true) buf off =
           Ok (Mirage_crypto_pk.Z_extra.of_octets_be mpbuf,
               off' + len))
 
-let put_mpint ?(signed = true) (buf, off) mpint =
+let put_mpint ?(signed = true) buf mpint =
   let mpbuf = Mirage_crypto_pk.Z_extra.to_octets_be mpint in
   let mplen = String.length mpbuf in
-  let off' =
-    if signed && mplen > 0 &&
-       ((String.get_uint8 mpbuf 0) land 0x80) <> 0 then
-      let off = put_uint32 (buf, off) (Int32.of_int (succ mplen)) in
-      put_uint8 (buf, off) 0;
-    else
-      put_uint32 (buf, off) (Int32.of_int mplen)
-  in
-  put_raw (buf, off') mpbuf
+  if signed && mplen > 0 &&
+     ((String.get_uint8 mpbuf 0) land 0x80) <> 0 then begin
+    put_uint32 buf (Int32.of_int (succ mplen));
+    put_uint8 buf 0
+  end else
+    put_uint32 buf (Int32.of_int mplen);
+  Buffer.add_string buf mpbuf
 
 let get_message_id buf off =
   let* id, off' = get_uint8 buf off in
@@ -109,35 +99,18 @@ let put_nl t nl =
   put_string t (String.concat "," nl)
 
 let blob_of_pubkey pk =
-  let len =
-    match pk with
-    | Hostkey.Rsa_pub rsa ->
-      let bytes bits = 1 + ((bits - 1) / 8) in
-      let open Mirage_crypto_pk.Rsa in
-      (* 4 byte length + maybe 1 byte signed + data *)
-      5 + bytes (Z.numbits rsa.e) + 5 + bytes (Z.numbits rsa.n)
-    | Hostkey.Ed25519_pub _ ->
-      (* 3 byte length + public key *)
-      4 + 32
-  in
   let name = Hostkey.sshname pk in
-  let buf = Bytes.create (len + 4 + String.length name) in
-  let off = put_string (buf, 0) name in
-  let off =
-    match pk with
-    | Hostkey.Rsa_pub rsa ->
-      let open Mirage_crypto_pk.Rsa in
-      let off = put_mpint (buf, off) rsa.e in
-      put_mpint (buf, off) rsa.n
-    | Hostkey.Ed25519_pub pub ->
-      let pub_str = Mirage_crypto_ec.Ed25519.pub_to_octets pub in
-      put_string (buf, off) pub_str
-  in
-  let s = Bytes.unsafe_to_string buf in
-  if off = len then
-    s
-  else
-    String.sub s 0 off
+  let buf = Buffer.create 14 in
+  put_string buf name;
+  (match pk with
+   | Hostkey.Rsa_pub rsa ->
+     let open Mirage_crypto_pk.Rsa in
+     put_mpint buf rsa.e;
+     put_mpint buf rsa.n
+   | Hostkey.Ed25519_pub pub ->
+     let pub_str = Mirage_crypto_ec.Ed25519.pub_to_octets pub in
+     put_string buf pub_str);
+  Buffer.contents buf
 
 let pubkey_of_blob (buf, off) =
   let* key_type, off =
@@ -290,25 +263,24 @@ let put_kexinit t kex =
               kex.languages_ctos;
               kex.languages_stoc; ]
   in
-  let off = put_raw t kex.cookie in
-  let buf = fst t in
-  let off = List.fold_left (fun off nl -> put_nl (buf, off) nl) off nll in
-  let off = put_bool (buf, off) kex.first_kex_packet_follows in
-  put_uint32 (buf, off) Int32.zero
+  Buffer.add_string t kex.cookie;
+  List.iter (put_nl t) nll;
+  put_bool t kex.first_kex_packet_follows;
+  put_uint32 t Int32.zero
 
 let blob_of_kexinit kex =
-  let b = Bytes.create 0xffff (* TODO length *) in
-  let off = put_message_id (b, 0) Ssh.MSG_KEXINIT in
-  let off = put_kexinit (b, off) kex in
-  String.sub (Bytes.unsafe_to_string b) 0 off
+  let b = Buffer.create 14 in
+  put_message_id b Ssh.MSG_KEXINIT;
+  put_kexinit b kex;
+  Buffer.contents b
 
-let rec put_extensions (buf, off) extensions =
+let rec put_extensions buf extensions =
   match extensions with
-  | [] -> off
+  | [] -> ()
   | Ssh.Extension { name; value } :: extensions ->
-    let off = put_string (buf, off) name in
-    let off = put_string (buf, off) value in
-    put_extensions (buf, off) extensions
+    put_string buf name;
+    put_string buf value;
+    put_extensions buf extensions
 
 let get_signature_raw buf off =
   let* blob, off' = get_string buf off in
@@ -325,40 +297,39 @@ let get_signature buf off =
 
 let put_signature_raw t (alg, signature) =
   let blob =
-    let b = Bytes.create 0xffff in (* TODO: length *)
-    let off = put_string (b, 0) alg in
-    let off = put_string (b, off) signature in
-    String.sub (Bytes.unsafe_to_string b) 0 off
+    let b = Buffer.create 14 in
+    put_string b alg;
+    put_string b signature;
+    Buffer.contents b
   in
   put_string t blob
 
 let put_signature t (alg, signature) =
   put_signature_raw t (Hostkey.alg_to_string alg, signature)
 
-let put_channel_data (buf, off) channel_data =
+let put_channel_data buf channel_data =
   let open Ssh in
   match channel_data with
-  | Session -> off
+  | Session -> ()
   | X11 (address, port) ->
-    let off = put_string (buf, off) address in
-    put_uint32 (buf, off) port
+    put_string buf address;
+    put_uint32 buf port
   | Forwarded_tcpip (con_addr, con_port, origin_addr, origin_port) ->
-    let off = put_string (buf, off) con_addr in
-    let off = put_uint32 (buf, off) con_port in
-    let off = put_string (buf, off) origin_addr in
-    put_uint32 (buf, off) origin_port
+    put_string buf con_addr;
+    put_uint32 buf con_port;
+    put_string buf origin_addr;
+    put_uint32 buf origin_port
   | Direct_tcpip (addr, port, origin_addr, origin_port) ->
-    let off = put_string (buf, off) addr in
-    let off = put_uint32 (buf, off) port in
-    let off = put_string (buf, off) origin_addr in
-    put_uint32 (buf, off) origin_port
-  | Raw_data data -> put_raw (buf, off) data
+    put_string buf addr;
+    put_uint32 buf port;
+    put_string buf origin_addr;
+    put_uint32 buf origin_port
+  | Raw_data data -> Buffer.add_string buf data
 
 let blob_of_channel_data channel_data =
-  (* TODO figure out length *)
-  let b = Bytes.create 0xffff in
-  let off = put_channel_data (b, 0) channel_data in
-  String.sub (Bytes.unsafe_to_string b) 0 off
+  let b = Buffer.create 14 in
+  put_channel_data b channel_data;
+  Buffer.contents b
 
 let get_message buf =
   let open Ssh in
@@ -723,156 +694,154 @@ let userauth_info_request buf =
   let* prompts = collect_prompts buf off [] (Int32.to_int num_prompts) in
   Ok (Ssh.Msg_userauth_info_request (name, instruction, lang, prompts))
 
-let put_message (buf, off) msg =
+let put_message buf msg =
   let open Ssh in
   let put_id = put_message_id in (* save some columns *)
   match msg with
   | Msg_disconnect (code, desc, lang) ->
-    let off = put_id (buf, off) MSG_DISCONNECT in
-    let off = put_uint32 (buf, off) (disconnect_code_to_int code) in
-    let off = put_string (buf, off) desc in
-    put_string (buf, off) lang
+    put_id buf MSG_DISCONNECT;
+    put_uint32 buf (disconnect_code_to_int code);
+    put_string buf desc;
+    put_string buf lang
   | Msg_ignore s ->
-    let off = put_id (buf, off) MSG_IGNORE in
-    put_string (buf, off) s
+    put_id buf MSG_IGNORE;
+    put_string buf s
   | Msg_unimplemented x ->
-    let off = put_id (buf, off) MSG_UNIMPLEMENTED in
-    put_uint32 (buf, off) x
+    put_id buf MSG_UNIMPLEMENTED;
+    put_uint32 buf x
   | Msg_debug (always_display, message, lang) ->
-    let off = put_id (buf, off) MSG_DEBUG in
-    let off = put_bool (buf, off) always_display in
-    let off = put_string (buf, off) message in
-    put_string (buf, off) lang
+    put_id buf MSG_DEBUG;
+    put_bool buf always_display;
+    put_string buf message;
+    put_string buf lang
   | Msg_service_request s ->
-    let off= put_id (buf, off) MSG_SERVICE_REQUEST in
-    put_string (buf, off) s
+    put_id buf MSG_SERVICE_REQUEST;
+    put_string buf s
   | Msg_service_accept s ->
-    let off = put_id (buf, off) MSG_SERVICE_ACCEPT in
-    put_string (buf, off) s
+    put_id buf MSG_SERVICE_ACCEPT;
+    put_string buf s
   | Msg_kexinit kex ->
-    let off = put_id (buf, off) MSG_KEXINIT in
-    put_kexinit (buf, off) kex
+    put_id buf MSG_KEXINIT;
+    put_kexinit buf kex
   | Msg_ext_info extensions ->
     let nr_extensions = List.length extensions in
-    let off = put_id (buf, off) MSG_EXT_INFO in
+    put_id buf MSG_EXT_INFO;
     (* XXX: overflow *)
-    let off = put_uint32 (buf, off) (Int32.of_int nr_extensions) in
-    put_extensions (buf, off) extensions
+    put_uint32 buf (Int32.of_int nr_extensions);
+    put_extensions buf extensions
   | Msg_newkeys ->
-    put_id (buf, off) MSG_NEWKEYS
+    put_id buf MSG_NEWKEYS
   | Msg_kexdh_init e ->
-    let off = put_id (buf, off) MSG_KEX_0 in
-    put_mpint (buf, off) e
+    put_id buf MSG_KEX_0;
+    put_mpint buf e
   | Msg_kexdh_reply (k_s, f, signature) ->
-    let off = put_id (buf, off) MSG_KEX_1 in
-    let off = put_pubkey (buf, off) k_s in
-    let off = put_mpint (buf, off) f in
-    put_signature (buf, off) signature
+    put_id buf MSG_KEX_1;
+    put_pubkey buf k_s;
+    put_mpint buf f;
+    put_signature buf signature
   | Msg_kexecdh_init e ->
-    let off = put_id (buf, off) MSG_KEX_0 in
-    put_mpint ~signed:false (buf, off) e
+    put_id buf MSG_KEX_0;
+    put_mpint ~signed:false buf e
   | Msg_kexecdh_reply (k_s, f, signature) ->
-    let off = put_id (buf, off) MSG_KEX_1 in
-    let off = put_pubkey (buf, off) k_s in
-    let off = put_mpint ~signed:false (buf, off) f in
-    put_signature (buf, off) signature
+    put_id buf MSG_KEX_1;
+    put_pubkey buf k_s;
+    put_mpint ~signed:false buf f;
+    put_signature buf signature
   | Msg_kexdh_gex_request (min, n, max) ->
-    let off = put_id (buf, off) MSG_KEX_4 in
-    let off = put_uint32 (buf, off) min in
-    let off = put_uint32 (buf, off) n in
-    put_uint32 (buf, off) max
+    put_id buf MSG_KEX_4;
+    put_uint32 buf min;
+    put_uint32 buf n;
+    put_uint32 buf max
   | Msg_kexdh_gex_group (p, g) ->
-    let off = put_id (buf, off) MSG_KEX_1 in
-    let off = put_mpint (buf, off) p in
-    put_mpint (buf, off) g
+    put_id buf MSG_KEX_1;
+    put_mpint buf p;
+    put_mpint buf g
   | Msg_kexdh_gex_init e ->
-    let off = put_id (buf, off) MSG_KEX_2 in
-    put_mpint (buf, off) e
+    put_id buf MSG_KEX_2;
+    put_mpint buf e
   | Msg_kexdh_gex_reply (k_s, f, signature) ->
-    let off = put_id (buf, off) MSG_KEX_3 in
-    let off = put_pubkey (buf, off) k_s in
-    let off = put_mpint (buf, off) f in
-    put_signature (buf, off) signature
+    put_id buf MSG_KEX_3;
+    put_pubkey buf k_s;
+    put_mpint buf f;
+    put_signature buf signature
   | Msg_kex _ -> assert false
   | Msg_userauth_request (user, service, auth_method) ->
-    let off = put_id (buf, off) MSG_USERAUTH_REQUEST in
-    let off = put_string (buf, off) user in
-    let off = put_string (buf, off) service in
+    put_id buf MSG_USERAUTH_REQUEST;
+    put_string buf user;
+    put_string buf service;
     (match auth_method with
      | Pubkey (sig_alg_raw, pubkey_raw, signature) ->
-       let off = put_string (buf, off) "publickey" in
-       let off = put_bool (buf, off) (Option.is_some signature) in
-       let off = put_string (buf, off) sig_alg_raw in
-       let off = put_string (buf, off) pubkey_raw in
+       put_string buf "publickey";
+       put_bool buf (Option.is_some signature);
+       put_string buf sig_alg_raw;
+       put_string buf pubkey_raw;
        (match signature with
-        | None -> off
-        | Some signature -> put_signature_raw (buf, off) signature)
+        | None -> ()
+        | Some signature -> put_signature_raw buf signature)
      | Password (password, oldpassword) ->
-       let off = put_string (buf, off) "password" in
+       put_string buf "password";
        (match oldpassword with
         | None ->
-          let off = put_bool (buf, off) false in
-          put_string (buf, off) password
+          put_bool buf false;
+          put_string buf password
         | Some oldpassword ->
-          let off = put_bool (buf, off) true in
-          let off = put_string (buf, off) oldpassword in
-          put_string (buf, off) password)
+          put_bool buf true;
+          put_string buf oldpassword;
+          put_string buf password)
      | Keyboard_interactive (lopt, submeths) ->
-       let off = put_string (buf, off) "keyboard-interactive" in
-       let off = put_string (buf, off) (Option.value ~default:"" lopt) in
-       put_string (buf, off) (String.concat "," submeths)
-     | Authnone -> put_string (buf, off) "none")
+       put_string buf "keyboard-interactive";
+       put_string buf (Option.value ~default:"" lopt);
+       put_string buf (String.concat "," submeths)
+     | Authnone -> put_string buf "none")
   | Msg_userauth_failure (nl, psucc) ->
-    let off = put_id (buf, off) MSG_USERAUTH_FAILURE in
-    let off = put_nl (buf, off) nl in
-    put_bool (buf, off) psucc
+    put_id buf MSG_USERAUTH_FAILURE;
+    put_nl buf nl;
+    put_bool buf psucc
   | Msg_userauth_success ->
-    put_id (buf, off) MSG_USERAUTH_SUCCESS
+    put_id buf MSG_USERAUTH_SUCCESS
   | Msg_userauth_banner (message, lang) ->
-    let off = put_id (buf, off) MSG_USERAUTH_BANNER in
-    let off = put_string (buf, off) message in
-    put_string (buf, off) lang
+    put_id buf MSG_USERAUTH_BANNER;
+    put_string buf message;
+    put_string buf lang
   | Msg_userauth_pk_ok pubkey ->
-    let off = put_id (buf, off) MSG_USERAUTH_1 in
-    let off = put_string (buf, off) (Hostkey.sshname pubkey) in
-    put_pubkey (buf, off) pubkey
+    put_id buf MSG_USERAUTH_1;
+    put_string buf (Hostkey.sshname pubkey);
+    put_pubkey buf pubkey
   | Msg_userauth_info_request (name, instruction, lang, prompts) ->
-    let off = put_id (buf, off) MSG_USERAUTH_1 in
-    let off = put_string (buf, off) name in
-    let off = put_string (buf, off) instruction in
-    let off = put_string (buf, off) lang in
-    let off = put_uint32 (buf, off) (Int32.of_int (List.length prompts)) in
-    List.fold_left (fun off (prompt, echo) ->
-        let off = put_string (buf, off) prompt in
-        put_bool (buf, off) echo)
-      off prompts
+    put_id buf MSG_USERAUTH_1;
+    put_string buf name;
+    put_string buf instruction;
+    put_string buf lang;
+    put_uint32 buf (Int32.of_int (List.length prompts));
+    List.iter (fun (prompt, echo) ->
+        put_string buf prompt;
+        put_bool buf echo)
+      prompts
   | Msg_userauth_info_response passwords ->
-    let off = put_id (buf, off) MSG_USERAUTH_2 in
-    let off = put_uint32 (buf, off) (Int32.of_int (List.length passwords)) in
-    List.fold_left (fun off password ->
-        put_string (buf, off) password)
-      off passwords
+    put_id buf MSG_USERAUTH_2;
+    put_uint32 buf (Int32.of_int (List.length passwords));
+    List.iter (put_string buf) passwords
   | Msg_userauth_1 _ -> assert false
   | Msg_userauth_2 _ -> assert false
   | Msg_global_request (request, want_reply, global_request) ->
-    let off = put_id (buf, off) MSG_GLOBAL_REQUEST in
-    let off = put_string (buf, off) request in
-    let off = put_bool (buf, off) want_reply in
+    put_id buf MSG_GLOBAL_REQUEST;
+    put_string buf request;
+    put_bool buf want_reply;
     (match global_request with
      | Tcpip_forward (address, port) ->
-       let off = put_string (buf, off) address in
-       put_uint32 (buf, off) port
+       put_string buf address;
+       put_uint32 buf port
      | Cancel_tcpip_forward (address, port) ->
-       let off = put_string (buf, off) address in
-       put_uint32 (buf, off) port
+       put_string buf address;
+       put_uint32 buf port
      | Unknown_request _ -> assert false)
   | Msg_request_success (req_data) ->
-    let off = put_id (buf, off) MSG_REQUEST_SUCCESS in
+    put_id buf MSG_REQUEST_SUCCESS;
     (match req_data with
-     | Some data -> put_string (buf, off) data
-     | None -> off)
+     | Some data -> put_string buf data
+     | None -> ())
   | Msg_request_failure ->
-    put_id (buf, off) MSG_REQUEST_FAILURE
+    put_id buf MSG_REQUEST_FAILURE
   | Msg_channel_open (channel, init_win, max_pkt, data) ->
     let request = match data with
       | Session -> "session"
@@ -881,45 +850,45 @@ let put_message (buf, off) msg =
       | Direct_tcpip _ -> "direct-tcpip"
       | Raw_data _ -> invalid_arg "Unknown channel type"
     in
-    let off = put_id (buf, off) MSG_CHANNEL_OPEN in
-    let off = put_string (buf, off) request in
-    let off = put_uint32 (buf, off) channel in
-    let off = put_uint32 (buf, off) init_win in
-    let off = put_uint32 (buf, off) max_pkt in
-    put_channel_data (buf, off) data
+    put_id buf MSG_CHANNEL_OPEN;
+    put_string buf request;
+    put_uint32 buf channel;
+    put_uint32 buf init_win;
+    put_uint32 buf max_pkt;
+    put_channel_data buf data
   | Msg_channel_open_confirmation (recp_channel, send_channel,
                                    init_win, max_pkt, data) ->
-    let off = put_id (buf, off) MSG_CHANNEL_OPEN_CONFIRMATION in
-    let off = put_uint32 (buf, off) recp_channel in
-    let off = put_uint32 (buf, off) send_channel in
-    let off = put_uint32 (buf, off) init_win in
-    let off = put_uint32 (buf, off) max_pkt in
-    put_raw (buf, off) data
+    put_id buf MSG_CHANNEL_OPEN_CONFIRMATION;
+    put_uint32 buf recp_channel;
+    put_uint32 buf send_channel;
+    put_uint32 buf init_win;
+    put_uint32 buf max_pkt;
+    Buffer.add_string buf data
   | Msg_channel_open_failure (recp_channel, reason, desc, lang) ->
-    let off = put_id (buf, off) MSG_CHANNEL_OPEN_FAILURE in
-    let off = put_uint32 (buf, off) recp_channel in
-    let off = put_uint32 (buf, off) reason in
-    let off = put_string (buf, off) desc in
-    put_string (buf, off) lang
+    put_id buf MSG_CHANNEL_OPEN_FAILURE;
+    put_uint32 buf recp_channel;
+    put_uint32 buf reason;
+    put_string buf desc;
+    put_string buf lang
   | Msg_channel_window_adjust (channel, n) ->
-    let off = put_id (buf, off) MSG_CHANNEL_WINDOW_ADJUST in
-    let off = put_uint32 (buf, off) channel in
-    put_uint32 (buf, off) n
+    put_id buf MSG_CHANNEL_WINDOW_ADJUST;
+    put_uint32 buf channel;
+    put_uint32 buf n
   | Msg_channel_data (channel, data) ->
-    let off = put_id (buf, off) MSG_CHANNEL_DATA in
-    let off = put_uint32 (buf, off) channel in
-    put_string (buf, off) data
+    put_id buf MSG_CHANNEL_DATA;
+    put_uint32 buf channel;
+    put_string buf data
   | Msg_channel_extended_data (channel, data_type, data) ->
-    let off = put_id (buf, off) MSG_CHANNEL_EXTENDED_DATA in
-    let off = put_uint32 (buf, off) channel in
-    let off = put_uint32 (buf, off) data_type in
-    put_string (buf, off) data
+    put_id buf MSG_CHANNEL_EXTENDED_DATA;
+    put_uint32 buf channel;
+    put_uint32 buf data_type;
+    put_string buf data
   | Msg_channel_eof channel ->
-    let off = put_id (buf, off) MSG_CHANNEL_EOF in
-    put_uint32 (buf, off) channel
+    put_id buf MSG_CHANNEL_EOF;
+    put_uint32 buf channel
   | Msg_channel_close channel ->
-    let off = put_id (buf, off) MSG_CHANNEL_CLOSE in
-    put_uint32 (buf, off) channel
+    put_id buf MSG_CHANNEL_CLOSE;
+    put_uint32 buf channel
   | Msg_channel_request (channel, want_reply, data) ->
     let request = match data with
       | Pty_req _ -> "pty-req"
@@ -935,52 +904,52 @@ let put_message (buf, off) msg =
       | Exit_signal _ -> "exit-signal"
       | Raw_data _ -> invalid_arg "Unknown channel request type"
     in
-    let off = put_id (buf, off) MSG_CHANNEL_REQUEST in
-    let off = put_uint32 (buf, off) channel in
-    let off = put_string (buf, off) request in
-    let off = put_bool (buf, off) want_reply in
+    put_id buf MSG_CHANNEL_REQUEST;
+    put_uint32 buf channel;
+    put_string buf request;
+    put_bool buf want_reply;
     (match data with
      | Pty_req (term_env, width_char, height_row, width_px, height_px,
                 term_modes) ->
-       let off = put_string (buf, off) term_env in
-       let off = put_uint32 (buf, off) width_char in
-       let off = put_uint32 (buf, off) height_row in
-       let off = put_uint32 (buf, off) width_px in
-       let off = put_uint32 (buf, off) height_px in
-       put_string (buf, off) term_modes
+       put_string buf term_env;
+       put_uint32 buf width_char;
+       put_uint32 buf height_row;
+       put_uint32 buf width_px;
+       put_uint32 buf height_px;
+       put_string buf term_modes
      | X11_req (single_con, x11_auth_proto, x11_auth_cookie, x11_screen_nr) ->
-       let off = put_bool (buf, off) single_con in
-       let off = put_string (buf, off) x11_auth_proto in
-       let off = put_string (buf, off) x11_auth_cookie in
-       put_uint32 (buf, off) x11_screen_nr
+       put_bool buf single_con;
+       put_string buf x11_auth_proto;
+       put_string buf x11_auth_cookie;
+       put_uint32 buf x11_screen_nr
      | Env (name, value) ->
-       let off = put_string (buf, off) name in
-       put_string (buf, off) value
-     | Shell -> off
-     | Exec command -> put_string (buf, off) command
-     | Subsystem name -> put_string (buf, off) name
+       put_string buf name;
+       put_string buf value
+     | Shell -> ()
+     | Exec command -> put_string buf command
+     | Subsystem name -> put_string buf name
      | Window_change (width_char, height_row, width_px, height_px) ->
-       let off = put_uint32 (buf, off) width_char in
-       let off = put_uint32 (buf, off) height_row in
-       let off = put_uint32 (buf, off) width_px in
-       put_uint32 (buf, off) height_px
-     | Xon_xoff client_can_do -> put_bool (buf, off) client_can_do
-     | Signal name -> put_string (buf, off) name
-     | Exit_status status -> put_uint32 (buf, off) status
+       put_uint32 buf width_char;
+       put_uint32 buf height_row;
+       put_uint32 buf width_px;
+       put_uint32 buf height_px
+     | Xon_xoff client_can_do -> put_bool buf client_can_do
+     | Signal name -> put_string buf name
+     | Exit_status status -> put_uint32 buf status
      | Exit_signal (name, core_dumped, message, lang) ->
-       let off = put_string (buf, off) name in
-       let off = put_bool (buf, off) core_dumped in
-       let off = put_string (buf, off) message in
-       put_string (buf, off) lang
+       put_string buf name;
+       put_bool buf core_dumped;
+       put_string buf message;
+       put_string buf lang
      | Raw_data _ -> invalid_arg "Unknown channel request type")
   | Msg_channel_success channel ->
-    let off = put_id (buf, off) MSG_CHANNEL_SUCCESS in
-    put_uint32 (buf, off) channel
+    put_id buf MSG_CHANNEL_SUCCESS;
+    put_uint32 buf channel
   | Msg_channel_failure channel ->
-    let off = put_id (buf, off) MSG_CHANNEL_FAILURE in
-    put_uint32 (buf, off) channel
+    put_id buf MSG_CHANNEL_FAILURE;
+    put_uint32 buf channel
   | Msg_version version ->  (* Mocked up version message *)
-    put_raw (buf, off) (version ^ "\r\n")
+    Buffer.add_string buf (version ^ "\r\n")
 
 let get_version buf =
   (* Fetches next line, returns maybe a string and the remainder of buf *)

@@ -301,9 +301,9 @@ let derive_keys digesti k h session_id neg now =
   let mac_ctos = neg.mac_alg_ctos in
   let mac_stoc = neg.mac_alg_stoc in
   let k =
-    let b = Bytes.create 0xffff in (* TODO: length *)
-    let off = Wire.put_mpint (b, 0) k in
-    String.sub (Bytes.unsafe_to_string b) 0 off
+    let b = Buffer.create 14 in
+    Wire.put_mpint b k;
+    Buffer.contents b
   in
   let hash ch need =
     let rec expand kn =
@@ -367,39 +367,35 @@ module Dh = struct
   let compute_hash ?(signed = false) neg ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
     let (module H) = hash_of_alg neg.kex_alg in
     let open Wire in
-    let b = Bytes.create 0xffff in (* TODO: length *)
-    let off = put_string (b, 0) v_c in
-    let off = put_string (b, off) v_s in
-    let off = put_string (b, off) i_c in
-    let off = put_string (b, off) i_s in
-    let off = put_string (b, off) (blob_of_pubkey k_s) in
-    let off = put_mpint ~signed (b, off) e in
-    let off = put_mpint ~signed (b, off) f in
-    let off = put_mpint (b, off) k in
-    let s = String.sub (Bytes.unsafe_to_string b) 0 off in
-    H.digest_string s |>
-    H.to_raw_string
+    let b = Buffer.create 14 in
+    put_string b v_c;
+    put_string b v_s;
+    put_string b i_c;
+    put_string b i_s;
+    put_string b (blob_of_pubkey k_s);
+    put_mpint ~signed b e;
+    put_mpint ~signed b f;
+    put_mpint b k;
+    Buffer.contents b |> H.digest_string |> H.to_raw_string
 
   let compute_hash_gex neg ~v_c ~v_s ~i_c ~i_s ~k_s ~min ~n ~max ~p ~g ~e ~f ~k =
     let (module H) = hash_of_alg neg.kex_alg in
     let open Wire in
-    let b = Bytes.create 0xffff in (* TODO: length *)
-    let off = put_string (b, 0) v_c in
-    let off = put_string (b, off) v_s in
-    let off = put_string (b, off) i_c in
-    let off = put_string (b, off) i_s in
-    let off = put_string (b, off) (blob_of_pubkey k_s) in
-    let off = put_uint32 (b, off) min in
-    let off = put_uint32 (b, off) n in
-    let off = put_uint32 (b, off) max in
-    let off = put_mpint (b, off) p in
-    let off = put_mpint (b, off) g in
-    let off = put_mpint (b, off) e in
-    let off = put_mpint (b, off) f in
-    let off = put_mpint (b, off) k in
-    let s = String.sub (Bytes.unsafe_to_string b) 0 off in
-    H.digest_string s |>
-    H.to_raw_string
+    let b = Buffer.create 14 in
+    put_string b v_c;
+    put_string b v_s;
+    put_string b i_c;
+    put_string b i_s;
+    put_string b (blob_of_pubkey k_s);
+    put_uint32 b min;
+    put_uint32 b n;
+    put_uint32 b max;
+    put_mpint b p;
+    put_mpint b g;
+    put_mpint b e;
+    put_mpint b f;
+    put_mpint b k;
+    Buffer.contents b |> H.digest_string |> H.to_raw_string
 
   let secret_pub alg =
     let secret, pub = Mirage_crypto_pk.Dh.gen_key (group_of_alg alg) in

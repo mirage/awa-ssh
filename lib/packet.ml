@@ -120,8 +120,9 @@ let encrypt keys msg =
   let seq = keys.Kex.seq in
   let block_len = max 8 (Cipher.block_len cipher.Cipher.cipher) in
   (* packet_length + padding_length + payload - sequence_length *)
-  let buf = Bytes.create 0xffff in (* TODO: length *)
-  let off = Wire.put_message (buf, sizeof_pkt_hdr) msg in
+  let buf = Buffer.create 14 in
+  Wire.put_message buf msg;
+  let off = Buffer.length buf + sizeof_pkt_hdr in
   let len = if Cipher.aead cipher.Cipher.cipher then off - 4 else off in
   (* calculate padding *)
   let padlen =
@@ -129,10 +130,12 @@ let encrypt keys msg =
     if x < 4 then x + block_len else x
   in
   assert (padlen >= 4 && padlen <= 255);
-  let off = Wire.put_random (buf, off) padlen in
-  set_pkt_len buf (off - 4);
-  set_pad_len buf padlen;
-  let pkt = String.sub (Bytes.unsafe_to_string buf) 0 off in
+  Wire.put_random buf padlen;
+  let bytes = Bytes.create (Buffer.length buf + sizeof_pkt_hdr) in
+  Buffer.blit buf 0 bytes sizeof_pkt_hdr (Buffer.length buf);
+  set_pkt_len bytes (Buffer.length buf + 1);
+  set_pad_len bytes padlen;
+  let pkt = Bytes.unsafe_to_string bytes in
   let digest = hmac mac seq pkt in
   let enc, cipher = Cipher.encrypt ~len:false seq cipher pkt in
   let packet = enc ^ digest in
