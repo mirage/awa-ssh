@@ -413,7 +413,7 @@ let get_message buf =
   | MSG_NEWKEYS ->
     Ok Msg_newkeys
   | MSG_KEX_0 | MSG_KEX_1 | MSG_KEX_2 | MSG_KEX_3 | MSG_KEX_4 ->
-    Ok (Msg_kex (msgid, buf))
+    Ok (Msg_kex (msgid, String.sub buf off (String.length buf - off)))
   | MSG_USERAUTH_REQUEST ->
     let* user, off = get_string buf off in
     let* service, off = get_string buf off in
@@ -454,8 +454,12 @@ let get_message buf =
     let* psucc, _ = get_bool buf off in
     Ok (Msg_userauth_failure (nl, psucc))
   | MSG_USERAUTH_SUCCESS -> Ok Msg_userauth_success
-  | MSG_USERAUTH_1 -> Ok (Msg_userauth_1 buf)
-  | MSG_USERAUTH_2 -> Ok (Msg_userauth_2 buf)
+  | MSG_USERAUTH_1 ->
+    let buf = String.sub buf off (String.length buf - off) in
+    Ok (Msg_userauth_1 buf)
+  | MSG_USERAUTH_2 ->
+    let buf = String.sub buf off (String.length buf - off) in
+    Ok (Msg_userauth_2 buf)
   | MSG_USERAUTH_BANNER ->
     let* s1, off = get_string buf off in
     let* s2, _ = get_string buf off in
