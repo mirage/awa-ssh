@@ -1,3 +1,7 @@
+## v0.6.1 (2026-06-07)
+
+* Core: fix parsing of MSG_KEX_n and MSG_USERAUTH_n (#86 @dinosaure)
+
 ## v0.6.0 (2026-05-23)
 
 * Server: add function eof, use it in test server (#83 @reynir)
