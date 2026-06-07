@@ -252,11 +252,48 @@ let t_parsing () =
       Msg_channel_request (long, false, Exit_status long);
       Msg_channel_request (long, false, Exit_signal ("a", false, "b", "c"));
       (* It's illegal to serialize Raw_data for now *)
-      (* Msg_channel_request (long, false, Raw_data (Cstruct.of_string "Hegel")); *)
+      (* Msg_channel_request (long, false, Raw_data "Hegel"); *)
       Msg_channel_success long;
-      Msg_channel_failure long; ]
+      Msg_channel_failure long;
+    ]
   in
   List.iter (fun m -> id m) l;
+  test_ok
+
+let t_parsing_kex_userauth () =
+  let buf id data =
+    let b = Buffer.create 10 in
+    Wire.put_message_id b id;
+    Buffer.add_string b data;
+    Buffer.contents b
+  in
+  let check = function
+    | Ssh.Msg_kex (id, data) ->
+      let buf = buf id data in
+      (match Wire.get_message buf with
+       | Ok (Msg_kex (id', data')) when String.equal data data' && id = id' -> ()
+       | _ -> invalid_arg "failed")
+    | Msg_userauth_1 data ->
+      let buf = buf MSG_USERAUTH_1 data in
+      (match Wire.get_message buf with
+       | Ok (Msg_userauth_1 data') when String.equal data data' -> ()
+       | _ -> invalid_arg "failed")
+    | Msg_userauth_2 data ->
+      let buf = buf MSG_USERAUTH_2 data in
+      (match Wire.get_message buf with
+       | Ok (Msg_userauth_2 data') when String.equal data data' -> ()
+       | _ -> invalid_arg "failed")
+    | _ -> assert false
+  in
+  List.iter check [
+    Msg_kex (MSG_KEX_0, "abc");
+    Msg_kex (MSG_KEX_1, "");
+    Msg_kex (MSG_KEX_2, "foobar");
+    Msg_kex (MSG_KEX_3, "bar");
+    Msg_kex (MSG_KEX_4, "blabla");
+    Msg_userauth_1 "I'm a user";
+    Msg_userauth_2 "Really";
+  ];
   test_ok
 
 let string_of_file file =
@@ -603,6 +640,7 @@ let run_test test =
 
 let all_tests = [
   (t_parsing, "basic parsing");
+  (t_parsing_kex_userauth, "basic parsing of kex and userauth");
   (t_banner, "version banner");
   (t_key_exchange, "key exchange");
   (t_namelist, "namelist conversions");
