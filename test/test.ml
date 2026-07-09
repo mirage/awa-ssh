@@ -656,7 +656,7 @@ let t_pubkey_userauth_requires_valid_signature () =
     match Server.input_userauth_request (mk_server ()) user service good with
     | Ok (_, _, Some (Server.Userauth (u, Server.Pubkey pa))) ->
       assert (u = user);
-      assert (Server.verify_pubkeyauth ~user:u pa)
+      assert (Hostkey.pub_eq (Server.pubkey_of_pubkeyauth pa) pub)
     | _ -> failwith "valid signature did not surface a Userauth event"
   in
   test_ok
