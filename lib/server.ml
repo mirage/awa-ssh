@@ -240,7 +240,11 @@ let input_userauth_request t username service auth_method =
         (* XXX: this should be fine due to the previous [Hostkey.comptible_alg] *)
         (* TODO: avoid Result.get_ok :/ *)
         let sig_alg = Result.get_ok (Hostkey.alg_of_string sig_alg) in
-        Ok (t, [], Some (Userauth (username, Pubkey { pubkey; session_id; service; sig_alg; signed })))
+        let auth = { pubkey; session_id; service; sig_alg; signed } in
+        if verify_pubkeyauth ~user:username auth then
+          Ok (t, [], Some (Userauth (username, Pubkey auth)))
+        else
+          failure t
       | Ok pubkey ->
         if Hostkey.comptible_alg pubkey pkalg then
           Log.debug (fun m -> m "Client offered unsupported or incompatible signature algorithm %s"

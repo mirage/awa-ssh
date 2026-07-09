@@ -625,6 +625,42 @@ let t_openssh_client () =
   ignore @@ Unix.close null;
   test_ok
 
+let t_pubkey_userauth_requires_valid_signature () =
+  let host = Keys.of_seed `Ed25519 "host" in
+  let priv = Keys.of_seed `Ed25519 "client" in
+  let pub = Hostkey.pub_of_priv priv in
+  let user = "root" and service = "ssh-connection" in
+  let session_id = "fake-session-id-32-bytes-padding!" in
+  let alg = Result.get_ok (Hostkey.alg_of_string "ssh-ed25519") in
+  let mk_server () =
+    let t, _ = Server.make host in
+    { t with Server.session_id = Some session_id;
+             auth_state = Server.Inprogress (user, service, 0) }
+  in
+  let request signed =
+    Ssh.Pubkey ("ssh-ed25519", Wire.blob_of_pubkey pub,
+                Some ("ssh-ed25519", signed))
+  in
+  let bad = request (String.make 64 '\000') in
+  let () =
+    match Server.input_userauth_request (mk_server ()) user service bad with
+    | Ok (_, _, Some (Server.Userauth _)) ->
+      failwith "garbage signature surfaced a Userauth event"
+    | Ok (_, _, None) -> ()
+    | Ok (_, _, Some _) -> failwith "unexpected event"
+    | Error e -> failwith ("unexpected error: " ^ e)
+  in
+  let signed = Auth.sign user alg priv session_id service in
+  let good = request signed in
+  let () =
+    match Server.input_userauth_request (mk_server ()) user service good with
+    | Ok (_, _, Some (Server.Userauth (u, Server.Pubkey pa))) ->
+      assert (u = user);
+      assert (Server.verify_pubkeyauth ~user:u pa)
+    | _ -> failwith "valid signature did not surface a Userauth event"
+  in
+  test_ok
+
 let run_test test =
   let name = snd test in
   let run () =
@@ -652,6 +688,7 @@ let all_tests = [
   (t_ignore_next_packet, "ignore next packet");
   (t_channel_input, "channel data input");
   (t_channel_output, "channel data output");
+  (t_pubkey_userauth_requires_valid_signature, "pubkey userauth requires valid signature");
   (* disabled: requires network connectivity
      (t_openssh_client, "OpenSSH@awa_ssh echo server"); *)
 ]
