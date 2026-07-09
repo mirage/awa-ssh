@@ -241,7 +241,6 @@ let user_auth =
   | "foo", Awa.Server.Password "bar" ->
     true
   | "awa", Awa.Server.Pubkey pubkeyauth ->
-    Awa.Server.verify_pubkeyauth ~user:"awa" pubkeyauth &&
     Awa.Server.pubkey_of_pubkeyauth pubkeyauth = key
   | _ -> false
 

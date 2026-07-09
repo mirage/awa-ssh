@@ -20,14 +20,16 @@ module Auth = struct
   let lookup_user name db =
     List.find_opt (fun user -> user.name = name) db
 
+  (* [Awa.Server] has already verified the signature over [pubkeyauth], for
+     every user, whether they exist or not.  All that is left here is to decide
+     whether the key is authorized. *)
   let verify db user userauth =
     match lookup_user user db, userauth with
-    | None, Awa.Server.Pubkey pubkeyauth ->
-      Awa.Server.verify_pubkeyauth ~user pubkeyauth && false
-    | (None | Some { password = None; _ }), Awa.Server.Password _ -> false
+    | None, _ -> false
     | Some u, Awa.Server.Pubkey pubkeyauth ->
-      Awa.Server.verify_pubkeyauth ~user pubkeyauth &&
-      List.exists (fun pubkey -> Awa.Hostkey.pub_eq pubkey pubkeyauth.pubkey) u.keys
+      let pubkey = Awa.Server.pubkey_of_pubkeyauth pubkeyauth in
+      List.exists (fun key -> Awa.Hostkey.pub_eq key pubkey) u.keys
+    | Some { password = None; _ }, Awa.Server.Password _ -> false
     | Some { password = Some password; _ }, Awa.Server.Password password' ->
       let open Digestif.SHA256 in
       let a = digest_string password
