@@ -304,6 +304,40 @@ let string_of_file file =
     content
   with _ -> invalid_arg ("Error reading file " ^ file)
 
+let t_keepalive () =
+  (* The server answers properly. *)
+  let keepalive =
+    Ssh.Msg_global_request ("keepalive@openssh.com", true, Ssh.Keepalive)
+  in
+  let priv, _ = Mirage_crypto_ec.Ed25519.generate () in
+  let s, _ = Server.make (Hostkey.Ed25519_priv priv) in
+  let s = Server.{ s with expect = None } in
+  let _, replies, _ = Result.get_ok (Server.input_msg s keepalive now) in
+  assert (replies = [ Ssh.Msg_request_failure ]);
+
+  (* The client answers properly. *)
+  let c, _ = Client.make ~user:"u" (`Password "p") in
+  let c, _, _ = Result.get_ok (Client.incoming c now "SSH-2.0-peer\r\n") in
+  let _, replies, _ =
+    Result.get_ok (Client.incoming c now (encrypt_plain keepalive))
+  in
+  assert (List.length replies = 1);
+  let pkt, _ =
+    get_some (Result.get_ok (decrypt_plain (String.concat "" replies)))
+  in
+  assert (Result.get_ok (Packet.to_msg pkt) = Ssh.Msg_request_failure);
+
+  (* An unknown global request (default case) with no payload (edge case).
+     Covers the bug that caused keepalives to fail. *)
+  let b = Buffer.create 32 in
+  Wire.put_message_id b Ssh.MSG_GLOBAL_REQUEST;
+  Wire.put_string b "madeup@nonexistent.com";
+  Wire.put_bool b false;
+  assert (Result.get_ok (Wire.get_message (Buffer.contents b)) =
+          Ssh.Msg_global_request
+            ("madeup@nonexistent.com", false, Ssh.Unknown_request ""));
+  test_ok
+
 let t_key_exchange () =
   (* Read a pcap file and see if it makes sense. *)
   let data = string_of_file "data/kex.packet" in
@@ -641,6 +675,7 @@ let run_test test =
 let all_tests = [
   (t_parsing, "basic parsing");
   (t_parsing_kex_userauth, "basic parsing of kex and userauth");
+  (t_keepalive, "openssh keepalive");
   (t_banner, "version banner");
   (t_key_exchange, "key exchange");
   (t_namelist, "namelist conversions");

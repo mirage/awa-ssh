@@ -445,10 +445,22 @@ let input_msg t msg now =
     Error "user authentication failed"
   | Opening_channel us, Msg_channel_open_confirmation (oid, tid, win, max, data) ->
     open_channel_success t us oid tid win max data
-  | _, Msg_global_request (_, want_reply, Unknown_request _) ->
-    Log.info (fun m -> m "ignoring unknown global request (want reply %B)"
-                 want_reply);
-    Ok (t, [], [])
+  | _, Msg_global_request (_, want_reply, req) ->
+    let () = match req with
+      | Keepalive ->
+        Log.debug (fun m -> m "Received keepalive global request (wants reply: %B)"
+                      want_reply)
+      | Tcpip_forward _ | Cancel_tcpip_forward _ ->
+        Log.warn (fun m -> m "Received port forwarding request, but we're a client. (wants reply: %B)"
+                      want_reply)
+      | Unknown_request _ ->
+        Log.info (fun m -> m "Received unknown global request (wants reply: %B)"
+                     want_reply)
+    in
+    (* I only know of hostkeys-00@openssh.com as a request that may need a positive response,
+       and we do not implement it yet. *)
+    let msgs = if want_reply then [ Ssh.Msg_request_failure ] else [] in
+    Ok (t, msgs, [])
   | _, Msg_debug (_, msg, lang) ->
     Log.info (fun m -> m "ignoring debug %s (lang %s)" msg lang);
     Ok (t, [], [])
