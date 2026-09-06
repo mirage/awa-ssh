@@ -324,7 +324,9 @@ let put_channel_data buf channel_data =
     put_uint32 buf port;
     put_string buf origin_addr;
     put_uint32 buf origin_port
-  | Raw_data data -> Buffer.add_string buf data
+  | Unknown (_, _) ->
+    invalid_arg "trying to encode request to open a channel of unknown \
+                 type: makes no sense"
 
 let blob_of_channel_data channel_data =
   let b = Buffer.create 14 in
@@ -512,7 +514,18 @@ let get_message buf =
              (send_channel, init_win, max_pkt,
               Forwarded_tcpip (con_address, con_port, origin_address,
                                origin_port)))
-     | _ -> Error ("Unknown channel open " ^ request))
+     | "direct-tcpip" ->
+       let* address, off = get_string buf off in
+       let* port, off = get_uint32 buf off in
+       let* origin_address, off = get_string buf off in
+       let* origin_port, _ = get_uint32 buf off in
+       Ok (Msg_channel_open
+             (send_channel, init_win, max_pkt,
+              Direct_tcpip (address, port, origin_address, origin_port)))
+     | _ ->
+       let raw_data = String.sub buf off (String.length buf - off) in
+       Ok (Msg_channel_open
+             (send_channel, init_win, max_pkt, Unknown (request, raw_data))))
   | MSG_CHANNEL_OPEN_CONFIRMATION ->
     let* recp_channel, off = get_uint32 buf off in
     let* send_channel, off = get_uint32 buf off in
@@ -520,9 +533,9 @@ let get_message buf =
     let* max_pkt, off = get_uint32 buf off in
     let rest = String.sub buf off (String.length buf - off) in
     (*
-     * The protocol does not tell us which channel type this is, so we can't
-     * give the caller a good type for channel open and must return Raw_data.
-     * We must provide the caller a function to make the conversion.
+     * The confirmation does not repeat the channel type, so we cannot give the
+     * caller a typed channel_open here and instead we hand back the bytes
+     * verbatim.  The caller knows which type it asked for and must convert.
      *)
     Ok (Msg_channel_open_confirmation
           (recp_channel, send_channel,
@@ -617,7 +630,11 @@ let get_message buf =
        let* lang, _ = get_string buf off in
        Ok (Msg_channel_request (channel, want_reply,
                                 Exit_signal (name, core_dumped, message, lang)))
-     | _ -> Error ("Unknown channel request " ^ request))
+     | "keepalive@openssh.com" ->
+       Ok (Msg_channel_request (channel, want_reply, Keepalive))
+     | _ ->
+       let data = String.sub buf off (String.length buf - off) in
+       Ok (Msg_channel_request (channel, want_reply, Unknown (request, data))))
   | MSG_CHANNEL_SUCCESS ->
     let* channel, _ = get_uint32 buf off in
     Ok (Msg_channel_success channel)
@@ -852,7 +869,8 @@ let put_message buf msg =
       | X11 _ -> "x11"
       | Forwarded_tcpip _ -> "forwarded-tcpip"
       | Direct_tcpip _ -> "direct-tcpip"
-      | Raw_data _ -> invalid_arg "Unknown channel type"
+      | Unknown _ -> invalid_arg "trying to encode request to open a channel \
+                                  of unknown type: makes no sense"
     in
     put_id buf MSG_CHANNEL_OPEN;
     put_string buf request;
@@ -906,7 +924,9 @@ let put_message buf msg =
       | Signal _ -> "signal"
       | Exit_status _ -> "exit-status"
       | Exit_signal _ -> "exit-signal"
-      | Raw_data _ -> invalid_arg "Unknown channel request type"
+      | Keepalive -> "keepalive@openssh.com"
+      | Unknown _ -> invalid_arg "trying to encode channel request of \
+                                  unknown type: makes no sense"
     in
     put_id buf MSG_CHANNEL_REQUEST;
     put_uint32 buf channel;
@@ -945,7 +965,9 @@ let put_message buf msg =
        put_bool buf core_dumped;
        put_string buf message;
        put_string buf lang
-     | Raw_data _ -> invalid_arg "Unknown channel request type")
+     | Keepalive -> ()
+     | Unknown _ -> invalid_arg "trying to encode channel request of \
+                                 unknown type: makes no sense")
   | Msg_channel_success channel ->
     put_id buf MSG_CHANNEL_SUCCESS;
     put_uint32 buf channel

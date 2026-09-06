@@ -299,14 +299,15 @@ type channel_request =
   | Signal of string
   | Exit_status of int32
   | Exit_signal of (string * bool * string * string)
-  | Raw_data of string
+  | Keepalive  (* Used instead of global req version when any channel is live. *)
+  | Unknown of (string * string)  (* Request type name, raw request data *)
 
 type channel_open =
   | Session
   | X11 of (string * int32)
   | Forwarded_tcpip of (string * int32 * string * int32)
   | Direct_tcpip of (string * int32 * string * int32)
-  | Raw_data of string
+  | Unknown of (string * string)  (* Channel type name, raw request data *)
 
 (*
  * Protocol Authentication
