@@ -166,11 +166,6 @@ let t_parsing () =
       assert (a3 = b3);
       assert (a4 = b4);
       assert (String.equal a5 b5);
-    | Msg_channel_request (a1, a2, Raw_data a3),
-      Msg_channel_request (b1, b2, Raw_data b3) ->
-      assert (a1 = b1);
-      assert (a2 = b2);
-      assert (String.equal a3 b3);
     | Msg_channel_data (a1, a2),
       Msg_channel_data (b1, b2) ->
       assert (a1 = b1);
@@ -251,8 +246,6 @@ let t_parsing () =
       Msg_channel_request (long, false, Signal "a");
       Msg_channel_request (long, false, Exit_status long);
       Msg_channel_request (long, false, Exit_signal ("a", false, "b", "c"));
-      (* It's illegal to serialize Raw_data for now *)
-      (* Msg_channel_request (long, false, Raw_data "Hegel"); *)
       Msg_channel_success long;
       Msg_channel_failure long;
     ]

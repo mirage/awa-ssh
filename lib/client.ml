@@ -482,9 +482,70 @@ let input_msg t msg now =
   | Established, Msg_channel_eof id ->
     let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
     Ok (t, [], [ `Channel_eof (Channel.id c) ])
-  | Established, Msg_channel_request (id, false, Exit_status r) ->
-    let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
-    Ok (t, [], [ `Channel_exit_status (Channel.id c, r) ])
+  | Established, Msg_channel_request (id, want_reply, req) ->
+    (match Channel.lookup id t.channels with
+     | None ->
+       let msg =
+         Printf.sprintf "received channel request for unknown channel %u" id
+       in
+       Ok (t, [ Msg_disconnect (DISCONNECT_PROTOCOL_ERROR, msg, "") ],
+           [ `Disconnected ])
+     | Some c ->
+       let reply_success, events = match req with
+         | Exit_status r ->
+           if want_reply then
+             Log.warn (fun m -> m "received exit status (%u) channel request but \
+                                   want_reply set (broken peer?), answering it"
+                          r)
+           else
+             Log.debug (fun m -> m "received exit status (%u) channel request"
+                           r);
+           true, [ `Channel_exit_status (Channel.id c, r) ]
+         | Keepalive ->
+           Log.debug (fun m -> m "received keepalive channel request (want reply %B)"
+                         want_reply);
+           false, []
+         | Xon_xoff client_can_do ->
+           (* We don't do pty's yet: ignore, as we are allowed to. *)
+           Log.debug (fun m -> m "ignoring xon-xoff (client can do: %B)"
+                         client_can_do);
+           false, []
+         | Exit_signal (signal, core_dumped, message, _lang) ->
+           (* FIXME: we should actually do something with that information, but
+              requires an API re-design. *)
+           Log.warn (fun m -> m "remote command killed by signal %S%s \
+                                 (message %S); NOT YET reported to the \
+                                 application"
+                        signal (if core_dumped then " (core dumped)" else "")
+                        message);
+           false, []
+         | Unknown (name, _) ->
+           Log.info (fun m -> m "received unknown channel request %S (want reply %B)"
+                        name want_reply);
+           false, []
+         | Pty_req _ | X11_req _ | Env _ | Shell | Exec _ | Subsystem _
+         | Window_change _ | Signal _ ->
+           Log.info (fun m -> m "ignoring channel request a client should not \
+                                 receive (want reply %B)" want_reply);
+           false, []
+       in
+       (* Once we have sent a close for a channel we stop answering requests
+          on it: draft-sgtatham-secsh-closure-race-02 §4.  The peer may
+          already have reused the channel ID: it only needs to have received
+          our close and sent its own, which can still be in flight to us. *)
+       let answering =
+         match c.Channel.state with
+         | Channel.Open -> want_reply
+         | Channel.Sent_close -> false
+       in
+       let msgs =
+         if answering then
+           [ if reply_success then Msg_channel_success (Channel.their_id c)
+             else Msg_channel_failure (Channel.their_id c) ]
+         else
+           []
+       in
+       Ok (t, msgs, events))
   | Established, Msg_channel_success id ->
     let* _c = guard_some (Channel.lookup id t.channels) "no such channel" in
     Log.info (fun m -> m "channel success %u" id);
