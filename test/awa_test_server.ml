@@ -232,9 +232,9 @@ let string_of_file file =
     content
   with _ -> invalid_arg ("Error reading file " ^ file)
 
-let user_auth =
+let user_auth authorized_key =
   (* User awa auths by pubkey *)
-  let data = string_of_file "test/data/awa_test_rsa.pub" in
+  let data = string_of_file authorized_key in
   let key = Result.get_ok (Wire.pubkey_of_openssh data) in
   fun user userauth ->
   match user, userauth with
@@ -245,37 +245,42 @@ let user_auth =
     Awa.Server.pubkey_of_pubkeyauth pubkeyauth = key
   | _ -> false
 
-let rec wait_connection priv_key listen_fd server_port =
+let rec wait_connection user_auth priv_key listen_fd server_port =
   Logs.info (fun m -> m "Awa server waiting connections on port %d" server_port);
   let client_fd, _ = Unix.(accept listen_fd) in
   Logs.info (fun m -> m "Client connected!");
-  let server, msgs = Server.make priv_key in
-  let* t =
-    Driver.of_server server msgs
-      (write_data client_fd)
-      (read_data client_fd)
-      Mtime_clock.now
-  in
-  let () = match serve t user_auth None with
+  let () =
+    match
+      (* As soon as the socket gets touched we need to be ready for exceptions. *)
+      (try
+         let server, msgs = Server.make priv_key in
+         let* t =
+           Driver.of_server server msgs
+             (write_data client_fd) (read_data client_fd) Mtime_clock.now
+         in
+         serve t user_auth None
+       with e -> Error (Printexc.to_string e))
+    with
     | Ok () -> Logs.info (fun m -> m "Client finished")
     | Error e -> Logs.warn (fun m -> m "error: %s" e)
   in
   Unix.close client_fd;
-  wait_connection priv_key listen_fd server_port
+  wait_connection user_auth priv_key listen_fd server_port
 
-let jump () =
+let jump () server_port authorized_key =
+  (* Ignore SIGPIPE, and explicitly catch EPIPE as an exception later. *)
+  Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
   Mirage_crypto_rng_unix.use_default ();
   let g = Mirage_crypto_rng.(create ~seed:"180586" (module Fortuna)) in
   let (ec_priv,_) = Mirage_crypto_ec.Ed25519.generate ~g () in
   let priv_key = Awa.Hostkey.Ed25519_priv (ec_priv) in
-  let server_port = 18022 in
   let listen_fd = Unix.(socket PF_INET SOCK_STREAM 0) in
   Unix.(setsockopt listen_fd SO_REUSEADDR true);
   Unix.(bind listen_fd (ADDR_INET (inet_addr_any, server_port)));
-  Unix.listen listen_fd 1;
+  Unix.listen listen_fd 64;
   Result.map_error
     (fun msg -> `Msg msg)
-    (wait_connection priv_key listen_fd server_port)
+    (wait_connection (user_auth authorized_key) priv_key listen_fd server_port)
 
 let setup_log style_renderer level =
   Fmt_tty.setup_std_outputs ?style_renderer ();
@@ -289,9 +294,18 @@ let setup_log =
         $ Fmt_cli.style_renderer ()
         $ Logs_cli.level ())
 
+let port =
+  let doc = "port to listen on" in
+  Arg.(value & opt int 18022 & info [ "port" ] ~doc)
+
+let authorized_key =
+  let doc = "OpenSSH public key file authorised for user awa" in
+  Arg.(value & opt file "test/data/awa_test_rsa.pub"
+       & info [ "authorized-key" ] ~doc)
+
 let cmd =
   let term =
-    Term.(term_result (const jump $ setup_log))
+    Term.(term_result (const jump $ setup_log $ port $ authorized_key))
   and info =
     Cmd.info "awa_test_server" ~version:"%%VERSION_NUM"
   in
