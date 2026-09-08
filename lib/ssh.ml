@@ -361,8 +361,8 @@ type message =
   | Msg_kexdh_reply of Hostkey.pub * mpint * (Hostkey.alg * string)
   | Msg_kexdh_init of mpint
   (* from RFC 5656 / 8731 *)
-  | Msg_kexecdh_reply of Hostkey.pub * mpint * (Hostkey.alg * string)
-  | Msg_kexecdh_init of mpint
+  | Msg_kexecdh_reply of Hostkey.pub * string * (Hostkey.alg * string)
+  | Msg_kexecdh_init of string
   (* from RFC 4419 *)
   (* there's as well a Msg_kexdh_gex_request_old with only a single int32 *)
   | Msg_kexdh_gex_request of int32 * int32 * int32
