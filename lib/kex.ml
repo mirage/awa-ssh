@@ -364,7 +364,7 @@ module Dh = struct
     let (module H) = hash_of_alg neg.kex_alg in
     derive_keys (fun ds -> H.(to_raw_string (digesti_string ds))) k h session_id neg now
 
-  let compute_hash ?(signed = false) neg ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
+  let compute_hash neg ~v_c ~v_s ~i_c ~i_s ~k_s ~e ~f ~k =
     let (module H) = hash_of_alg neg.kex_alg in
     let open Wire in
     let b = Buffer.create 14 in
@@ -373,8 +373,22 @@ module Dh = struct
     put_string b i_c;
     put_string b i_s;
     put_string b (blob_of_pubkey k_s);
-    put_mpint ~signed b e;
-    put_mpint ~signed b f;
+    put_mpint b e;
+    put_mpint b f;
+    put_mpint b k;
+    Buffer.contents b |> H.digest_string |> H.to_raw_string
+
+  let compute_hash_ec neg ~v_c ~v_s ~i_c ~i_s ~k_s ~q_c ~q_s ~k =
+    let (module H) = hash_of_alg neg.kex_alg in
+    let open Wire in
+    let b = Buffer.create 14 in
+    put_string b v_c;
+    put_string b v_s;
+    put_string b i_c;
+    put_string b i_s;
+    put_string b (blob_of_pubkey k_s);
+    put_string b q_c;
+    put_string b q_s;
     put_mpint b k;
     Buffer.contents b |> H.digest_string |> H.to_raw_string
 
@@ -412,28 +426,27 @@ module Dh = struct
   let ec_secret_pub = function
     | Curve25519_sha256 ->
       let secret, pub = Mirage_crypto_ec.X25519.gen_key () in
-      `Ed25519 secret, Mirage_crypto_pk.Z_extra.of_octets_be pub
+      `Ed25519 secret, pub
     | Ecdh_sha2_nistp256 ->
       let secret, pub = Mirage_crypto_ec.P256.Dh.gen_key () in
-      `P256 secret, Mirage_crypto_pk.Z_extra.of_octets_be pub
+      `P256 secret, pub
     | Ecdh_sha2_nistp384 ->
       let secret, pub = Mirage_crypto_ec.P384.Dh.gen_key () in
-      `P384 secret, Mirage_crypto_pk.Z_extra.of_octets_be pub
+      `P384 secret, pub
     | Ecdh_sha2_nistp521 ->
       let secret, pub = Mirage_crypto_ec.P521.Dh.gen_key () in
-      `P521 secret, Mirage_crypto_pk.Z_extra.of_octets_be pub
+      `P521 secret, pub
     | _ -> assert false
 
   let ec_shared secret recv =
-    let r = Mirage_crypto_pk.Z_extra.to_octets_be recv in
     let* shared =
       Result.map_error
         (Fmt.to_to_string Mirage_crypto_ec.pp_error)
         (match secret with
-         | `Ed25519 secret -> Mirage_crypto_ec.X25519.key_exchange secret r
-         | `P256 secret -> Mirage_crypto_ec.P256.Dh.key_exchange secret r
-         | `P384 secret -> Mirage_crypto_ec.P384.Dh.key_exchange secret r
-         | `P521 secret -> Mirage_crypto_ec.P521.Dh.key_exchange secret r)
+         | `Ed25519 secret -> Mirage_crypto_ec.X25519.key_exchange secret recv
+         | `P256 secret -> Mirage_crypto_ec.P256.Dh.key_exchange secret recv
+         | `P384 secret -> Mirage_crypto_ec.P384.Dh.key_exchange secret recv
+         | `P521 secret -> Mirage_crypto_ec.P521.Dh.key_exchange secret recv)
     in
     Ok (Mirage_crypto_pk.Z_extra.of_octets_be shared)
 
