@@ -51,7 +51,7 @@ type ec_secret = [
 ]
 
 type eckex_state =
-  | Negotiated_eckex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * ec_secret * Ssh.mpint
+  | Negotiated_eckex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * ec_secret * string
 
 type gex_state =
   | Requested_gex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * int32 * int32 * int32
@@ -190,12 +190,7 @@ let handle_kexinit t c_v ckex s_v skex =
   in
   Ok ({ t with state ; sig_algs }, [ msg ], [])
 
-let dh_reply ~ec t now v_c ckex v_s skex neg shared my_pub k_s theirs (alg, signed) =
-  let h =
-    Kex.Dh.compute_hash ~signed:(not ec) neg
-      ~v_c ~v_s ~i_c:(Wire.blob_of_kexinit ckex) ~i_s:skex.Ssh.rawkex
-      ~k_s ~e:my_pub ~f:theirs ~k:shared
-  in
+let dh_reply t now ~h (neg : Kex.negotiation) shared k_s (alg, signed) =
   if Keys.hostkey_matches t.authenticator k_s && alg = neg.server_host_key_alg && Hostkey.verify alg k_s ~unsigned:h ~signed then begin
     Log.info (fun m -> m "verified kexdh_reply!");
     let session_id = match t.session_id with None -> h | Some x -> x in
@@ -211,11 +206,21 @@ let dh_reply ~ec t now v_c ckex v_s skex neg shared my_pub k_s theirs (alg, sign
 
 let handle_kexdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs p =
   let* shared = Kex.Dh.shared secret theirs in
-  dh_reply ~ec:false t now v_c ckex v_s skex neg shared my_pub k_s theirs p
+  let h =
+    Kex.Dh.compute_hash neg
+      ~v_c ~v_s ~i_c:(Wire.blob_of_kexinit ckex) ~i_s:skex.Ssh.rawkex
+      ~k_s ~e:my_pub ~f:theirs ~k:shared
+  in
+  dh_reply t now ~h neg shared k_s p
 
 let handle_kexecdh_reply t now v_c ckex v_s skex neg secret my_pub k_s theirs p =
   let* shared = Kex.Dh.ec_shared secret theirs in
-  dh_reply ~ec:true t now v_c ckex v_s skex neg shared my_pub k_s theirs p
+  let h =
+    Kex.Dh.compute_hash_ec neg
+      ~v_c ~v_s ~i_c:(Wire.blob_of_kexinit ckex) ~i_s:skex.Ssh.rawkex
+      ~k_s ~q_c:my_pub ~q_s:theirs ~k:shared
+  in
+  dh_reply t now ~h neg shared k_s p
 
 let handle_kexdh_gex_group t v_c ckex v_s skex neg min n max p gg =
   (* min <= |p| <= max *)

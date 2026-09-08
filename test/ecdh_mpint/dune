@@ -1,0 +1,4 @@
+(test
+ (name test_ecdh_mpint)
+ (package awa)
+ (libraries awa mirage-crypto-rng.unix))

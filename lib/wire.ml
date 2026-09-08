@@ -55,7 +55,7 @@ let put_string buf s =
 let put_random t len =
   Buffer.add_string t (Mirage_crypto_rng.generate len)
 
-let get_mpint ?(signed = true) buf off =
+let get_mpint buf off =
   trap_error (fun () ->
       let* len, off' = get_uint32 buf off in
       match Int32.to_int len with
@@ -64,17 +64,19 @@ let get_mpint ?(signed = true) buf off =
         Ssh.guard_sshlen_exn len;
         let mpbuf = String.sub buf off' len in
         let msb = String.get_uint8 mpbuf 0 in
-        if signed && (msb land 0x80) <> 0 then
-          Error "Negative mpint"
+        if (msb land 0x80) <> 0 then
+          Error "received negative integer as mpint: buggy peer?"
         else
           (* of_octets_be strips leading zeros for us *)
           Ok (Mirage_crypto_pk.Z_extra.of_octets_be mpbuf,
               off' + len))
 
-let put_mpint ?(signed = true) buf mpint =
+let put_mpint buf mpint =
+  if Z.sign mpint < 0 then
+    invalid_arg "trying to encode a negative mpint: should never happen";
   let mpbuf = Mirage_crypto_pk.Z_extra.to_octets_be mpint in
   let mplen = String.length mpbuf in
-  if signed && mplen > 0 &&
+  if mplen > 0 &&
      ((String.get_uint8 mpbuf 0) land 0x80) <> 0 then begin
     put_uint32 buf (Int32.of_int (succ mplen));
     put_uint8 buf 0
@@ -646,13 +648,13 @@ let dh_kexecdh_of_kex id buf =
   let open Ssh in
   match id with
   | MSG_KEX_0 ->
-    let* e, _ = get_mpint ~signed:false buf 0 in
-    Ok (Msg_kexecdh_init e)
+    let* q_c, _ = get_string buf 0 in
+    Ok (Msg_kexecdh_init q_c)
   | MSG_KEX_1 ->
     let* k_s, off = get_pubkey_any buf 0 in
-    let* f, off = get_mpint ~signed:false buf off in
+    let* q_s, off = get_string buf off in
     let* key_sig, _off = get_signature buf off in
-    Ok (Msg_kexecdh_reply (k_s, f, key_sig))
+    Ok (Msg_kexecdh_reply (k_s, q_s, key_sig))
   | _ -> Error "unsupported KEX message"
 
 let dh_kexdh_gex_of_kex id buf =
@@ -743,13 +745,13 @@ let put_message buf msg =
     put_pubkey buf k_s;
     put_mpint buf f;
     put_signature buf signature
-  | Msg_kexecdh_init e ->
+  | Msg_kexecdh_init q_c ->
     put_id buf MSG_KEX_0;
-    put_mpint ~signed:false buf e
-  | Msg_kexecdh_reply (k_s, f, signature) ->
+    put_string buf q_c
+  | Msg_kexecdh_reply (k_s, q_s, signature) ->
     put_id buf MSG_KEX_1;
     put_pubkey buf k_s;
-    put_mpint ~signed:false buf f;
+    put_string buf q_s;
     put_signature buf signature
   | Msg_kexdh_gex_request (min, n, max) ->
     put_id buf MSG_KEX_4;

@@ -377,7 +377,7 @@ let t_mpint () =
   let raw = Bytes.of_string raw in
   Bytes.set_uint8 raw 4 0x80;
   let e = Result.get_error (Wire.get_mpint (Bytes.unsafe_to_string raw) 0) in
-  assert (e = "Negative mpint");
+  assert (e = "received negative integer as mpint: buggy peer?");
   test_ok
 
 let t_version () =
