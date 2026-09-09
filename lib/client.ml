@@ -471,8 +471,20 @@ let input_msg t msg now =
        and we do not implement it yet. *)
     let msgs = if want_reply then [ Ssh.Msg_request_failure ] else [] in
     Ok (t, msgs, [])
-  | _, Msg_debug (_, msg, lang) ->
-    Log.info (fun m -> m "ignoring debug %s (lang %s)" msg lang);
+  | _, Msg_ignore _ ->
+    Log.debug (fun m -> m "received ignore message, ignoring");
+    Ok (t, [], [])
+  | _, Msg_debug (always_display, msg, lang) ->
+    (* RFC 4253 §11.3 forces us to parse this message, but only encourages us
+       to display its contents to the user if always_display is true. TODO:
+       actually hand the message over to the client code. *)
+    Log.info
+      (fun m -> m "received debug message: %S (lang: %S, always_display: %B)"
+                  msg lang always_display);
+    Ok (t, [], [])
+  | _, Msg_unimplemented seq ->
+    Log.warn (fun m -> m "received 'unimplemented' message: \
+                          peer did not understand our packet with seq=%u" seq);
     Ok (t, [], [])
   | Established, Msg_channel_data (id, data) ->
     let* t, out, id, data = channel_data t id data in
@@ -570,10 +582,10 @@ let input_msg t msg now =
     in
     Ok ({ t with channels }, msgs, [ `Disconnected ])
   | _, Msg_disconnect (code, msg, lang) ->
-    Log.err (fun m -> m "disconnected: %s %s%s"
-                (Ssh.disconnect_code_to_string code)
-                msg (if lang = "" then "" else "(lang " ^ lang ^ ")"));
-    Error "disconnected"
+    Log.err (fun m -> m "received disconnect: %s %S%a"
+                (Ssh.disconnect_code_to_string code) msg Ssh.pp_lang lang);
+    Error (Printf.sprintf "disconnected by peer: %s %S"
+             (Ssh.disconnect_code_to_string code) msg)
   | _, _ ->
     debug_msg "unexpected" msg;
     Error "unexpected state and message"

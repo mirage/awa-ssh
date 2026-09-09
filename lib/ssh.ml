@@ -442,7 +442,7 @@ let message_to_id = function
   | Msg_version _                  -> MSG_VERSION
 
 let pp_lang ppf lang =
-  if lang = "" then () else Fmt.pf ppf "(lang %s)" lang
+  if lang = "" then () else Fmt.pf ppf "(lang %S)" lang
 
 let pp_message ppf = function
   | Msg_disconnect (code, desc, lang) ->
