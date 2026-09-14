@@ -234,6 +234,12 @@ type keys = {
   tx_rx    : int64;      (* Transmitted or Received bytes with this key *)
 }
 
+(* The sequence number of the packet most recently seen with these keys. *)
+let last_seq keys =
+    (* SSH sequence numbers are uint32 and wrap around. The following code
+       expects a 64-bit platform. *)
+    Int32.to_int (Int32.pred keys.seq) land 0xFFFF_FFFF
+
 let make_plaintext () =
   { cipher = Cipher.{ cipher = Plaintext;
                       cipher_key = Plaintext_key };

@@ -90,12 +90,6 @@ let put_mpint buf mpint =
     put_uint32 buf mplen;
   Buffer.add_string buf mpbuf
 
-let get_message_id buf off =
-  let* id, off' = get_uint8 buf off in
-  match Ssh.int_to_message_id id with
-  | None -> Error (Printf.sprintf "Unknown message id %d" id)
-  | Some msgid -> Ok (msgid, off')
-
 let put_message_id t id =
   put_uint8 t (Ssh.message_id_to_int id)
 
@@ -343,7 +337,10 @@ let blob_of_channel_data channel_data =
 
 let get_message buf =
   let open Ssh in
-  let* msgid, off = get_message_id buf 0 in
+  let* id, off = get_uint8 buf 0 in
+  match Ssh.int_to_message_id id with
+  | None -> Ok (Msg_unknown id)
+  | Some msgid ->
   match msgid with
   | MSG_DISCONNECT ->
     let* code, off = get_uint32 buf off in
@@ -736,6 +733,8 @@ let put_message buf msg =
   | Msg_ignore s ->
     put_id buf MSG_IGNORE;
     put_string buf s
+  | Msg_unknown id ->
+    invalid_arg (Printf.sprintf "trying to send an unknwon message type (ID %d): makes no sense" id)
   | Msg_unimplemented x ->
     put_id buf MSG_UNIMPLEMENTED;
     put_uint32 buf x

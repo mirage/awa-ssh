@@ -396,6 +396,7 @@ type message =
   | Msg_channel_success of int
   | Msg_channel_failure of int
   | Msg_version of string       (* Mocked version *)
+  | Msg_unknown of int  (* Covers any message with unknown ID *)
 
 let message_to_id = function
   | Msg_disconnect _               -> MSG_DISCONNECT
@@ -440,6 +441,9 @@ let message_to_id = function
   | Msg_channel_success _          -> MSG_CHANNEL_SUCCESS
   | Msg_channel_failure _          -> MSG_CHANNEL_FAILURE
   | Msg_version _                  -> MSG_VERSION
+  | Msg_unknown id ->
+    invalid_arg (Printf.sprintf "trying to obtain message ID from \
+                                 'wildcard' Msg_unknown (ID %d)." id)
 
 let pp_lang ppf lang =
   if lang = "" then () else Fmt.pf ppf "(lang %S)" lang
@@ -496,6 +500,7 @@ let pp_message ppf = function
   | Msg_channel_success _ -> Fmt.pf ppf "channel success"
   | Msg_channel_failure _ -> Fmt.pf ppf "channel failure"
   | Msg_version v -> Fmt.pf ppf "version %s" v
+  | Msg_unknown id -> Fmt.pf ppf "unknown message ID %d" id
 
 let message_to_int msg = message_id_to_int (message_to_id msg)
 

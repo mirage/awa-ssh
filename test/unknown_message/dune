@@ -1,0 +1,4 @@
+(test
+ (name test_unknown_message)
+ (package awa)
+ (libraries awa mirage-mtime mirage-crypto-rng.unix))
