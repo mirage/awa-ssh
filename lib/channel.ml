@@ -16,6 +16,9 @@
 
 open Util
 
+let src = Logs.Src.create "awa.channel" ~doc:"AWA channel"
+module Log = (val Logs.src_log src : Logs.LOG)
+
 (*
  * Channel entry
  *)
@@ -61,8 +64,8 @@ let input_data t data =
   let len = min (String.length data) (Int32.to_int t.us.win) in
   let data, left = maybe_split len data in
   if left > 0 then
-    Printf.printf "channel input_data: discarding %d bytes (window size)\n%!"
-      left;
+    Log.warn (fun m -> m "channel input_data: discarding %d bytes (window size)"
+                 left);
   let new_win = Int32.sub t.us.win (Int32.of_int len) in
   let* () = guard Int32.(new_win >= zero) "window underflow" in
   let win, adjust =
