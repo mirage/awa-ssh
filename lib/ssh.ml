@@ -285,6 +285,7 @@ type mpint = Z.t
 type global_request =
   | Tcpip_forward of (string * int32)
   | Cancel_tcpip_forward of (string * int32)
+  | Keepalive
   | Unknown_request of string
 
 type channel_request =

@@ -477,9 +477,12 @@ let get_message buf =
         let* address, off = get_string buf off in
         let* port, off = get_uint32 buf off in
         Ok (Cancel_tcpip_forward (address, port), off)
+      | "keepalive@openssh.com" ->
+        Ok (Keepalive, off)  (* OpenSSH ignores any trailing data too *)
       | _ ->
-        let* data, off = get_string buf off in
-        Ok (Unknown_request data, off)
+        (* There may be data left, but we don't know its shape: take the raw string *)
+        let data = String.sub buf off (String.length buf - off) in
+        Ok (Unknown_request data, String.length buf)
     in
     Ok (Msg_global_request (request, want_reply, global_request))
   | MSG_REQUEST_SUCCESS ->
@@ -838,7 +841,8 @@ let put_message buf msg =
      | Cancel_tcpip_forward (address, port) ->
        put_string buf address;
        put_uint32 buf port
-     | Unknown_request _ -> assert false)
+     | Keepalive -> ()
+     | Unknown_request _ -> invalid_arg "trying to send unknown global request: makes no sense")
   | Msg_request_success (req_data) ->
     put_id buf MSG_REQUEST_SUCCESS;
     (match req_data with

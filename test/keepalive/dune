@@ -1,0 +1,4 @@
+(test
+ (name test_keepalive)
+ (package awa)
+ (libraries awa mirage-mtime mirage-crypto-rng.unix))

@@ -584,6 +584,19 @@ let input_msg t msg now =
       guard_some (Channel.lookup recp_channel t.channels) "no such channel"
     in
     make_event t (Channel_eof (Channel.id c))
+  | Msg_global_request (_, want_reply, req) ->
+    (match req with
+     | Keepalive ->
+       Log.debug (fun m -> m "Received keepalive global request (wants reply: %B)"
+                     want_reply)
+     | Tcpip_forward _ | Cancel_tcpip_forward _ ->
+       Log.info (fun m -> m "Received port forwarding request; not implemented (wants reply: %B)"
+                     want_reply)
+     | Unknown_request _ ->
+       Log.info (fun m -> m "Received unknown global request (wants reply: %B)"
+                     want_reply));
+    (* OpenSSH actually answers FAILURE to keepalives too. The point is to answer at all. *)
+    if want_reply then make_reply t Msg_request_failure else make_noreply t
   | Msg_disconnect (_, s, _) -> make_event t (Disconnected s)
   | Msg_version v -> make_noreply { t with client_version = Some v;
                                            expect = Some MSG_KEXINIT }
