@@ -417,10 +417,9 @@ let input_msg t msg now =
         [ Msg_ext_info extensions ]
       else []
     in
-    let sign_rekey t neg ~h ~f ~k =
+    let sign_rekey t neg ~h ~k =
       let signature = Hostkey.sign neg.Kex.server_host_key_alg t.host_key h in
-      Log.debug (fun m -> m "shared is %a signature is %a (hash %a)"
-                    Ohex.pp (Mirage_crypto_pk.Z_extra.to_octets_be f)
+      Log.debug (fun m -> m "signature is %a (hash %a)"
                     Ohex.pp signature Ohex.pp h);
       let session_id = match t.session_id with None -> h | Some x -> x in
       let* new_keys_ctos, new_keys_stoc, key_eol =
@@ -442,10 +441,10 @@ let input_msg t msg now =
       let* c = guard_some t.client_kexinit "No client kex" in
       Ok (client_version, c.rawkex)
     in
-    let dh ~ec t neg ~e ~f ~k =
+    let dh t neg ~e ~f ~k =
       let* client_version, i_c = cv_ckex t in
       let pub_host_key = Hostkey.pub_of_priv t.host_key in
-      let h = Kex.Dh.compute_hash ~signed:(not ec) neg
+      let h = Kex.Dh.compute_hash neg
           ~v_c:client_version
           ~v_s:t.server_version
           ~i_c
@@ -453,7 +452,10 @@ let input_msg t msg now =
           ~k_s:pub_host_key
           ~e ~f ~k
       in
-      let* t, signature, msgs = sign_rekey t neg ~h ~f ~k in
+      Log.debug (fun m -> m "our ephemeral %s public value is %a"
+                    (Kex.alg_to_string neg.kex_alg)
+                    Ohex.pp (Mirage_crypto_pk.Z_extra.to_octets_be f));
+      let* t, signature, msgs = sign_rekey t neg ~h ~k in
       Ok (t, (pub_host_key, signature), msgs)
     in
     begin
@@ -502,7 +504,10 @@ let input_msg t msg now =
                 ~e:theirs ~f
                 ~k
             in
-            let* t, sig_, msgs = sign_rekey t neg ~h ~f ~k in
+            Log.debug (fun m -> m "our ephemeral %s public value is %a"
+                          (Kex.alg_to_string neg.kex_alg)
+                          Ohex.pp (Mirage_crypto_pk.Z_extra.to_octets_be f));
+            let* t, sig_, msgs = sign_rekey t neg ~h ~k in
             make_replies t
               (Msg_kexdh_gex_reply (pub_host_key, f, sig_) :: msgs)
           | _ -> Error "unexpected KEX message"
@@ -511,19 +516,29 @@ let input_msg t msg now =
           match m with
           | Msg_kexdh_init e ->
             let* f, k = Kex.(Dh.generate neg.kex_alg e) in
-            let* (t, (key, sig_), msgs) = dh ~ec:false t neg ~e ~f ~k in
+            let* (t, (key, sig_), msgs) = dh t neg ~e ~f ~k in
             make_replies t
               (Msg_kexdh_reply (key, f, sig_) :: msgs)
           | _ -> Error "unexpected KEX message"
         else (* EC *)
           let* m = Wire.dh_kexecdh_of_kex id data in
           match m with
-          | Msg_kexecdh_init e ->
-            let secret, f = Kex.Dh.ec_secret_pub neg.kex_alg in
-            let* k = Kex.Dh.ec_shared secret e in
-            let* (t, (key, sig_), msgs) = dh ~ec:true t neg ~e ~f ~k in
+          | Msg_kexecdh_init q_c ->
+            let secret, q_s = Kex.Dh.ec_secret_pub neg.kex_alg in
+            let* k = Kex.Dh.ec_shared secret q_c in
+            let* client_version, i_c = cv_ckex t in
+            let pub_host_key = Hostkey.pub_of_priv t.host_key in
+            let h =
+              Kex.Dh.compute_hash_ec neg
+                ~v_c:client_version ~v_s:t.server_version
+                ~i_c ~i_s:(Wire.blob_of_kexinit t.server_kexinit)
+                ~k_s:pub_host_key ~q_c ~q_s ~k
+            in
+            Log.debug (fun m -> m "our ephemeral %s public point is %a"
+                          (Kex.alg_to_string neg.kex_alg) Ohex.pp q_s);
+            let* t, sig_, msgs = sign_rekey t neg ~h ~k in
             make_replies t
-              (Msg_kexecdh_reply (key, f, sig_) :: msgs)
+              (Msg_kexecdh_reply (pub_host_key, q_s, sig_) :: msgs)
           | _ -> Error "unexpected KEX message"
     end
   | Msg_newkeys ->
