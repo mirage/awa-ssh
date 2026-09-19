@@ -477,9 +477,6 @@ let input_msg t msg now =
   | Established, Msg_channel_eof id ->
     let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
     Ok (t, [], [ `Channel_eof (Channel.id c) ])
-  | Established, Msg_channel_request (id, false, Exit_status r) ->
-    let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
-    Ok (t, [], [ `Channel_exit_status (Channel.id c, r) ])
   | Established, Msg_channel_success id ->
     let* _c = guard_some (Channel.lookup id t.channels) "no such channel" in
     Log.info (fun m -> m "channel success %lu" id);
@@ -497,6 +494,55 @@ let input_msg t msg now =
         [ Msg_disconnect (DISCONNECT_BY_APPLICATION, msg, "") ]
     in
     Ok ({ t with channels }, msgs, [ `Disconnected ])
+  | Established, Msg_channel_request (id, want_reply, req) ->
+    (match Channel.lookup id t.channels with
+     | None ->
+       (* RFC 4254 5.3 lets a peer reuse a number we have freed, so this may
+          be a race rather than an attack.  OpenSSH's client logs and carries
+          on here; we do the same. *)
+       Log.warn (fun m -> m "received channel request for unknown channel %lu" id);
+       Ok (t, [], [])
+     | Some c ->
+       let reply_success, events = match req with
+         | Exit_status r ->
+           (* We tolerate broken peers that set want_reply. *)
+           true, [ `Channel_exit_status (Channel.id c, r) ]
+         | Keepalive ->
+           Log.debug (fun m -> m "received keepalive channel request (want reply %B)"
+                         want_reply);
+           false, []
+         | Xon_xoff client_can_do ->
+           (* We don't do pty's yet: ignore, as we are allowed to. *)
+           Log.debug (fun m -> m "ignoring xon-xoff (client can do: %B)"
+                         client_can_do);
+           false, []
+         | Exit_signal (signal, core_dumped, message, _lang) ->
+           (* FIXME: we should actually do something with that information, but
+              requires an API re-design. *)
+           Log.warn (fun m -> m "remote command killed by SIG%s%s%s; NOT YET \
+                                 reported to the application"
+                        signal (if core_dumped then " (core dumped)" else "")
+                        (if message = "" then "" else ": " ^ message));
+           false, []
+         | Unknown (name, _) ->
+           Log.info (fun m -> m "received unknown channel request %S (want reply %B)"
+                        name want_reply);
+           false, []
+         | _ ->
+           Log.info (fun m -> m "ignoring channel request a client should not \
+                                 receive (want reply %B)" want_reply);
+           false, []
+       in
+       (* As OpenSSH does via CHAN_CLOSE_SENT: once we have sent a close for the
+          channel we stop answering requests on it. *)
+       let msgs =
+         if want_reply && c.Channel.state = Channel.Open then
+           [ if reply_success then Msg_channel_success (Channel.their_id c)
+             else Msg_channel_failure (Channel.their_id c) ]
+         else
+           []
+       in
+       Ok (t, msgs, events))
   | _, Msg_disconnect (code, msg, lang) ->
     Log.err (fun m -> m "disconnected: %s %s%s"
                 (Ssh.disconnect_code_to_string code)

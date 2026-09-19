@@ -1,0 +1,4 @@
+(test
+ (name test_channel_requests)
+ (package awa)
+ (libraries awa mirage-mtime mirage-crypto-rng.unix))
