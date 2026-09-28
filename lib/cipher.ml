@@ -110,8 +110,10 @@ let enc_dec enc ~len seq cipher buf =
     Ok (buf, cipher)
   | Chacha20_poly1305_key (len_key, key) ->
     let nonce =
+      (* zero-extend the 32bit nonce into 64 bit *)
       let b = Bytes.create 8 in
-      Bytes.set_int64_be b 0 (Int64.of_int32 seq);
+      Bytes.set_int32_be b 0 0l;
+      Bytes.set_int32_be b 4 seq;
       Bytes.unsafe_to_string b
     in
     let c_len b = Chacha20.crypt ~key:len_key ~nonce b in
@@ -151,6 +153,7 @@ let encrypt ~len seq cipher buf =
   match enc_dec true ~len seq cipher buf with
   | Ok a -> a
   | Error _ -> assert false
+
 let decrypt = enc_dec false
 
 let preferred = [ Chacha20_poly1305 ;
