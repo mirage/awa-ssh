@@ -43,7 +43,10 @@ let put_bool t value =
 let get_string buf off =
   trap_error (fun () ->
       let* len, off' = get_uint32 buf off in
-      let len = Int32.to_int len in
+      let* len =
+        Option.to_result ~none:"Can't fit string len into an int"
+          (Int32.unsigned_to_int len)
+      in
       Ssh.guard_sshlen_exn len;
       Ok ((String.sub buf off' len), off' + len))
 
@@ -58,7 +61,11 @@ let put_random t len =
 let get_mpint buf off =
   trap_error (fun () ->
       let* len, off' = get_uint32 buf off in
-      match Int32.to_int len with
+      let* len =
+        Option.to_result ~none:"Can't fit mpint len into an int"
+          (Int32.unsigned_to_int len)
+      in
+      match len with
       | 0 -> Ok (Z.zero, off')
       | len ->
         Ssh.guard_sshlen_exn len;
@@ -215,7 +222,11 @@ let privkey_of_openssh data =
   let* keys, off = get_uint32 data off in
   let* () = guard (keys = 1l) "only one key supported" in
   let* pklen, off = get_uint32 data off in
-  let* _plen, off = get_uint32 data (off + Int32.to_int pklen) in
+  let* pklen =
+    Option.to_result ~none:"Can't find pklen into an int"
+      (Int32.unsigned_to_int pklen)
+  in
+  let* _plen, off = get_uint32 data (off + pklen) in
   (* 64 bit checkint - useful when crypted *)
   let* keytype, off = get_string data (off + 8) in
   match keytype with
@@ -700,7 +711,11 @@ let userauth_info_request buf =
       let* echo, off = get_bool buf off in
       collect_prompts buf off ((prompt, echo) :: acc) (n - 1)
   in
-  let* prompts = collect_prompts buf off [] (Int32.to_int num_prompts) in
+  let* num_prompts =
+    Option.to_result ~none:"Can't fit num_prompts into an int"
+      (Int32.unsigned_to_int num_prompts)
+  in
+  let* prompts = collect_prompts buf off [] num_prompts in
   Ok (Ssh.Msg_userauth_info_request (name, instruction, lang, prompts))
 
 let put_message buf msg =

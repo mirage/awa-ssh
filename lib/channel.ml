@@ -61,7 +61,11 @@ let maybe_split off data =
 (* Returns new t, data normalized, and adjust window if <> zero *)
 let input_data t data =
   (* Normalize data, discard if greater than window *)
-  let len = min (String.length data) (Int32.to_int t.us.win) in
+  let* win =
+    Option.to_result ~none:"Can't fit our win into an int"
+      (Int32.unsigned_to_int t.us.win)
+  in
+  let len = min (String.length data) win in
   let data, left = maybe_split len data in
   if left > 0 then
     Log.warn (fun m -> m "channel input_data: discarding %d bytes (window size)"
@@ -85,8 +89,10 @@ let input_data t data =
   Ok (t, data, msg)
 
 let output_data ~flush t data =
-  let max_pkt = Int32.to_int t.them.max_pkt in
-  let* () = guard (max_pkt > 0) "invalid max packet size" in
+  let* max_pkt =
+    Option.to_result ~none:"Can't fit max_pkt into an int"
+      (Int32.unsigned_to_int t.them.max_pkt)
+  in
   let fragment data =
     let rec go off =
       if String.length data - off > max_pkt then
@@ -104,7 +110,11 @@ let output_data ~flush t data =
     else
       data
   in
-  let len = min (String.length tosend) (Int32.to_int t.them.win) in
+  let* win =
+    Option.to_result ~none:"Can't fit their win into an int"
+      (Int32.unsigned_to_int t.them.win)
+  in
+  let len = min (String.length tosend) win in
   let data, tosend =
     if flush then
       tosend, ""

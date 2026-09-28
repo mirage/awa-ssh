@@ -229,7 +229,13 @@ let handle_kexdh_gex_group t v_c ckex v_s skex neg min n max p gg =
     Result.map_error (function `Msg m -> m) (group ~p ~gg ())
   in
   let bits = modulus_size group in
-  if Int32.to_int min <= bits && bits <= Int32.to_int max then
+  let* mini =
+    Option.to_result ~none:"Can't fit min into an int" (Int32.unsigned_to_int min)
+  in
+  let* maxi =
+    Option.to_result ~none:"Can't fit max into an int" (Int32.unsigned_to_int max)
+  in
+  if mini <= bits && bits <= maxi then
     let secret, shared = gen_key group in
     let pub = Mirage_crypto_pk.Z_extra.of_octets_be shared in
     let state = Negotiated_gex (v_c, ckex, v_s, skex, neg, min, n, max, p, gg, secret, pub) in

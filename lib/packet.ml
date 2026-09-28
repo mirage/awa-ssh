@@ -19,7 +19,9 @@ open Util
 let len_off = 0
 
 let get_pkt_len buf =
-  String.get_int32_be buf len_off |> Int32.to_int
+  let data = String.get_int32_be buf len_off in
+  Option.to_result ~none:"Can't fit pkt_len into an int"
+    (Int32.unsigned_to_int data)
 
 let set_pkt_len buf v =
   Bytes.set_int32_be buf len_off (Int32.of_int v)
@@ -34,7 +36,7 @@ let sizeof_pkt_hdr = 5
 
 let get_payload buf =
   let* () = guard (String.length buf >= 5) "Buf too short" in
-  let pkt_len = get_pkt_len buf in
+  let* pkt_len = get_pkt_len buf in
   let pad_len = get_pad_len buf in
   let* () = guard (pkt_len > 0 && pkt_len < Ssh.max_pkt_len) "Bogus pkt len" in
   let* () = guard (pad_len < pkt_len) "Bogus pad len" in
@@ -61,7 +63,7 @@ let peek_len cipher seq block_len buf =
       String.sub buf 0 block_len
   in
   let* hdr, _ = Cipher.decrypt ~len:true seq cipher buf in
-  Ok (get_pkt_len hdr)
+  get_pkt_len hdr
 
 let partial buf =
   if String.length buf < Ssh.max_pkt_len then
