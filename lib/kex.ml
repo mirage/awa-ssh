@@ -30,20 +30,14 @@ let compression_alg_to_string = function
 type alg =
   | Diffie_hellman_group_exchange_sha256
   | Diffie_hellman_group14_sha256
-  | Diffie_hellman_group14_sha1
-  | Diffie_hellman_group1_sha1
-  | Diffie_hellman_group_exchange_sha1
   | Curve25519_sha256
   | Ecdh_sha2_nistp256
   | Ecdh_sha2_nistp384
   | Ecdh_sha2_nistp521
 
 let is_rfc4419 = function
-  | Diffie_hellman_group_exchange_sha256
-  | Diffie_hellman_group_exchange_sha1 -> true
+  | Diffie_hellman_group_exchange_sha256 -> true
   | Diffie_hellman_group14_sha256
-  | Diffie_hellman_group14_sha1
-  | Diffie_hellman_group1_sha1
   | Curve25519_sha256
   | Ecdh_sha2_nistp256
   | Ecdh_sha2_nistp384
@@ -51,10 +45,7 @@ let is_rfc4419 = function
 
 let is_finite_field = function
   | Diffie_hellman_group_exchange_sha256
-  | Diffie_hellman_group_exchange_sha1
-  | Diffie_hellman_group14_sha256
-  | Diffie_hellman_group14_sha1
-  | Diffie_hellman_group1_sha1 -> true
+  | Diffie_hellman_group14_sha256 -> true
   | Curve25519_sha256
   | Ecdh_sha2_nistp256
   | Ecdh_sha2_nistp384
@@ -62,10 +53,7 @@ let is_finite_field = function
 
 let alg_of_string = function
   | "diffie-hellman-group-exchange-sha256" -> Ok Diffie_hellman_group_exchange_sha256
-  | "diffie-hellman-group-exchange-sha1" -> Ok Diffie_hellman_group_exchange_sha1
   | "diffie-hellman-group14-sha256" -> Ok Diffie_hellman_group14_sha256
-  | "diffie-hellman-group14-sha1" -> Ok Diffie_hellman_group14_sha1
-  | "diffie-hellman-group1-sha1" -> Ok Diffie_hellman_group1_sha1
   | "curve25519-sha256" -> Ok Curve25519_sha256
   | "ecdh-sha2-nistp256" -> Ok Ecdh_sha2_nistp256
   | "ecdh-sha2-nistp384" -> Ok Ecdh_sha2_nistp384
@@ -74,10 +62,7 @@ let alg_of_string = function
 
 let alg_to_string = function
   | Diffie_hellman_group_exchange_sha256 -> "diffie-hellman-group-exchange-sha256"
-  | Diffie_hellman_group_exchange_sha1 -> "diffie-hellman-group-exchange-sha1"
   | Diffie_hellman_group14_sha256 -> "diffie-hellman-group14-sha256"
-  | Diffie_hellman_group14_sha1 -> "diffie-hellman-group14-sha1"
-  | Diffie_hellman_group1_sha1  -> "diffie-hellman-group1-sha1"
   | Curve25519_sha256 -> "curve25519-sha256"
   | Ecdh_sha2_nistp256 -> "ecdh-sha2-nistp256"
   | Ecdh_sha2_nistp384 -> "ecdh-sha2-nistp384"
@@ -85,9 +70,6 @@ let alg_to_string = function
 
 let group_of_alg = function
   | Diffie_hellman_group14_sha256 -> Mirage_crypto_pk.Dh.Group.oakley_14
-  | Diffie_hellman_group14_sha1 -> Mirage_crypto_pk.Dh.Group.oakley_14
-  | Diffie_hellman_group1_sha1  -> Mirage_crypto_pk.Dh.Group.oakley_2
-  | Diffie_hellman_group_exchange_sha1
   | Diffie_hellman_group_exchange_sha256
   | Curve25519_sha256
   | Ecdh_sha2_nistp256
@@ -98,9 +80,6 @@ let hash_of_alg = function
   | Diffie_hellman_group_exchange_sha256
   | Diffie_hellman_group14_sha256
   | Curve25519_sha256 -> Digestif.module_of_hash' `SHA256
-  | Diffie_hellman_group_exchange_sha1
-  | Diffie_hellman_group14_sha1
-  | Diffie_hellman_group1_sha1 -> Digestif.module_of_hash' `SHA1
   | Ecdh_sha2_nistp256 -> Digestif.module_of_hash' `SHA256
   | Ecdh_sha2_nistp384 -> Digestif.module_of_hash' `SHA384
   | Ecdh_sha2_nistp521 -> Digestif.module_of_hash' `SHA512
@@ -108,16 +87,9 @@ let hash_of_alg = function
 let supported =
   [ Curve25519_sha256 ;
     Ecdh_sha2_nistp256 ; Ecdh_sha2_nistp384 ; Ecdh_sha2_nistp521 ;
-    Diffie_hellman_group14_sha256 ; Diffie_hellman_group_exchange_sha256 ;
-    Diffie_hellman_group14_sha1 ; Diffie_hellman_group1_sha1 ;
-    Diffie_hellman_group_exchange_sha1 ]
-
-let default =
-  [ Curve25519_sha256 ;
-    Ecdh_sha2_nistp256 ; Ecdh_sha2_nistp384 ; Ecdh_sha2_nistp521 ;
     Diffie_hellman_group14_sha256 ; Diffie_hellman_group_exchange_sha256 ]
 
-let make_kexinit ?(hmacs = Hmac.default) ?(ciphers = Cipher.default) ?ext_info host_key_algs algs () =
+let make_kexinit ?(hmacs = Hmac.supported) ?(ciphers = Cipher.supported) ?ext_info host_key_algs algs () =
   let k =
     { cookie = Mirage_crypto_rng.generate 16;
       kex_algs = List.map alg_to_string algs;
