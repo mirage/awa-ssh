@@ -99,14 +99,14 @@ let guard_msg t msg =
     let msgid = message_to_id msg in
     guard (id = msgid) ("Unexpected message " ^ string_of_int (message_id_to_int msgid))
 
-let host_key_algs key =
-  List.filter Hostkey.(alg_matches (priv_to_typ key)) Hostkey.preferred_algs
+let host_key_algs key algs =
+  List.filter Hostkey.(alg_matches (priv_to_typ key)) algs
 
-let make host_key =
+let make ?(hostkey_algs = Hostkey.default_algs) ?(kex = Kex.default) host_key =
   let open Ssh in
   let server_kexinit =
-    let algs = host_key_algs host_key in
-    Kex.make_kexinit algs Kex.supported ()
+    let algs = host_key_algs host_key hostkey_algs in
+    Kex.make_kexinit algs kex ()
   in
   let banner_msg = Ssh.Msg_version version_banner in
   let kex_msg = Ssh.Msg_kexinit server_kexinit in
@@ -152,7 +152,7 @@ let rekey t =
   match t.keying, (Kex.is_keyed t.keys_stoc) with
   | false, true ->              (* can't be keying and must be keyed *)
     let server_kexinit =
-      let algs = host_key_algs t.host_key in
+      let algs = host_key_algs t.host_key Hostkey.default_algs in
       Kex.make_kexinit algs Kex.supported ()
     in
     let t = { t with server_kexinit; keying = true } in
@@ -409,7 +409,7 @@ let input_msg t msg now =
       if t.ext_info then
         let algs =
           String.concat ","
-            (List.map Hostkey.alg_to_string Hostkey.preferred_algs);
+            (List.map Hostkey.alg_to_string Hostkey.default_algs);
         in
         let extensions =
           [Extension { name = "server-sig-algs"; value = algs; }]

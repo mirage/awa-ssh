@@ -16,7 +16,11 @@
 
 type t
 
-val make : ?authenticator:Keys.authenticator -> user:string ->
+val make : ?authenticator:Keys.authenticator ->
+  ?hostkey_algs:Hostkey.alg list ->
+  ?hostkey_algs_of_typ:(Keys.typ -> Hostkey.alg list) ->
+  ?kex:Kex.alg list ->
+  user:string ->
   [ `Pubkey of Hostkey.priv | `Password of string ] -> t * string list
 
 type event = [

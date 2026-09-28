@@ -425,8 +425,8 @@ let t_crypto () =
   List.iter (fun cipher ->
       List.iter (fun hmac ->
           test (make cipher hmac))
-        Hmac.preferred)
-    Cipher.preferred;
+        Hmac.default)
+    Cipher.default;
   test_ok
 
 let string_of_file file =
@@ -466,7 +466,7 @@ let t_ignore_next_packet () =
   let t = Server.{ t with client_version = Some "SSH-2.0-client";
                           expect = Some(Ssh.MSG_KEXINIT) }
   in
-  let kexinit = Ssh.{ (Kex.make_kexinit Hostkey.preferred_algs Kex.supported ()) with
+  let kexinit = Ssh.{ (Kex.make_kexinit Hostkey.default_algs Kex.supported ()) with
                       encryption_algs_ctos = ["aes256-cbc"];
                       first_kex_packet_follows = true }
   in

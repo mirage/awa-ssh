@@ -112,16 +112,21 @@ let supported =
     Diffie_hellman_group14_sha1 ; Diffie_hellman_group1_sha1 ;
     Diffie_hellman_group_exchange_sha1 ]
 
-let make_kexinit ?ext_info host_key_algs algs () =
+let default =
+  [ Curve25519_sha256 ;
+    Ecdh_sha2_nistp256 ; Ecdh_sha2_nistp384 ; Ecdh_sha2_nistp521 ;
+    Diffie_hellman_group14_sha256 ; Diffie_hellman_group_exchange_sha256 ]
+
+let make_kexinit ?(hmacs = Hmac.default) ?(ciphers = Cipher.default) ?ext_info host_key_algs algs () =
   let k =
     { cookie = Mirage_crypto_rng.generate 16;
       kex_algs = List.map alg_to_string algs;
       ext_info;
       server_host_key_algs = List.map Hostkey.alg_to_string host_key_algs;
-      encryption_algs_ctos = List.map Cipher.to_string Cipher.preferred;
-      encryption_algs_stoc = List.map Cipher.to_string Cipher.preferred;
-      mac_algs_ctos = List.map Hmac.to_string Hmac.preferred;
-      mac_algs_stoc = List.map Hmac.to_string Hmac.preferred;
+      encryption_algs_ctos = List.map Cipher.to_string ciphers;
+      encryption_algs_stoc = List.map Cipher.to_string ciphers;
+      mac_algs_ctos = List.map Hmac.to_string hmacs;
+      mac_algs_stoc = List.map Hmac.to_string hmacs;
       compression_algs_ctos = [ "none" ];
       compression_algs_stoc = [ "none" ];
       languages_ctos = [];

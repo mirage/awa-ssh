@@ -81,9 +81,15 @@ let alg_to_string = function
   | Rsa_sha512 -> "rsa-sha2-512"
   | Ed25519 -> "ssh-ed25519"
 
-let preferred_algs = [ Ed25519 ; Rsa_sha256 ; Rsa_sha512 ; Rsa_sha1 ]
+let default_algs = [ Ed25519 ; Rsa_sha256 ; Rsa_sha512 ]
 
-let algs_of_typ = function
+let supported_algs = [ Ed25519 ; Rsa_sha256 ; Rsa_sha512 ; Rsa_sha1 ]
+
+let default_algs_of_typ = function
+  | `Ed25519 -> [ Ed25519 ]
+  | `Rsa -> [ Rsa_sha256 ; Rsa_sha512 ]
+
+let supported_algs_of_typ = function
   | `Ed25519 -> [ Ed25519 ]
   | `Rsa -> [ Rsa_sha256 ; Rsa_sha512 ; Rsa_sha1 ]
 
@@ -91,7 +97,7 @@ let priv_to_typ = function
   | Rsa_priv _ -> `Rsa
   | Ed25519_priv _ -> `Ed25519
 
-let alg_matches typ alg = List.mem alg (algs_of_typ typ)
+let alg_matches typ alg = List.mem alg (supported_algs_of_typ typ)
 
 let sign alg priv blob =
   match priv with

@@ -69,8 +69,10 @@ let key_len = function
 
 let known s = Result.is_ok (of_string s)
 
-let preferred = [ Md5; Sha1; Sha2_256;
+let supported = [ Md5; Sha1; Sha2_256;
                   Sha2_512; Sha1_96; Md5_96 ]
+
+let default = [ Sha2_256; Sha2_512 ]
 
 let hmacv hmac ~key data =
   let take_96 buf =
