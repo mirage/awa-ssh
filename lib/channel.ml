@@ -85,8 +85,9 @@ let input_data t data =
   Ok (t, data, msg)
 
 let output_data ~flush t data =
+  let max_pkt = Int32.to_int t.them.max_pkt in
+  let* () = guard (max_pkt > 0) "invalid max packet size" in
   let fragment data =
-    let max_pkt = Int32.to_int t.them.max_pkt in
     let rec go off =
       if String.length data - off > max_pkt then
         let frag = String.sub data off max_pkt in
