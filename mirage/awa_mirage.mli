@@ -8,7 +8,9 @@ module Auth : sig
   val lookup_user : string -> db -> user option
 end
 
-(** SSH module given a flow *)
+(** SSH module given a flow. Please note that only a single channel is supported
+    for reading and writing - if there are multiple channels, they will be
+    merged. *)
 module Make (F : Mirage_flow.S) : sig
 
   (** possible errors: incoming alert, processing failure, or a
