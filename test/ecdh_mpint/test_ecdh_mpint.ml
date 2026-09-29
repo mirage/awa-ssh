@@ -32,7 +32,7 @@ let ecdh_public_roundtrip () =
 let mpint_sign () =
   let wire bytes =
     let b = Buffer.create 16 in
-    Wire.put_uint32 b (Int32.of_int (String.length bytes));
+    Wire.put_uint32 b (String.length bytes);
     Buffer.add_string b bytes;
     Buffer.contents b
   in

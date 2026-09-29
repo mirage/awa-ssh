@@ -20,11 +20,11 @@ val make : ?authenticator:Keys.authenticator -> user:string ->
   [ `Pubkey of Hostkey.priv | `Password of string ] -> t * string list
 
 type event = [
-  | `Established of int32
-  | `Channel_data of int32 * string
-  | `Channel_stderr of int32 * string
-  | `Channel_eof of int32
-  | `Channel_exit_status of int32 * int32
+  | `Established of int
+  | `Channel_data of int * string
+  | `Channel_stderr of int * string
+  | `Channel_eof of int
+  | `Channel_exit_status of int * int
   | `Disconnected
 ]
 
@@ -33,12 +33,12 @@ val pp_event : Format.formatter -> event -> unit
 val incoming : t -> Mtime.t -> string ->
   (t * string list * event list, string) result
 
-val outgoing_request : t -> ?id:int32 -> ?want_reply:bool ->
+val outgoing_request : t -> ?id:int -> ?want_reply:bool ->
   Ssh.channel_request -> (t * string, string) result
 
-val outgoing_data : t -> ?id:int32 -> string ->
+val outgoing_data : t -> ?id:int -> string ->
   (t * string list, string) result
 
-val eof : ?id:int32 -> t -> t * string list
+val eof : ?id:int -> t -> t * string list
 
-val close : ?id:int32 -> t -> t * string option
+val close : ?id:int -> t -> t * string option

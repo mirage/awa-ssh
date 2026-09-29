@@ -20,10 +20,17 @@ let ( let* ) = Result.bind
 
 let get_uint32 buf off =
   trap_error (fun () ->
-      Ok (String.get_int32_be buf off, off + 4))
+      let data = String.get_int32_be buf off in
+      let* v =
+        Option.to_result
+          ~none:(Format.sprintf "Can't fit uint32 %lx into an int" data)
+          (Int32.unsigned_to_int data)
+      in
+      Ok (v, off + 4))
 
 let put_uint32 buf value =
-  Buffer.add_int32_be buf value
+  let v = Int32.of_int value in
+  Buffer.add_int32_be buf v
 
 let get_uint8 buf off =
   trap_error (fun () ->
@@ -43,16 +50,12 @@ let put_bool t value =
 let get_string buf off =
   trap_error (fun () ->
       let* len, off' = get_uint32 buf off in
-      let* len =
-        Option.to_result ~none:"Can't fit string len into an int"
-          (Int32.unsigned_to_int len)
-      in
       Ssh.guard_sshlen_exn len;
       Ok ((String.sub buf off' len), off' + len))
 
 let put_string buf s =
   let len = String.length s in
-  put_uint32 buf (Int32.of_int len);
+  put_uint32 buf len;
   Buffer.add_string buf s
 
 let put_random t len =
@@ -61,10 +64,6 @@ let put_random t len =
 let get_mpint buf off =
   trap_error (fun () ->
       let* len, off' = get_uint32 buf off in
-      let* len =
-        Option.to_result ~none:"Can't fit mpint len into an int"
-          (Int32.unsigned_to_int len)
-      in
       match len with
       | 0 -> Ok (Z.zero, off')
       | len ->
@@ -85,10 +84,10 @@ let put_mpint buf mpint =
   let mplen = String.length mpbuf in
   if mplen > 0 &&
      ((String.get_uint8 mpbuf 0) land 0x80) <> 0 then begin
-    put_uint32 buf (Int32.of_int (succ mplen));
+    put_uint32 buf (succ mplen);
     put_uint8 buf 0
   end else
-    put_uint32 buf (Int32.of_int mplen);
+    put_uint32 buf mplen;
   Buffer.add_string buf mpbuf
 
 let get_message_id buf off =
@@ -191,7 +190,7 @@ let privkey_of_pem buf =
   | _ -> Error (`Msg "unsupported private key")
 
 let privkey_of_openssh data =
-  (* as defined in https://cvsweb.openbsd.org/cgi-bin/cvsweb/~checkout~/src/usr.bin/ssh/PROTOCOL.key?rev=1.1&content-type=text/plain *)
+  (* as defined in https://github.com/openssh/openssh-portable/blob/master/PROTOCOL.key *)
   let id s =
     let dash = "-----" in
     dash ^ (if s then "BEGIN" else "END") ^ " OPENSSH PRIVATE KEY" ^ dash
@@ -220,12 +219,8 @@ let privkey_of_openssh data =
   let* kdfopts, off = get_string data off in
   let* () = guard (String.equal kdfopts "") "only no kdfoptions supported" in
   let* keys, off = get_uint32 data off in
-  let* () = guard (keys = 1l) "only one key supported" in
+  let* () = guard (keys = 1) "only one key supported" in
   let* pklen, off = get_uint32 data off in
-  let* pklen =
-    Option.to_result ~none:"Can't find pklen into an int"
-      (Int32.unsigned_to_int pklen)
-  in
   let* _plen, off = get_uint32 data (off + pklen) in
   (* 64 bit checkint - useful when crypted *)
   let* keytype, off = get_string data (off + 8) in
@@ -279,7 +274,7 @@ let put_kexinit t kex =
   Buffer.add_string t kex.cookie;
   List.iter (put_nl t) nll;
   put_bool t kex.first_kex_packet_follows;
-  put_uint32 t Int32.zero
+  put_uint32 t 0
 
 let blob_of_kexinit kex =
   let b = Buffer.create 14 in
@@ -410,10 +405,6 @@ let get_message buf =
             rawkex = buf })
   | MSG_EXT_INFO ->
     let* nr_extensions, off = get_uint32 buf off in
-    let* nr_extensions = match Int32.unsigned_to_int nr_extensions with
-      | None -> Error "Ridiculous number of extensions advertised"
-      | Some n -> Ok n
-    in
     let rec loop buf off n acc =
       if n = 0 then
         Ok (Msg_ext_info (List.rev acc))
@@ -711,10 +702,6 @@ let userauth_info_request buf =
       let* echo, off = get_bool buf off in
       collect_prompts buf off ((prompt, echo) :: acc) (n - 1)
   in
-  let* num_prompts =
-    Option.to_result ~none:"Can't fit num_prompts into an int"
-      (Int32.unsigned_to_int num_prompts)
-  in
   let* prompts = collect_prompts buf off [] num_prompts in
   Ok (Ssh.Msg_userauth_info_request (name, instruction, lang, prompts))
 
@@ -750,8 +737,7 @@ let put_message buf msg =
   | Msg_ext_info extensions ->
     let nr_extensions = List.length extensions in
     put_id buf MSG_EXT_INFO;
-    (* XXX: overflow *)
-    put_uint32 buf (Int32.of_int nr_extensions);
+    put_uint32 buf nr_extensions;
     put_extensions buf extensions
   | Msg_newkeys ->
     put_id buf MSG_NEWKEYS
@@ -836,14 +822,14 @@ let put_message buf msg =
     put_string buf name;
     put_string buf instruction;
     put_string buf lang;
-    put_uint32 buf (Int32.of_int (List.length prompts));
+    put_uint32 buf (List.length prompts);
     List.iter (fun (prompt, echo) ->
         put_string buf prompt;
         put_bool buf echo)
       prompts
   | Msg_userauth_info_response passwords ->
     put_id buf MSG_USERAUTH_2;
-    put_uint32 buf (Int32.of_int (List.length passwords));
+    put_uint32 buf (List.length passwords);
     List.iter (put_string buf) passwords
   | Msg_userauth_1 _ -> assert false
   | Msg_userauth_2 _ -> assert false

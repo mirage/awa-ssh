@@ -165,7 +165,7 @@ module Make (F : Mirage_flow.S) = struct
           | `Nothing, `Channel_eof _ -> `Eof
           | `Nothing, `Disconnected -> `Eof
           | a, `Channel_stderr (id, data) ->
-            Log.warn (fun m -> m "%ld stderr %s" id data);
+            Log.warn (fun m -> m "%u stderr %s" id data);
             a
           | a, _ -> a)
           `Nothing events
@@ -258,19 +258,19 @@ module Make (F : Mirage_flow.S) = struct
     | Rekey
     | Net_eof
     | Net_io of Cstruct.t
-    | Sshout of (int32 * Cstruct.t)
-    | Ssherr of (int32 * Cstruct.t)
+    | Sshout of (int * Cstruct.t)
+    | Ssherr of (int * Cstruct.t)
 
   type channel = {
     cmd         : string option;
-    id          : int32;
+    id          : int;
     sshin_mbox  : Cstruct.t Mirage_flow.or_eof Lwt_mvar.t;
     exec_thread : unit Lwt.t;
   }
 
   type request =
-    | Pty_req of { width : int32; height : int32; max_width : int32; max_height : int32; term : string }
-    | Pty_set of { width : int32; height : int32; max_width : int32; max_height : int32 }
+    | Pty_req of { width : int; height : int; max_width : int; max_height : int; term : string }
+    | Pty_set of { width : int; height : int; max_width : int; max_height : int }
     | Set_env of { key : string; value : string }
     | Channel of { cmd : string
                  ; ic : unit -> Cstruct.t Mirage_flow.or_eof Lwt.t

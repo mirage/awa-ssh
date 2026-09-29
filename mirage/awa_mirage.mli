@@ -37,8 +37,8 @@ module Make (F : Mirage_flow.S) : sig
   type t
 
   type request =
-    | Pty_req of { width : int32; height : int32; max_width : int32; max_height : int32; term : string }
-    | Pty_set of { width : int32; height : int32; max_width : int32; max_height : int32 }
+    | Pty_req of { width : int; height : int; max_width : int; max_height : int; term : string }
+    | Pty_set of { width : int; height : int; max_width : int; max_height : int }
     | Set_env of { key : string; value : string }
     | Channel of { cmd : string
                  ; ic : unit -> Cstruct.t Mirage_flow.or_eof Lwt.t

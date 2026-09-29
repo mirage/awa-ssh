@@ -26,9 +26,9 @@ module Log = (val Logs.src_log src : Logs.LOG)
 type state = Open | Sent_close
 
 type channel_end = {
-  id       : int32;
-  win      : int32;
-  max_pkt  : int32;
+  id       : int;
+  win      : int;
+  max_pkt  : int;
 }
 
 type channel = {
@@ -39,7 +39,7 @@ type channel = {
 }
 
 let compare a b =
-  Int32.compare a.us.id b.us.id
+  Int.compare a.us.id b.us.id
 
 type t = channel
 
@@ -61,27 +61,22 @@ let maybe_split off data =
 (* Returns new t, data normalized, and adjust window if <> zero *)
 let input_data t data =
   (* Normalize data, discard if greater than window *)
-  let* win =
-    Option.to_result ~none:"Can't fit our win into an int"
-      (Int32.unsigned_to_int t.us.win)
-  in
-  let len = min (String.length data) win in
+  let len = min (String.length data) t.us.win in
   let data, left = maybe_split len data in
   if left > 0 then
     Log.warn (fun m -> m "channel input_data: discarding %d bytes (window size)"
                  left);
-  let new_win = Int32.sub t.us.win (Int32.of_int len) in
-  let* () = guard Int32.(new_win >= zero) "window underflow" in
+  let new_win = t.us.win - len in
+  let* () = guard (new_win >= 0) "window underflow" in
   let win, adjust =
     if new_win < Ssh.channel_win_adj_threshold then
-      Ssh.channel_win_len, Int32.sub Ssh.channel_win_len new_win
+      Ssh.channel_win_len, Ssh.channel_win_len - new_win
     else
-      new_win, Int32.zero
+      new_win, 0
   in
-  let* () = guard (Int32.(adjust >= zero)) "adjust underflow" in
-  assert Int32.(adjust >= zero);
+  let* () = guard (adjust >= 0) "adjust underflow" in
   let t = { t with us = { t.us with win } } in
-  let msg = if adjust <> Int32.zero then
+  let msg = if adjust <> 0 then
       Some (Ssh.Msg_channel_window_adjust (t.them.id, adjust))
     else
       None
@@ -89,15 +84,11 @@ let input_data t data =
   Ok (t, data, msg)
 
 let output_data ~flush t data =
-  let* max_pkt =
-    Option.to_result ~none:"Can't fit max_pkt into an int"
-      (Int32.unsigned_to_int t.them.max_pkt)
-  in
   let fragment data =
     let rec go off =
-      if String.length data - off > max_pkt then
-        let frag = String.sub data off max_pkt in
-        Ssh.Msg_channel_data (t.them.id, frag) :: go (off + max_pkt)
+      if String.length data - off > t.them.max_pkt then
+        let frag = String.sub data off t.them.max_pkt in
+        Ssh.Msg_channel_data (t.them.id, frag) :: go (off + t.them.max_pkt)
       else
         let frag = String.sub data off (String.length data - off) in
         [ Ssh.Msg_channel_data (t.them.id, frag) ]
@@ -110,11 +101,7 @@ let output_data ~flush t data =
     else
       data
   in
-  let* win =
-    Option.to_result ~none:"Can't fit their win into an int"
-      (Int32.unsigned_to_int t.them.win)
-  in
-  let len = min (String.length tosend) win in
+  let len = min (String.length tosend) t.them.win in
   let data, tosend =
     if flush then
       tosend, ""
@@ -122,8 +109,8 @@ let output_data ~flush t data =
       let data, left = maybe_split len tosend in
       data, String.sub tosend len left
   in
-  let win = Int32.sub t.them.win (Int32.of_int len) in
-  let* () = guard Int32.(win >= zero) "window underflow" in
+  let win = t.them.win - len in
+  let* () = guard (win >= 0) "window underflow" in
   let t = { t with tosend; them = { t.them with win } } in
   Ok (t, fragment data)
 
@@ -133,9 +120,9 @@ let flush t =
   output_data ~flush:true t data
 
 let adjust_window t len =
-  let win = Int32.add t.them.win len in
+  let win = t.them.win + len in
   (* XXX this does not handle up to 4GB correctly. *)
-  let* () = guard Int32.(win > zero) "window overflow" in
+  let* () = guard (win > 0) "window overflow" in
   let data = t.tosend in
   let t = { t with tosend = ""; them = { t.them with win } } in
   output_data ~flush:true t data
@@ -144,7 +131,7 @@ let adjust_window t len =
  * Channel database
  *)
 
-module Channel_map = Map.Make(Int32)
+module Channel_map = Map.Make(Int)
 
 type db = channel Channel_map.t
 
@@ -159,19 +146,19 @@ let next_free db =
     | hd :: tl ->
       let key = fst hd in
       (* Find a hole *)
-      if Int32.succ lkey <> key then
-        Some (Int32.succ lkey)
+      if succ lkey <> key then
+        Some (succ lkey)
       else
         linear key tl
   in
   match Channel_map.max_binding_opt db with
-  | None -> Some Int32.zero
+  | None -> Some 0
   | Some (key, _) ->
     (* If max binding is not max key *)
-    if key <> (Int32.of_int (Ssh.max_channels - 1)) then
-      Some (Int32.succ key)
+    if key <> (Ssh.max_channels - 1) then
+      Some (succ key)
     else
-      linear Int32.minus_one (Channel_map.bindings db)
+      linear (-1) (Channel_map.bindings db)
 
 let add ~id ~win ~max_pkt db =
   (* Find the next available free channel *)

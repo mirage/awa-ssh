@@ -182,7 +182,7 @@ let t_parsing () =
       assert (String.equal a3 b3);
     | msg, msg2 -> assert (msg = msg2)
   in
-  let long = Int32.of_int 180586 in
+  let long = 180586 in
   (* let mpint = Z.of_int 180586 in *)
   let cstring = "The Conquest of Bread" in
   (* XXX slow *)
@@ -235,7 +235,7 @@ let t_parsing () =
         (long, long, long, long, "Freedom of Mind");
       Msg_channel_open_failure
         (long, long, "Because you stink", "enEN");
-      Msg_channel_window_adjust (long, Int32.succ long);
+      Msg_channel_window_adjust (long, succ long);
       Msg_channel_data (long, "DATADATA");
       Msg_channel_extended_data (long, long, "DATADATA");
       Msg_channel_eof long;
@@ -491,12 +491,9 @@ let t_ignore_next_packet () =
   test_ok
 
 let t_channel_input () =
-  let x = Channel.make_end Int32.zero Ssh.channel_win_len Ssh.channel_max_pkt_len in
+  let x = Channel.make_end 0 Ssh.channel_win_len Ssh.channel_max_pkt_len in
   let c = Channel.make ~us:x ~them:x in
-  let d =
-    Mirage_crypto_rng.generate
-      Int32.(add Ssh.channel_win_len Int32.one |> Int32.to_int)
-  in
+  let d = Mirage_crypto_rng.generate (Ssh.channel_win_len + 1) in
   (* Case 1: No adjustments, just window consumption *)
   let d' = String.sub d 0 32 in
   let* c', dn', adj' = Channel.input_data c d' in
@@ -504,8 +501,7 @@ let t_channel_input () =
   assert (String.equal d' dn');
   assert (adj' = None);
   (* Make sure our window was drained by 32 bytes *)
-  assert Channel.(c'.us.win = (Int32.sub c.them.win
-                                 (String.length d' |> Int32.of_int)));
+  assert Channel.(c'.us.win = c.them.win - (String.length d'));
   (* Case 2, Input 2/3 of the window, adjustment must match full window  *)
   let len' = String.length d / 4 * 3 in
   let d' = String.sub d 0 len' in
@@ -513,8 +509,7 @@ let t_channel_input () =
   assert Channel.(c'.us.win = Ssh.channel_win_len);
   assert (String.length d' = len');
   assert (String.equal d' dn');
-  let adj'' = Some (Ssh.Msg_channel_window_adjust
-                      (Int32.zero, Int32.of_int len')) in
+  let adj'' = Some (Ssh.Msg_channel_window_adjust (0, len')) in
   assert (adj' = adj'');
   (* Case 3, Make sure we discard data above our window *)
   let* _c', dn', _adj' = Channel.input_data c d in
@@ -523,12 +518,9 @@ let t_channel_input () =
   test_ok
 
 let t_channel_output () =
-  let x = Channel.make_end Int32.zero Ssh.channel_win_len Ssh.channel_max_pkt_len in
+  let x = Channel.make_end 0 Ssh.channel_win_len Ssh.channel_max_pkt_len in
   let c = Channel.make ~us:x ~them:x in
-  let d =
-    Mirage_crypto_rng.generate
-      Int32.(add Ssh.channel_win_len Int32.one |> Int32.to_int)
-  in
+  let d = Mirage_crypto_rng.generate (Ssh.channel_win_len + 1) in
   (* Case 1: Small output, single message *)
   let d' = String.sub d 0 32 in
   let* c', msgs' = Channel.output_data ~flush:false c d' in
@@ -537,17 +529,16 @@ let t_channel_output () =
   let* () =
     match msg' with
     | Ssh.Msg_channel_data (id, buf) ->
-      assert (id = Int32.zero);
+      assert (id = 0);
       assert (String.equal buf d');
       Ok ()
     | _ -> Error "Unexpected msg'"
   in
   (* Add data len back, see if we have the full window available *)
-  assert (Channel.(Int32.add c'.them.win (Int32.of_int (String.length d'))) =
-          Ssh.channel_win_len);
+  assert (Channel.(c'.them.win + (String.length d')) = Ssh.channel_win_len);
   (* Case 2: Enough output for 2 messages, first is 64, second 32 *)
   (* Make sure we didn't change defaults *)
-  assert ((Int32.to_int Channel.(c.them.max_pkt)) = (64 * 1024));
+  assert (Channel.(c.them.max_pkt) = (64 * 1024));
   let d' = String.sub d 0 (96 * 1024) in
   let* _c', msgs' = Channel.output_data ~flush:false c d' in
   assert ((List.length msgs') = 2);
@@ -556,7 +547,7 @@ let t_channel_output () =
   let* () =
     match msg1' with
     | Ssh.Msg_channel_data (id, buf) ->
-      assert (id = Int32.zero);
+      assert (id = 0);
       assert (String.equal buf (String.sub d 0 (64 * 1024)));
       Ok ()
     | _ -> Error "unexpected msg1'"
@@ -564,7 +555,7 @@ let t_channel_output () =
   let* () =
     match msg2' with
     | Ssh.Msg_channel_data (id, buf) ->
-      assert (id = Int32.zero);
+      assert (id = 0);
       let d'' = String.sub d (64 * 1024) (32 * 1024) in
       assert (String.equal buf d'');
       Ok ()
@@ -572,7 +563,7 @@ let t_channel_output () =
   in
   (* Case 3: See if peer window is respected, one byte will be outside the window *)
   let* c', msgs' = Channel.output_data ~flush:false c d in
-  let exp_nmsgs' = 1 + String.length d / Int32.to_int Ssh.channel_max_pkt_len in
+  let exp_nmsgs' = 1 + String.length d / Ssh.channel_max_pkt_len in
   (* printf "exp_nmsgs = %d (%d/%d) l=%d\n%!"
    *   exp_nmsgs'
    *   (Cstruct.len d)
@@ -590,14 +581,14 @@ let t_channel_output () =
   assert (String.equal rebuild' dwin');
   (* Now check if the byte outside of the window is there, and makes sense *)
   assert (String.length c'.Channel.tosend = 1);
-  assert (Channel.(c'.them.win) = Int32.zero);
+  assert (Channel.(c'.them.win) = 0);
   let d'' = String.sub d (String.length d - 1) 1 in
   assert (String.equal d'' Channel.(c'.tosend));
   (* Case 4: Widen the window, see if we get our byte back *)
-  let* c'', msgs' = Channel.adjust_window c' (Int32.of_int 100) in
+  let* c'', msgs' = Channel.adjust_window c' 100 in
   assert ((List.length msgs') = 1);
   assert (String.length c''.Channel.tosend = 0);
-  assert (Channel.(c''.them.win) = (Int32.of_int 99));
+  assert (Channel.(c''.them.win) = 99);
   test_ok
 
 let t_openssh_client () =
