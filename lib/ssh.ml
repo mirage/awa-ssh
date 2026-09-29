@@ -280,8 +280,6 @@ let int_to_channel_open_code = function
   | 4 -> Some OPEN_RESOURCE_SHORTAGE
   | _ -> None
 
-type mpint = Z.t
-
 type global_request =
   | Tcpip_forward of (string * int)
   | Cancel_tcpip_forward of (string * int)
@@ -359,17 +357,17 @@ type message =
   | Msg_kexinit of kexinit
   | Msg_ext_info of extension list
   | Msg_newkeys
-  | Msg_kexdh_reply of Hostkey.pub * mpint * (Hostkey.alg * string)
-  | Msg_kexdh_init of mpint
+  | Msg_kexdh_reply of Hostkey.pub * Z.t * (Hostkey.alg * string)
+  | Msg_kexdh_init of Z.t
   (* from RFC 5656 / 8731 *)
   | Msg_kexecdh_reply of Hostkey.pub * string * (Hostkey.alg * string)
   | Msg_kexecdh_init of string
   (* from RFC 4419 *)
   (* there's as well a Msg_kexdh_gex_request_old with only a single int32 *)
   | Msg_kexdh_gex_request of int * int * int
-  | Msg_kexdh_gex_group of mpint * mpint
-  | Msg_kexdh_gex_init of mpint
-  | Msg_kexdh_gex_reply of Hostkey.pub * mpint * (Hostkey.alg * string)
+  | Msg_kexdh_gex_group of Z.t * Z.t
+  | Msg_kexdh_gex_init of Z.t
+  | Msg_kexdh_gex_reply of Hostkey.pub * Z.t * (Hostkey.alg * string)
   | Msg_kex of message_id * string
   | Msg_userauth_request of (string * string * auth_method)
   | Msg_userauth_failure of (string list * bool)

@@ -41,7 +41,7 @@ let pp_event ppf = function
   | `Disconnected -> Format.fprintf ppf "disconnected"
 
 type kex_state =
-  | Negotiated_kex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Mirage_crypto_pk.Dh.secret * Ssh.mpint
+  | Negotiated_kex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Mirage_crypto_pk.Dh.secret * Z.t
 
 type ec_secret = [
   | `Ed25519 of Mirage_crypto_ec.X25519.secret
@@ -55,7 +55,7 @@ type eckex_state =
 
 type gex_state =
   | Requested_gex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * int * int * int
-  | Negotiated_gex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * int * int * int * Z.t * Z.t * Mirage_crypto_pk.Dh.secret * Ssh.mpint
+  | Negotiated_gex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * int * int * int * Z.t * Z.t * Mirage_crypto_pk.Dh.secret * Z.t
 
 type userauth_interactive =
   | Requested of string
