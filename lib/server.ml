@@ -331,6 +331,8 @@ let input_channel_open t send_channel init_win_size max_pkt_size data =
     with
     | Error `No_channels_left ->
       fail t OPEN_RESOURCE_SHORTAGE "Maximum number of channels reached"
+    | Error `Msg m ->
+      fail t OPEN_RESOURCE_SHORTAGE m
     | Ok (c, channels) ->
       let open Channel in
       make_reply { t with channels }

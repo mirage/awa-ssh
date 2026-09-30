@@ -334,13 +334,16 @@ let handle_userauth_info_req t password (name, instruction, lang, prompts) =
 
 let open_channel t =
   if Channel.is_empty t.channels then
-    let channel, msg =
+    let* channel, msg =
       let id = 0
       and win = Ssh.channel_win_len
       and max_pkt = Ssh.channel_max_pkt_len
       in
-      Channel.make_end id win max_pkt,
-      (id, win, max_pkt, Ssh.Session)
+      let* our_end =
+        Result.map_error (fun (`Msg m) -> m)
+          (Channel.make_end id win max_pkt)
+      in
+      Ok (our_end, (id, win, max_pkt, Ssh.Session))
     in
     Ok ({ t with state = Opening_channel channel }, [ Ssh.Msg_channel_open msg ], [])
   else
@@ -348,7 +351,10 @@ let open_channel t =
 
 let open_channel_success t us our_id their_id win max_pkt _data =
   if us.Channel.id = our_id then
-    let them = Channel.make_end their_id win max_pkt in
+    let* them =
+      Result.map_error (fun (`Msg m) -> m)
+        (Channel.make_end their_id win max_pkt)
+    in
     let c = Channel.make ~us ~them in
     let channels = Channel.update c t.channels in
     Ok ({ t with channels ; state = Established }, [], [ `Established our_id ])

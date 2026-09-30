@@ -491,7 +491,7 @@ let t_ignore_next_packet () =
   test_ok
 
 let t_channel_input () =
-  let x = Channel.make_end 0 Ssh.channel_win_len Ssh.channel_max_pkt_len in
+  let x = Result.get_ok (Channel.make_end 0 Ssh.channel_win_len Ssh.channel_max_pkt_len) in
   let c = Channel.make ~us:x ~them:x in
   let d = Mirage_crypto_rng.generate (Ssh.channel_win_len + 1) in
   (* Case 1: No adjustments, just window consumption *)
@@ -518,7 +518,7 @@ let t_channel_input () =
   test_ok
 
 let t_channel_output () =
-  let x = Channel.make_end 0 Ssh.channel_win_len Ssh.channel_max_pkt_len in
+  let x = Result.get_ok (Channel.make_end 0 Ssh.channel_win_len Ssh.channel_max_pkt_len) in
   let c = Channel.make ~us:x ~them:x in
   let d = Mirage_crypto_rng.generate (Ssh.channel_win_len + 1) in
   (* Case 1: Small output, single message *)

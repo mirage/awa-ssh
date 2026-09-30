@@ -48,7 +48,10 @@ module Ordered = struct
   let compare = compare
 end
 
-let make_end id win max_pkt = { id; win; max_pkt }
+let make_end id win max_pkt =
+  let* () = guard (win > 0) (`Msg "window must be > 0") in
+  let* () = guard (max_pkt > 0) (`Msg "max_pkt must be > 0") in
+  Ok { id; win; max_pkt }
 
 let make ~us ~them = { us; them; state = Open; tosend = "" }
 
@@ -102,17 +105,21 @@ let output_data ~flush t data =
       data
   in
   let len = min (String.length tosend) t.them.win in
-  let data, tosend =
-    if flush then
-      tosend, ""
-    else
-      let data, left = maybe_split len tosend in
-      data, String.sub tosend len left
-  in
-  let win = t.them.win - len in
-  let* () = guard (win >= 0) "window underflow" in
-  let t = { t with tosend; them = { t.them with win } } in
-  Ok (t, fragment data)
+  if len = 0 then
+    let t = { t with tosend } in
+    Ok (t, [])
+  else
+    let data, tosend =
+      if flush then
+        tosend, ""
+      else
+        let data, left = maybe_split len tosend in
+        data, String.sub tosend len left
+    in
+    let win = t.them.win - len in
+    let* () = guard (win >= 0) "window underflow" in
+    let t = { t with tosend; them = { t.them with win } } in
+    Ok (t, fragment data)
 
 let flush t =
   let data = t.tosend in
@@ -165,8 +172,8 @@ let add ~id ~win ~max_pkt db =
   match next_free db with
   | None -> Error `No_channels_left
   | Some key ->
-    let them = make_end id win max_pkt in
-    let us = make_end key Ssh.channel_win_len Ssh.channel_max_pkt_len in
+    let* them = make_end id win max_pkt in
+    let* us = make_end key Ssh.channel_win_len Ssh.channel_max_pkt_len in
     let c = make ~us ~them in
     Ok (c, Channel_map.add key c db)
 
