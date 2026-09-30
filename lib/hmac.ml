@@ -34,7 +34,7 @@ let to_string = function
   | Sha2_512 -> "hmac-sha2-512"
 
 let of_string = function
-  | "none"          -> Ok Plaintext
+  | "none" -> Ok Plaintext
   | "hmac-sha1" -> Ok Sha1
   | "hmac-sha2-256" -> Ok Sha2_256
   | "hmac-sha2-512" -> Ok Sha2_512
