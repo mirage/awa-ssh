@@ -20,14 +20,14 @@ let version_banner = "SSH-2.0-awa_ssh_0.1"
 let max_pkt_len = 512 * 1024          (* 512KB should be enough *)
 let max_len = 256 * 1024              (* 256KB for a field is enough *)
 let channel_win_len =                 (* 4MB channel window *)
-  Int32.of_int (4 * 1024 * 1000)
+  (4 * 1024 * 1000)
 let channel_win_adj_threshold =       (* Refresh window if below 2MB *)
-  Int32.of_int (2 * 1024 * 1000)
+  (2 * 1024 * 1000)
 let channel_max_pkt_len =             (* Must be smaller than max_pkt_len *)
-  Int32.of_int (64 * 1024)
+  (64 * 1024)
 let max_channels = 1024               (* 1024 maximum channels per connection *)
 
-let min_dh, n, max_dh = 2048l, 3072l, 8192l
+let min_dh, n, max_dh = 2048, 3072, 8192
 
 let guard_sshlen len =
   guard (len >= 0 && len <= max_len) (Printf.sprintf "Bad length: %d" len)
@@ -209,38 +209,38 @@ type disconnect_code =
   | DISCONNECT_ILLEGAL_USER_NAME                [@id 15]
 
 let disconnect_code_to_int = function
-  | DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT      ->  1l
-  | DISCONNECT_PROTOCOL_ERROR                   ->  2l
-  | DISCONNECT_KEY_EXCHANGE_FAILED              ->  3l
-  | DISCONNECT_RESERVED                         ->  4l
-  | DISCONNECT_MAC_ERROR                        ->  5l
-  | DISCONNECT_COMPRESSION_ERROR                ->  6l
-  | DISCONNECT_SERVICE_NOT_AVAILABLE            ->  7l
-  | DISCONNECT_PROTOCOL_VERSION_NOT_SUPPORTED   ->  8l
-  | DISCONNECT_HOST_KEY_NOT_VERIFIABLE          ->  9l
-  | DISCONNECT_CONNECTION_LOST                  -> 10l
-  | DISCONNECT_BY_APPLICATION                   -> 11l
-  | DISCONNECT_TOO_MANY_CONNECTIONS             -> 12l
-  | DISCONNECT_AUTH_CANCELLED_BY_USER           -> 13l
-  | DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE   -> 14l
-  | DISCONNECT_ILLEGAL_USER_NAME                -> 15l
+  | DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT      ->  1
+  | DISCONNECT_PROTOCOL_ERROR                   ->  2
+  | DISCONNECT_KEY_EXCHANGE_FAILED              ->  3
+  | DISCONNECT_RESERVED                         ->  4
+  | DISCONNECT_MAC_ERROR                        ->  5
+  | DISCONNECT_COMPRESSION_ERROR                ->  6
+  | DISCONNECT_SERVICE_NOT_AVAILABLE            ->  7
+  | DISCONNECT_PROTOCOL_VERSION_NOT_SUPPORTED   ->  8
+  | DISCONNECT_HOST_KEY_NOT_VERIFIABLE          ->  9
+  | DISCONNECT_CONNECTION_LOST                  -> 10
+  | DISCONNECT_BY_APPLICATION                   -> 11
+  | DISCONNECT_TOO_MANY_CONNECTIONS             -> 12
+  | DISCONNECT_AUTH_CANCELLED_BY_USER           -> 13
+  | DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE   -> 14
+  | DISCONNECT_ILLEGAL_USER_NAME                -> 15
 
 let int_to_disconnect_code = function
-  | 1l -> DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT
-  | 2l -> DISCONNECT_PROTOCOL_ERROR
-  | 3l -> DISCONNECT_KEY_EXCHANGE_FAILED
-  | 4l -> DISCONNECT_RESERVED
-  | 5l -> DISCONNECT_MAC_ERROR
-  | 6l -> DISCONNECT_COMPRESSION_ERROR
-  | 7l -> DISCONNECT_SERVICE_NOT_AVAILABLE
-  | 8l -> DISCONNECT_PROTOCOL_VERSION_NOT_SUPPORTED
-  | 9l -> DISCONNECT_HOST_KEY_NOT_VERIFIABLE
-  | 10l -> DISCONNECT_CONNECTION_LOST
-  | 11l -> DISCONNECT_BY_APPLICATION
-  | 12l -> DISCONNECT_TOO_MANY_CONNECTIONS
-  | 13l -> DISCONNECT_AUTH_CANCELLED_BY_USER
-  | 14l -> DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE
-  | 15l -> DISCONNECT_ILLEGAL_USER_NAME
+  | 1 -> DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT
+  | 2 -> DISCONNECT_PROTOCOL_ERROR
+  | 3 -> DISCONNECT_KEY_EXCHANGE_FAILED
+  | 4 -> DISCONNECT_RESERVED
+  | 5 -> DISCONNECT_MAC_ERROR
+  | 6 -> DISCONNECT_COMPRESSION_ERROR
+  | 7 -> DISCONNECT_SERVICE_NOT_AVAILABLE
+  | 8 -> DISCONNECT_PROTOCOL_VERSION_NOT_SUPPORTED
+  | 9 -> DISCONNECT_HOST_KEY_NOT_VERIFIABLE
+  | 10 -> DISCONNECT_CONNECTION_LOST
+  | 11 -> DISCONNECT_BY_APPLICATION
+  | 12 -> DISCONNECT_TOO_MANY_CONNECTIONS
+  | 13 -> DISCONNECT_AUTH_CANCELLED_BY_USER
+  | 14 -> DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE
+  | 15 -> DISCONNECT_ILLEGAL_USER_NAME
   | _ -> DISCONNECT_PROTOCOL_ERROR (* Mock up *)
 
 let disconnect_code_to_string = function
@@ -268,45 +268,43 @@ type channel_open_code =
   | OPEN_RESOURCE_SHORTAGE            [@id 4]
 
 let channel_open_code_to_int = function
-  | OPEN_ADMINISTRATIVELY_PROHIBITED  -> 1l
-  | OPEN_CONNECT_FAILED               -> 2l
-  | OPEN_UNKNOWN_CHANNEL_TYPE         -> 3l
-  | OPEN_RESOURCE_SHORTAGE            -> 4l
+  | OPEN_ADMINISTRATIVELY_PROHIBITED  -> 1
+  | OPEN_CONNECT_FAILED               -> 2
+  | OPEN_UNKNOWN_CHANNEL_TYPE         -> 3
+  | OPEN_RESOURCE_SHORTAGE            -> 4
 
 let int_to_channel_open_code = function
-  | 1l -> Some OPEN_ADMINISTRATIVELY_PROHIBITED
-  | 2l -> Some OPEN_CONNECT_FAILED
-  | 3l -> Some OPEN_UNKNOWN_CHANNEL_TYPE
-  | 4l -> Some OPEN_RESOURCE_SHORTAGE
+  | 1 -> Some OPEN_ADMINISTRATIVELY_PROHIBITED
+  | 2 -> Some OPEN_CONNECT_FAILED
+  | 3 -> Some OPEN_UNKNOWN_CHANNEL_TYPE
+  | 4 -> Some OPEN_RESOURCE_SHORTAGE
   | _ -> None
 
-type mpint = Z.t
-
 type global_request =
-  | Tcpip_forward of (string * int32)
-  | Cancel_tcpip_forward of (string * int32)
+  | Tcpip_forward of (string * int)
+  | Cancel_tcpip_forward of (string * int)
   | Keepalive
   | Unknown_request of string
 
 type channel_request =
-  | Pty_req of (string * int32 * int32 * int32 * int32 * string)
-  | X11_req of (bool * string * string * int32)
+  | Pty_req of (string * int * int * int * int * string)
+  | X11_req of (bool * string * string * int)
   | Env of (string * string)
   | Shell
   | Exec of string
   | Subsystem of string
-  | Window_change of (int32 * int32 * int32 * int32)
+  | Window_change of (int * int * int * int)
   | Xon_xoff of bool
   | Signal of string
-  | Exit_status of int32
+  | Exit_status of int
   | Exit_signal of (string * bool * string * string)
   | Raw_data of string
 
 type channel_open =
   | Session
-  | X11 of (string * int32)
-  | Forwarded_tcpip of (string * int32 * string * int32)
-  | Direct_tcpip of (string * int32 * string * int32)
+  | X11 of (string * int)
+  | Forwarded_tcpip of (string * int * string * int)
+  | Direct_tcpip of (string * int * string * int)
   | Raw_data of string
 
 (*
@@ -352,24 +350,24 @@ let auth_method_equal a b =
 type message =
   | Msg_disconnect of (disconnect_code * string * string)
   | Msg_ignore of string
-  | Msg_unimplemented of int32
+  | Msg_unimplemented of int
   | Msg_debug of (bool * string * string)
   | Msg_service_request of string
   | Msg_service_accept of string
   | Msg_kexinit of kexinit
   | Msg_ext_info of extension list
   | Msg_newkeys
-  | Msg_kexdh_reply of Hostkey.pub * mpint * (Hostkey.alg * string)
-  | Msg_kexdh_init of mpint
+  | Msg_kexdh_reply of Hostkey.pub * Z.t * (Hostkey.alg * string)
+  | Msg_kexdh_init of Z.t
   (* from RFC 5656 / 8731 *)
   | Msg_kexecdh_reply of Hostkey.pub * string * (Hostkey.alg * string)
   | Msg_kexecdh_init of string
   (* from RFC 4419 *)
   (* there's as well a Msg_kexdh_gex_request_old with only a single int32 *)
-  | Msg_kexdh_gex_request of int32 * int32 * int32
-  | Msg_kexdh_gex_group of mpint * mpint
-  | Msg_kexdh_gex_init of mpint
-  | Msg_kexdh_gex_reply of Hostkey.pub * mpint * (Hostkey.alg * string)
+  | Msg_kexdh_gex_request of int * int * int
+  | Msg_kexdh_gex_group of Z.t * Z.t
+  | Msg_kexdh_gex_init of Z.t
+  | Msg_kexdh_gex_reply of Hostkey.pub * Z.t * (Hostkey.alg * string)
   | Msg_kex of message_id * string
   | Msg_userauth_request of (string * string * auth_method)
   | Msg_userauth_failure of (string list * bool)
@@ -383,17 +381,17 @@ type message =
   | Msg_global_request of (string * bool * global_request)
   | Msg_request_success of string option
   | Msg_request_failure
-  | Msg_channel_open of (int32 * int32 * int32 * channel_open)
-  | Msg_channel_open_confirmation of (int32 * int32 * int32 * int32 * string)
-  | Msg_channel_open_failure of (int32 * int32 * string * string)
-  | Msg_channel_window_adjust of (int32 * int32)
-  | Msg_channel_data of (int32 * string)
-  | Msg_channel_extended_data of (int32 * int32 * string)
-  | Msg_channel_eof of int32
-  | Msg_channel_close of int32
-  | Msg_channel_request of (int32 * bool * channel_request)
-  | Msg_channel_success of int32
-  | Msg_channel_failure of int32
+  | Msg_channel_open of (int * int * int * channel_open)
+  | Msg_channel_open_confirmation of (int * int * int * int * string)
+  | Msg_channel_open_failure of (int * int * string * string)
+  | Msg_channel_window_adjust of (int * int)
+  | Msg_channel_data of (int * string)
+  | Msg_channel_extended_data of (int * int * string)
+  | Msg_channel_eof of int
+  | Msg_channel_close of int
+  | Msg_channel_request of (int * bool * channel_request)
+  | Msg_channel_success of int
+  | Msg_channel_failure of int
   | Msg_version of string       (* Mocked version *)
 
 let message_to_id = function
@@ -448,7 +446,7 @@ let pp_message ppf = function
     Fmt.pf ppf "disconnect %s %s%a" (disconnect_code_to_string code) desc
       pp_lang lang
   | Msg_ignore d -> Fmt.pf ppf "ignore %s" d
-  | Msg_unimplemented y -> Fmt.pf ppf "unimplemented %lu" y
+  | Msg_unimplemented y -> Fmt.pf ppf "unimplemented %u" y
   | Msg_debug (display, msg, lang) ->
     Fmt.pf ppf "debug (display %B) %s%a" display msg pp_lang lang
   | Msg_service_request s -> Fmt.pf ppf "service request %s" s

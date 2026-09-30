@@ -42,29 +42,29 @@ type userauth =
   | Pubkey of pubkeyauth
 
 type event =
-  | Channel_exec of (int32 * string)
-  | Channel_subsystem of (int32 * string)
-  | Channel_data of (int32 * string)
-  | Channel_eof of int32
+  | Channel_exec of (int * string)
+  | Channel_subsystem of (int * string)
+  | Channel_data of (int * string)
+  | Channel_eof of int
   | Disconnected of string
   | Userauth of string * userauth
-  | Pty of (string * int32 * int32 * int32 * int32 * string)
-  | Pty_set of (int32 * int32 * int32 * int32)
+  | Pty of (string * int * int * int * int * string)
+  | Pty_set of (int * int * int * int)
   | Set_env of (string * string)
-  | Start_shell of int32
+  | Start_shell of int
 
 let pp_event ppf = function
-  | Channel_exec (c, cmd) -> Fmt.pf ppf "channel exec %lu: %S" c cmd
-  | Channel_subsystem (c, cmd) -> Fmt.pf ppf "channel subsystem %lu: %S" c cmd
-  | Channel_data (c, data) -> Fmt.pf ppf "channel data %lu: %d bytes" c (String.length data)
-  | Channel_eof c -> Fmt.pf ppf "channel end-of-file %lu" c
+  | Channel_exec (c, cmd) -> Fmt.pf ppf "channel exec %u: %S" c cmd
+  | Channel_subsystem (c, cmd) -> Fmt.pf ppf "channel subsystem %u: %S" c cmd
+  | Channel_data (c, data) -> Fmt.pf ppf "channel data %u: %d bytes" c (String.length data)
+  | Channel_eof c -> Fmt.pf ppf "channel end-of-file %u" c
   | Disconnected s -> Fmt.pf ppf "disconnected with messsage %S" s
   | Userauth (user, Password _) -> Fmt.pf ppf "userauth password for %S" user
   | Userauth (user, Pubkey _) -> Fmt.pf ppf "userauth pubkey for %S" user
   | Pty _ -> Fmt.pf ppf "pty"
   | Pty_set _ -> Fmt.pf ppf "pty set"
   | Set_env (k, v) -> Fmt.pf ppf "Set env %S=%S" k v
-  | Start_shell c -> Fmt.pf ppf "start shell %lu" c
+  | Start_shell c -> Fmt.pf ppf "start shell %u" c
 
 type 'authie t = {
   client_version : string option;         (* Without crlf *)
@@ -85,7 +85,7 @@ type 'authie t = {
   auth_state     : 'authie auth_state;    (* username * service in progress *)
   channels       : Channel.db;            (* Ssh channels *)
   ignore_next_packet : bool;              (* Ignore the next packet from the wire *)
-  dh_group       : (Mirage_crypto_pk.Dh.group * int32 * int32 * int32) option; (* used for GEX (RFC 4419) *)
+  dh_group       : (Mirage_crypto_pk.Dh.group * int * int * int) option; (* used for GEX (RFC 4419) *)
 }
 
 let guard_msg t msg =
@@ -467,19 +467,19 @@ let input_msg t msg now =
           match t.dh_group, m with
           | None, Msg_kexdh_gex_request (min, n, max) ->
             let* group =
-              if max < 2048l then
+              if max < 2048 then
                 Error "maximum group size too small"
-              else if min > 8192l then
+              else if min > 8192 then
                 Error "minimum group size too big"
               else if min > n || n > max then
                 Error "group size limits wrong (min <= n <= max)"
-              else if n < 3072l then
+              else if n < 3072 then
                 Ok Mirage_crypto_pk.Dh.Group.ffdhe2048
-              else if n < 4096l then
+              else if n < 4096 then
                 Ok Mirage_crypto_pk.Dh.Group.ffdhe3072
-              else if n < 6144l then
+              else if n < 6144 then
                 Ok Mirage_crypto_pk.Dh.Group.ffdhe4096
-              else if n < 8192l then
+              else if n < 8192 then
                 Ok Mirage_crypto_pk.Dh.Group.ffdhe6144
               else
                 Ok Mirage_crypto_pk.Dh.Group.ffdhe8192
@@ -568,7 +568,7 @@ let input_msg t msg now =
     let open Channel in
     (match lookup recp_channel t.channels with
      | None ->
-       Log.warn (fun m -> m "Unexpected SSH_MSG_CHANNEL_CLOSE %lu" recp_channel);
+       Log.warn (fun m -> m "Unexpected SSH_MSG_CHANNEL_CLOSE %u" recp_channel);
        make_noreply t        (* XXX or should we disconnect ? *)
      | Some c ->
        let t = { t with channels = remove recp_channel t.channels } in

@@ -22,26 +22,26 @@ let src = Logs.Src.create "awa.client" ~doc:"AWA client"
 module Log = (val Logs.src_log src : Logs.LOG)
 
 type event = [
-  | `Established of int32
-  | `Channel_data of int32 * string
-  | `Channel_stderr of int32 * string
-  | `Channel_eof of int32
-  | `Channel_exit_status of int32 * int32
+  | `Established of int
+  | `Channel_data of int * string
+  | `Channel_stderr of int * string
+  | `Channel_eof of int
+  | `Channel_exit_status of int * int
   | `Disconnected
 ]
 
 let pp_event ppf = function
-  | `Established id -> Format.fprintf ppf "established id %lu" id
+  | `Established id -> Format.fprintf ppf "established id %u" id
   | `Channel_data (id, data) ->
-    Format.fprintf ppf "data %lu: %s" id data
+    Format.fprintf ppf "data %u: %s" id data
   | `Channel_stderr (id, data) ->
-    Format.fprintf ppf "stderr %lu: %s" id data
-  | `Channel_eof id -> Format.fprintf ppf "eof %lu" id
-  | `Channel_exit_status (id, r) -> Format.fprintf ppf "exit %lu with %lu" id r
+    Format.fprintf ppf "stderr %u: %s" id data
+  | `Channel_eof id -> Format.fprintf ppf "eof %u" id
+  | `Channel_exit_status (id, r) -> Format.fprintf ppf "exit %u with %u" id r
   | `Disconnected -> Format.fprintf ppf "disconnected"
 
 type kex_state =
-  | Negotiated_kex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Mirage_crypto_pk.Dh.secret * Ssh.mpint
+  | Negotiated_kex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * Mirage_crypto_pk.Dh.secret * Z.t
 
 type ec_secret = [
   | `Ed25519 of Mirage_crypto_ec.X25519.secret
@@ -54,8 +54,8 @@ type eckex_state =
   | Negotiated_eckex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * ec_secret * string
 
 type gex_state =
-  | Requested_gex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * int32 * int32 * int32
-  | Negotiated_gex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * int32 * int32 * int32 * Z.t * Z.t * Mirage_crypto_pk.Dh.secret * Ssh.mpint
+  | Requested_gex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * int * int * int
+  | Negotiated_gex of string * Ssh.kexinit * string * Ssh.kexinit * Kex.negotiation * int * int * int * Z.t * Z.t * Mirage_crypto_pk.Dh.secret * Z.t
 
 type userauth_interactive =
   | Requested of string
@@ -106,7 +106,7 @@ let rotate_keys_stoc t new_keys_stoc =
 
 let debug_msg prefix = function
   | Ssh.Msg_channel_data (id, data) ->
-    Log.debug (fun m -> m "%s (Msg_data %d bytes for %lu)" prefix
+    Log.debug (fun m -> m "%s (Msg_data %d bytes for %u)" prefix
                   (String.length data) id)
   | msg -> Log.debug (fun m -> m "%s %a" prefix Ssh.pp_message msg)
 
@@ -229,7 +229,7 @@ let handle_kexdh_gex_group t v_c ckex v_s skex neg min n max p gg =
     Result.map_error (function `Msg m -> m) (group ~p ~gg ())
   in
   let bits = modulus_size group in
-  if Int32.to_int min <= bits && bits <= Int32.to_int max then
+  if min <= bits && bits <= max then
     let secret, shared = gen_key group in
     let pub = Mirage_crypto_pk.Z_extra.of_octets_be shared in
     let state = Negotiated_gex (v_c, ckex, v_s, skex, neg, min, n, max, p, gg, secret, pub) in
@@ -335,7 +335,7 @@ let handle_userauth_info_req t password (name, instruction, lang, prompts) =
 let open_channel t =
   if Channel.is_empty t.channels then
     let channel, msg =
-      let id = 0l
+      let id = 0
       and win = Ssh.channel_win_len
       and max_pkt = Ssh.channel_max_pkt_len
       in
@@ -353,7 +353,7 @@ let open_channel_success t us our_id their_id win max_pkt _data =
     let channels = Channel.update c t.channels in
     Ok ({ t with channels ; state = Established }, [], [ `Established our_id ])
   else
-    Error (Printf.sprintf "channel ids do not match (our %lu their %lu)"
+    Error (Printf.sprintf "channel ids do not match (our %u their %u)"
              us.Channel.id our_id)
 
 let channel_data t id data =
@@ -471,7 +471,7 @@ let input_msg t msg now =
   | Established, Msg_channel_data (id, data) ->
     let* t, out, id, data = channel_data t id data in
     Ok (t, out, [ `Channel_data (id, data) ])
-  | Established, Msg_channel_extended_data (id, 1l, data) ->
+  | Established, Msg_channel_extended_data (id, 1, data) ->
     let* t, out, id, data = channel_data t id data in
     Ok (t, out, [ `Channel_stderr (id, data) ])
   | Established, Msg_channel_window_adjust (id, len) ->
@@ -487,7 +487,7 @@ let input_msg t msg now =
     Ok (t, [], [ `Channel_exit_status (Channel.id c, r) ])
   | Established, Msg_channel_success id ->
     let* _c = guard_some (Channel.lookup id t.channels) "no such channel" in
-    Log.info (fun m -> m "channel success %lu" id);
+    Log.info (fun m -> m "channel success %u" id);
     Ok (t, [], [])
   | Established, Msg_channel_close id ->
     let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
@@ -531,13 +531,13 @@ let rec incoming t now buf =
     let* t''', replies', events' = incoming t'' now "" in
     Ok (t''', replies @ replies', events @ events')
 
-let outgoing_request t ?(id = 0l) ?(want_reply = false) req =
+let outgoing_request t ?(id = 0) ?(want_reply = false) req =
   let* () = guard (established t) "not yet established" in
   let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
   let msg = Ssh.Msg_channel_request (c.them.id, want_reply, req) in
   Ok (output_msg t msg)
 
-let outgoing_data t ?(id = 0l) data =
+let outgoing_data t ?(id = 0) data =
   let* () = guard (established t) "not yet established" in
   let* () = guard (String.length data > 0) "empty data" in
   let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
@@ -545,7 +545,7 @@ let outgoing_data t ?(id = 0l) data =
   let t' = { t with channels = Channel.update c t.channels } in
   Ok (output_msgs t' frags)
 
-let eof ?(id = 0l) t =
+let eof ?(id = 0) t =
   match
     let* () = guard (established t) "not yet established" in
     let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
@@ -557,7 +557,7 @@ let eof ?(id = 0l) t =
   | Error _ -> t, []
   | Ok (t, msgs) -> t, msgs
 
-let close ?(id = 0l) t =
+let close ?(id = 0) t =
   match
     let* () = guard (established t) "not yet established" in
     let* c = guard_some (Channel.lookup id t.channels) "no such channel" in

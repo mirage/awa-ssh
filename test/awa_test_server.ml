@@ -160,7 +160,7 @@ let rec serve t user_auth cmd =
     Logs.info (fun m -> m "Disconnected: %s" s);
     Ok ()
   | Channel_eof id ->
-    Logs.info (fun m -> m "Channel %lu EOF" id);
+    Logs.info (fun m -> m "Channel %u EOF" id);
     Ok ()
   | Channel_data (id, data) ->
     Logs.info (fun m -> m "channel data %d" (String.length data));
@@ -183,7 +183,7 @@ let rec serve t user_auth cmd =
     begin match exec with
     | "suicide" ->
       let* t =
-        let msg = Awa.Ssh.Msg_channel_request (id, false, Awa.Ssh.Exit_status 0l) in
+        let msg = Awa.Ssh.Msg_channel_request (id, false, Awa.Ssh.Exit_status 0) in
         Driver.send_msg t msg
       in
       let t = Driver.eof t id in
@@ -192,7 +192,7 @@ let rec serve t user_auth cmd =
     | "ping" ->
       let* t = Driver.send_channel_data t id "pong\n" in
       let* t =
-        let msg = Awa.Ssh.Msg_channel_request (id, false, Awa.Ssh.Exit_status 0l) in
+        let msg = Awa.Ssh.Msg_channel_request (id, false, Awa.Ssh.Exit_status 0) in
         Driver.send_msg t msg
       in
       let t = Driver.eof t id in
