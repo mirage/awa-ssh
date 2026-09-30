@@ -100,7 +100,7 @@ let guard_msg t msg =
     guard (id = msgid) ("Unexpected message " ^ string_of_int (message_id_to_int msgid))
 
 let host_key_algs key =
-  List.filter Hostkey.(alg_matches (priv_to_typ key)) Hostkey.preferred_algs
+  List.filter Hostkey.(alg_matches (priv_to_typ key)) Hostkey.supported_algs
 
 let make host_key =
   let open Ssh in
@@ -409,7 +409,7 @@ let input_msg t msg now =
       if t.ext_info then
         let algs =
           String.concat ","
-            (List.map Hostkey.alg_to_string Hostkey.preferred_algs);
+            (List.map Hostkey.alg_to_string Hostkey.supported_algs);
         in
         let extensions =
           [Extension { name = "server-sig-algs"; value = algs; }]

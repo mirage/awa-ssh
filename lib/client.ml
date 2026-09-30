@@ -133,7 +133,7 @@ let output_msgs t msgs =
 let make ?(authenticator = `No_authentication) ~user auth_method =
   let open Ssh in
   let hostkey_algs = match authenticator with
-    | `No_authentication -> Hostkey.preferred_algs
+    | `No_authentication -> Hostkey.supported_algs
     | `Key Hostkey.Rsa_pub _ -> Hostkey.algs_of_typ `Rsa
     | `Key Hostkey.Ed25519_pub _ -> Hostkey.algs_of_typ `Ed25519
     | `Fingerprint (typ, _) -> Hostkey.algs_of_typ typ
@@ -183,7 +183,7 @@ let handle_kexinit t c_v ckex s_v skex =
           match Hostkey.alg_of_string a with Ok a -> a :: acc | Error _ -> acc)
         [] skex.server_host_key_algs
     in
-    let s = List.filter (fun a -> List.mem a s) Hostkey.preferred_algs in
+    let s = List.filter (fun a -> List.mem a s) Hostkey.supported_algs in
     match t.auth_method with
     | `Pubkey key -> List.filter Hostkey.(alg_matches (priv_to_typ key)) s
     | `Password _ -> s
@@ -285,7 +285,7 @@ let handle_auth_none t = function
           let pub_raw = Wire.blob_of_pubkey pub in
           let sig_alg =
             match pub with
-            | Hostkey.Rsa_pub _ -> Hostkey.Rsa_sha1
+            | Hostkey.Rsa_pub _ -> Hostkey.Rsa_sha256
             | Hostkey.Ed25519_pub _ -> Hostkey.Ed25519
           in
           let sig_alg_raw = Hostkey.alg_to_string sig_alg in

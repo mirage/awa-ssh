@@ -156,6 +156,6 @@ let encrypt ~len seq cipher buf =
 
 let decrypt = enc_dec false
 
-let preferred = [ Chacha20_poly1305 ;
+let supported = [ Chacha20_poly1305 ;
                   Aes128_ctr; Aes192_ctr; Aes256_ctr;
                   Aes128_cbc; Aes192_cbc; Aes256_cbc; ]

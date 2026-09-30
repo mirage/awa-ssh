@@ -190,7 +190,7 @@ let t_parsing () =
   let priv_rsa = Hostkey.Rsa_priv rsa in
   let pub_rsa = Hostkey.Rsa_pub (Mirage_crypto_pk.Rsa.pub_of_priv rsa) in
   let pub_rsa_raw = Wire.blob_of_pubkey pub_rsa in
-  let alg = Hostkey.Rsa_sha1 in
+  let alg = Hostkey.Rsa_sha256 in
   let alg_raw = Hostkey.alg_to_string alg in
   let signature = Hostkey.sign alg priv_rsa cstring in
   let l =
@@ -425,8 +425,8 @@ let t_crypto () =
   List.iter (fun cipher ->
       List.iter (fun hmac ->
           test (make cipher hmac))
-        Hmac.preferred)
-    Cipher.preferred;
+        Hmac.supported)
+    Cipher.supported;
   test_ok
 
 let string_of_file file =
@@ -448,7 +448,7 @@ let t_signature () =
   let priv = Hostkey.Rsa_priv (Mirage_crypto_pk.Rsa.generate ~bits:2048 ()) in
   let pub = Hostkey.pub_of_priv priv in
   let unsigned = Mirage_crypto_rng.generate 128 in
-  let alg = Hostkey.Rsa_sha1 in
+  let alg = Hostkey.Rsa_sha256 in
   let signed = Hostkey.sign alg priv unsigned in
   assert (Hostkey.verify alg pub ~signed ~unsigned);
   (* Corrupt every one byte in the signature, all should fail *)
@@ -466,7 +466,7 @@ let t_ignore_next_packet () =
   let t = Server.{ t with client_version = Some "SSH-2.0-client";
                           expect = Some(Ssh.MSG_KEXINIT) }
   in
-  let kexinit = Ssh.{ (Kex.make_kexinit Hostkey.preferred_algs Kex.supported ()) with
+  let kexinit = Ssh.{ (Kex.make_kexinit Hostkey.supported_algs Kex.supported ()) with
                       encryption_algs_ctos = ["aes256-cbc"];
                       first_kex_packet_follows = true }
   in
