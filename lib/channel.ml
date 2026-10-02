@@ -49,7 +49,7 @@ module Ordered = struct
 end
 
 let make_end id win max_pkt =
-  let* () = guard (win > 0) (`Msg "window must be > 0") in
+  let* () = guard (win >= 0) (`Msg "window must be >= 0") in
   let* () = guard (max_pkt > 0) (`Msg "max_pkt must be > 0") in
   Ok { id; win; max_pkt }
 
@@ -128,8 +128,7 @@ let flush t =
 
 let adjust_window t len =
   let win = t.them.win + len in
-  (* XXX this does not handle up to 4GB correctly. *)
-  let* () = guard (win > 0) "window overflow" in
+  let* () = guard (win >= 0 && win <= 0xffffffff) "window overflow" in
   let data = t.tosend in
   let t = { t with tosend = ""; them = { t.them with win } } in
   output_data ~flush:true t data
