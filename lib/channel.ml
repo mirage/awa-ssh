@@ -49,8 +49,14 @@ module Ordered = struct
 end
 
 let make_end id win max_pkt =
-  let* () = guard (win >= 0) (`Msg "window must be >= 0") in
-  let* () = guard (max_pkt > 0) (`Msg "max_pkt must be > 0") in
+  let* () =
+    guard (win >= 0 && win <= Ssh.max_win)
+      (`Msg "window must be >= 0 & <= 2^32 - 1")
+  in
+  let* () =
+    guard (max_pkt > 0 && max_pkt <= Ssh.max_win)
+      (`Msg "max_pkt must be > 0 & <= 2^32 - 1")
+  in
   Ok { id; win; max_pkt }
 
 let make ~us ~them = { us; them; state = Open; tosend = "" }
@@ -79,7 +85,8 @@ let input_data t data =
   in
   let* () = guard (adjust >= 0) "adjust underflow" in
   let t = { t with us = { t.us with win } } in
-  let msg = if adjust <> 0 then
+  let msg =
+    if adjust <> 0 then
       Some (Ssh.Msg_channel_window_adjust (t.them.id, adjust))
     else
       None
@@ -105,21 +112,19 @@ let output_data ~flush t data =
       data
   in
   let len = min (String.length tosend) t.them.win in
-  if len = 0 then
-    let t = { t with tosend } in
-    Ok (t, [])
-  else
-    let data, tosend =
-      if flush then
-        tosend, ""
-      else
-        let data, left = maybe_split len tosend in
-        data, String.sub tosend len left
-    in
-    let win = t.them.win - len in
-    let* () = guard (win >= 0) "window underflow" in
-    let t = { t with tosend; them = { t.them with win } } in
-    Ok (t, fragment data)
+  let data, tosend =
+    if flush then
+      tosend, ""
+    else if len > 0 then
+      let data, left = maybe_split len tosend in
+      data, String.sub tosend len left
+    else
+      "", tosend
+  in
+  let win = t.them.win - len in
+  let* () = guard (win >= 0) "window underflow" in
+  let t = { t with tosend; them = { t.them with win } } in
+  Ok (t, fragment data)
 
 let flush t =
   let data = t.tosend in
@@ -128,7 +133,7 @@ let flush t =
 
 let adjust_window t len =
   let win = t.them.win + len in
-  let* () = guard (win >= 0 && win <= 0xffffffff) "window overflow" in
+  let* () = guard (win >= 0 && win <= Ssh.max_win) "window overflow" in
   let data = t.tosend in
   let t = { t with tosend = ""; them = { t.them with win } } in
   output_data ~flush:true t data
