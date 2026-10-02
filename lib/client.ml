@@ -130,7 +130,7 @@ let output_msgs t msgs =
   in
   t', List.rev data
 
-let make ?(authenticator = `No_authentication) ~user auth_method =
+let make authenticator ~user auth_method =
   let open Ssh in
   let hostkey_algs = match authenticator with
     | `No_authentication -> Hostkey.supported_algs
