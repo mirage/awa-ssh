@@ -315,14 +315,14 @@ let input_channel_open t send_channel init_win_size max_pkt_size data =
     | X11 _ -> true
     | Forwarded_tcpip _ -> true
     | Direct_tcpip _ -> true
-    | Raw_data _ -> false
+    | Unknown _ -> false
   in
   let allowed = function
     | Session -> true
     | X11 _ -> false
     | Forwarded_tcpip _ -> false
     | Direct_tcpip _ -> false
-    | Raw_data _ -> false
+    | Unknown _ -> false
   in
   let do_open t send_channel init_win_size max_pkt_size data =
     match
@@ -350,36 +350,67 @@ let input_channel_open t send_channel init_win_size max_pkt_size data =
 
 let input_channel_request t recp_channel want_reply data =
   let open Ssh in
-  let fail t =
-    if want_reply then
-      make_reply t (Msg_channel_failure recp_channel)
+  (* Once we have sent a close for a channel we stop answering requests on it:
+     draft-sgtatham-secsh-closure-race-02 §4.  The peer may already have reused
+     the channel ID: it only needs to have received our close and sent its own,
+     which can still be in flight to us. *)
+  let answering c =
+    match c.Channel.state with
+    | Channel.Open -> want_reply
+    | Channel.Sent_close -> false
+  in
+  let fail c t =
+    if answering c then
+      make_reply t (Msg_channel_failure (Channel.their_id c))
     else
       make_noreply t
   in
-  let event t event =
-    if want_reply then
-      make_reply_with_event t (Msg_channel_success recp_channel) event
+  let event c t event =
+    if answering c then
+      make_reply_with_event t (Msg_channel_success (Channel.their_id c)) event
     else
       make_event t event
   in
-  let handle t c = function
-    | Pty_req v -> event t (Pty v)
-    | X11_req _ -> fail t
-    | Env v -> event t (Set_env v)
-    | Shell -> event t (Start_shell c)
-    | Exec cmd -> event t (Channel_exec (c, cmd))
-    | Subsystem cmd -> event t (Channel_subsystem (c, cmd))
-    | Window_change v -> event t (Pty_set v)
-    | Xon_xoff _ -> fail t
-    | Signal _ -> fail t
-    | Exit_status _ -> fail t
-    | Exit_signal _ -> fail t
-    | Raw_data _ -> fail t
+  let handle c t id = function
+    | Pty_req v -> event c t (Pty v)
+    | Env v -> event c t (Set_env v)
+    | Shell -> event c t (Start_shell id)
+    | Exec cmd -> event c t (Channel_exec (id, cmd))
+    | Subsystem cmd -> event c t (Channel_subsystem (id, cmd))
+    | Window_change v -> event c t (Pty_set v)
+    | Keepalive ->
+      (* Replying with failure to OpenSSH keepalives is the expected behaviour. *)
+      Log.debug (fun m -> m "received keepalive channel request (want reply %B)"
+                    want_reply);
+      fail c t
+    (* FIXME: actually do something with X11_req and Signal. This would force us
+       to redesign our API though. *)
+    | X11_req _ ->
+      Log.info (fun m -> m "received x11-req: NOT YET implemented, refusing");
+      fail c t
+    | Signal signal ->
+      Log.info (fun m -> m "received request to send signal %S to local \
+                            process: NOT YET implemented, refusing" signal);
+      fail c t
+    | Xon_xoff _ ->
+      Log.warn (fun m -> m "received xon-xoff even though we're server, refusing");
+      fail c t
+    | Exit_status _ ->
+      Log.warn (fun m -> m "received exit-status even though we're server, refusing");
+      fail c t
+    | Exit_signal _ ->
+      Log.warn (fun m -> m "received exit-signal even though we're server, refusing");
+      fail c t
+    | Unknown (name, _) ->
+      Log.info (fun m -> m "received unknown channel request %S (want reply %B)"
+                   name want_reply);
+      fail c t
   in
-  (* Lookup the channel *)
   match Channel.lookup recp_channel t.channels with
-  | None -> fail t
-  | Some c -> handle t (Channel.id c) data
+  | None ->
+    make_disconnect t DISCONNECT_PROTOCOL_ERROR
+      (Printf.sprintf "received channel request for unknown channel %u" recp_channel)
+  | Some c -> handle c t (Channel.id c) data
 
 let input_msg t msg now =
   let open Ssh in
