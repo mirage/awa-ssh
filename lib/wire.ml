@@ -988,19 +988,23 @@ let put_message buf msg =
 
 let get_version buf =
   (* Fetches next line, returns maybe a string and the remainder of buf *)
-  let fetchline buf =
-    if String.length buf < 1 then
+  let fetchline buf off =
+    if String.length buf - off < 1 then
       None
     else
-      let n = try String.index buf '\n' with Not_found -> 0 in
-      if n = 0 then
-        None
-      else
-        let off = if String.get buf (pred n) = '\r' then 1 else 0 in
-        let line = String.sub buf 0 (n - off) in
-        let line_len = String.length line in
-        let v = String.sub buf (line_len + 1 + off) (String.length buf - line_len - 1 - off) in
-        Some (line, v)
+      match String.index_from_opt buf off '\n' with
+      | None -> None
+      | Some n ->
+        let off' = if String.get buf (pred n) = '\r' then 1 else 0 in
+        let line =
+          (* A version line must be at least 9 characters long *)
+          if n - off - off' >= 9 then
+            String.sub buf off (n - off - off')
+          else
+            ""
+        in
+        let v_off = String.length line + 1 + off + off' in
+        Some (line, v_off)
   in
   (* Extract SSH version from line *)
   let processline line =
@@ -1012,9 +1016,9 @@ let get_version buf =
     else
       (* Strip the comments *)
       let version_line =
-        try
-          String.sub line 0 (String.index line ' ')
-        with Not_found -> line
+        match String.index_opt line ' ' with
+        | None -> line
+        | Some n -> String.sub line 0 n
       in
       let tokens = String.split_on_char '-' version_line in
       if List.length tokens < 3 then
@@ -1027,20 +1031,19 @@ let get_version buf =
           Error ("Bad version " ^ version)
   in
   (* Scan all lines until an error or SSH version is found *)
-  let rec scan buf =
-    match fetchline buf with
-    | None -> if String.length buf > 1024 then
-        Error "Buffer is too big"
-      else
-        Ok (None, buf)
-    | Some (line, buf) ->
+  let rec scan buf off =
+    match fetchline buf off with
+    | None when String.length buf - off > 1024 -> Error "Buffer is too big"
+    | None -> Ok (None, (buf, off))
+    | Some (line, off') ->
       let* v = processline line in
       match v with
-      | Some peer_version -> Ok (Some peer_version, buf)
+      | Some peer_version -> Ok (Some peer_version, (buf, off'))
       | None ->
-        if String.length buf > 2 then
-          scan buf
+        if String.length buf - off' > 2 then
+          scan buf off'
         else
-          Ok (None, buf)
+          Ok (None, (buf, off'))
   in
-  scan buf
+  let* (v, (buf, off)) = scan buf 0 in
+  Ok (v, String.sub buf off (String.length buf - off))
