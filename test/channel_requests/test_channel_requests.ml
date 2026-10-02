@@ -103,7 +103,7 @@ let established_client () =
         Ok (server, sofar ^ b))
       (Ok (server, "")) greeting
   in
-  let client, first = Client.make ~user:"u" (`Password "pw") in
+  let client, first = Client.make `No_authentication ~user:"u" (`Password "pw") in
   (* Pump until the client says it is established. *)
   let rec pump client server to_client to_server n =
     if n = 0 then Error "client never reached Established" else

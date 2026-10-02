@@ -27,10 +27,10 @@ module Make (F : Mirage_flow.S) : sig
     with type error := error
      and type write_error := write_error
 
-  (** [client_of_flow ~authenticator ~user key channel_request flow] upgrades the
+  (** [client_of_flow authenticator ~user key channel_request flow] upgrades the
       existing connection to SSH, mutually authenticates, opens a channel and
       sends the channel request. *)
-  val client_of_flow : ?authenticator:Awa.Keys.authenticator -> user:string ->
+  val client_of_flow : Awa.Keys.authenticator -> user:string ->
     [ `Pubkey of Awa.Hostkey.priv | `Password of string ] ->
     Awa.Ssh.channel_request -> F.flow -> (flow, error) result Lwt.t
 

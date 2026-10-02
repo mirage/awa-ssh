@@ -234,9 +234,9 @@ module Make (F : Mirage_flow.S) = struct
 
   let write t buf = writev t [buf]
 
-  let client_of_flow ?authenticator ~user auth req flow =
+  let client_of_flow authenticator ~user auth req flow =
     let open Lwt_result.Infix in
-    let client, msgs = Awa.Client.make ?authenticator ~user auth in
+    let client, msgs = Awa.Client.make authenticator ~user auth in
     let t = {
       flow   = flow ;
       state  = `Active client ;
