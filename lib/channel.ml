@@ -124,7 +124,8 @@ let output_data ~flush t data =
   let win = t.them.win - len in
   let* () = guard (win >= 0) "window underflow" in
   let t = { t with tosend; them = { t.them with win } } in
-  Ok (t, fragment data)
+  let out = if data = "" then [] else fragment data in
+  Ok (t, out)
 
 let flush t =
   let data = t.tosend in
