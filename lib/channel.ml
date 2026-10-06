@@ -48,7 +48,16 @@ module Ordered = struct
   let compare = compare
 end
 
-let make_end id win max_pkt = { id; win; max_pkt }
+let make_end id win max_pkt =
+  let* () =
+    guard (win >= 0 && win <= Ssh.max_win)
+      (`Msg "window must be >= 0 & <= 2^32 - 1")
+  in
+  let* () =
+    guard (max_pkt > 0 && max_pkt <= Ssh.max_win)
+      (`Msg "max_pkt must be > 0 & <= 2^32 - 1")
+  in
+  Ok { id; win; max_pkt }
 
 let make ~us ~them = { us; them; state = Open; tosend = "" }
 
@@ -76,7 +85,8 @@ let input_data t data =
   in
   let* () = guard (adjust >= 0) "adjust underflow" in
   let t = { t with us = { t.us with win } } in
-  let msg = if adjust <> 0 then
+  let msg =
+    if adjust <> 0 then
       Some (Ssh.Msg_channel_window_adjust (t.them.id, adjust))
     else
       None
@@ -105,14 +115,17 @@ let output_data ~flush t data =
   let data, tosend =
     if flush then
       tosend, ""
-    else
+    else if len > 0 then
       let data, left = maybe_split len tosend in
       data, String.sub tosend len left
+    else
+      "", tosend
   in
   let win = t.them.win - len in
   let* () = guard (win >= 0) "window underflow" in
   let t = { t with tosend; them = { t.them with win } } in
-  Ok (t, fragment data)
+  let out = if data = "" then [] else fragment data in
+  Ok (t, out)
 
 let flush t =
   let data = t.tosend in
@@ -121,8 +134,7 @@ let flush t =
 
 let adjust_window t len =
   let win = t.them.win + len in
-  (* XXX this does not handle up to 4GB correctly. *)
-  let* () = guard (win > 0) "window overflow" in
+  let* () = guard (win >= 0 && win <= Ssh.max_win) "window overflow" in
   let data = t.tosend in
   let t = { t with tosend = ""; them = { t.them with win } } in
   output_data ~flush:true t data
@@ -165,8 +177,8 @@ let add ~id ~win ~max_pkt db =
   match next_free db with
   | None -> Error `No_channels_left
   | Some key ->
-    let them = make_end id win max_pkt in
-    let us = make_end key Ssh.channel_win_len Ssh.channel_max_pkt_len in
+    let* them = make_end id win max_pkt in
+    let* us = make_end key Ssh.channel_win_len Ssh.channel_max_pkt_len in
     let c = make ~us ~them in
     Ok (c, Channel_map.add key c db)
 
