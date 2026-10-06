@@ -24,7 +24,7 @@ let () =
   assert (replies = [ Ssh.Msg_request_failure ]);
 
   (* The client answers properly. *)
-  let c, _ = Client.make ~user:"u" (`Password "p") in
+  let c, _ = Client.make `No_authentication ~user:"u" (`Password "p") in
   let c, _, _ = Result.get_ok (Client.incoming c now "SSH-2.0-peer\r\n") in
   let _, replies, _ =
     Result.get_ok (Client.incoming c now (encrypt_plain keepalive))

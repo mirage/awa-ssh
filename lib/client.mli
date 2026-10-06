@@ -16,7 +16,7 @@
 
 type t
 
-val make : ?authenticator:Keys.authenticator -> user:string ->
+val make : Keys.authenticator -> user:string ->
   [ `Pubkey of Hostkey.priv | `Password of string ] -> t * string list
 
 type event = [

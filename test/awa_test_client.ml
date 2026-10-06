@@ -69,7 +69,7 @@ let jump _ user pass seed typ keyfile authenticator host port =
         Ok (`Password pass)
     in
     let* authenticator = Keys.authenticator_of_string authenticator in
-    let t, out = Client.make ~authenticator ~user auth in
+    let t, out = Client.make authenticator ~user auth in
     List.iter (write_data fd) out;
     let rec read_react t =
       let data = read_data fd in
