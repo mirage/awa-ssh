@@ -1,3 +1,21 @@
+## v0.7.0 (2026-10-06)
+
+* ensure max_pkt > 0, win >= 0 (#97 @hannesm)
+* Client.make: require authenticator (#100 @hannesm)
+* Wire.get_version: use fewer String.sub (#99 @hannesm)
+* fix channel request parsing and handling (#91 @sgouliarmis)
+* use int instead of int32 for get_uint32/put_uint32 (#96 @hannesm)
+* remove weak Hostkey algorithms, kex algorithms, ciphers, and hmac (MD5/SHA1)
+  (#95 @hannesm)
+* mirage: be clear that only a single channel is supported
+  (9e6ab8d1aa13cbf4fe8fd4ba12f19e7fc46b38ce @hannesm)
+* enc_dec: zero-extend chacha20 nonce (#94 @hannesm)
+* ECDH encoding: use string instead of mpint (#90 @sgouliarmis)
+* test server: ignore sigpipe, handle epipe/eof, new args (#89 @sgouliarmis)
+* Support keepalive. Fix parsing of (unknown) global requests (#93 @sgouliarmis)
+* Channel: replace printf with Log.warn (#92 @sgouliarmis)
+* Server: verify the pubkey signature before emitting Userauth (#87 @samoht)
+
 ## v0.6.1 (2026-06-07)
 
 * Core: fix parsing of MSG_KEX_n and MSG_USERAUTH_n (#86 @dinosaure)
