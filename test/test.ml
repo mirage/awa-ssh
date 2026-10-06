@@ -681,4 +681,18 @@ let _ =
   Mirage_crypto_rng_unix.use_default ();
   Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> failwith "timeout"));
   Unix.chmod "data/awa_test_rsa" 0o600;
-  List.iter run_test all_tests;
+  List.iter run_test all_tests
+
+(*
+let () =
+  let ns = [2; 20; 200; 2000; 20000] in
+  List.iter (fun n ->
+      let buf = ref "" in
+      for _ = 1 to n do buf := !buf ^ "OpenSSH banner line junk\n" done;
+      let t0 = Unix.gettimeofday () in
+      let _r = Wire.get_version !buf in
+      let t1 = Unix.gettimeofday () in
+      Printf.printf "lines=%d time=%.3fs buflen=%d\n" n
+        (t1 -. t0) (String.length !buf))
+    ns
+*)
