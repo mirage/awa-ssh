@@ -87,14 +87,15 @@ type 'authie t = {
 
 let guard_msg t msg =
   let open Ssh in
-  match t.expect with
-  | None -> Ok ()
-  | Some MSG_DISCONNECT -> Ok ()
-  | Some MSG_IGNORE -> Ok ()
-  | Some MSG_DEBUG -> Ok ()
-  | Some id ->
-    let msgid = message_to_id msg in
-    guard (id = msgid) ("Unexpected message " ^ string_of_int (message_id_to_int msgid))
+  let msgid = message_to_id msg in
+  match msgid with
+  (* We may receive these at any time, whatever we are waiting for. *)
+  | MSG_DISCONNECT | MSG_IGNORE | MSG_DEBUG | MSG_UNIMPLEMENTED -> Ok ()
+  | _ ->
+    match t.expect with
+    | None -> Ok ()
+    | Some id ->
+      guard (id = msgid) ("Unexpected message type: " ^ string_of_int (message_id_to_int msgid))
 
 let host_key_algs key =
   List.filter Hostkey.(alg_matches (priv_to_typ key)) Hostkey.supported_algs
@@ -419,6 +420,21 @@ let input_msg t msg now =
   let open Ssh in
   let* () = guard_msg t msg in
   match msg with
+  | Msg_ignore _ ->
+    Log.debug (fun m -> m "received ignore message, ignoring");
+    make_noreply t
+  | Msg_debug (always_display, message, lang) ->
+    (* RFC 4253 §11.3 forces us to parse this message, but only encourages us
+       to display its contents to the user if always_display is true. TODO:
+       actually hand the message over to the client code. *)
+    Log.info
+      (fun m -> m "received debug message: %S (lang: %S, always_display: %B)"
+                  message lang always_display);
+    make_noreply t
+  | Msg_unimplemented seq ->
+    Log.warn (fun m -> m "received 'unimplemented' message: \
+                          peer did not understand our packet with seq=%u" seq);
+    make_noreply t
   | Msg_kexinit kex ->
     let* neg = Kex.negotiate ~s:t.server_kexinit ~c:kex in
     Logs.debug (fun m -> m "neg is %a" Kex.pp_negotiation neg);
@@ -646,7 +662,16 @@ let input_msg t msg now =
                      want_reply));
     (* OpenSSH actually answers FAILURE to keepalives too. The point is to answer at all. *)
     if want_reply then make_reply t Msg_request_failure else make_noreply t
-  | Msg_disconnect (_, s, _) -> make_event t (Disconnected s)
+  | Msg_disconnect (code, s, lang) ->
+    (* A peer disconnecting usually means there was trouble, but in the case of a client,
+       it may simply be the user ending their session. *)
+    let log = match code with
+      | DISCONNECT_BY_APPLICATION -> Log.info
+      | _ -> Log.err
+    in
+    log (fun m -> m "received disconnect: %s %S%a"
+            (Ssh.disconnect_code_to_string code) s Ssh.pp_lang lang);
+    make_event t (Disconnected s)
   | Msg_version v -> make_noreply { t with client_version = Some v;
                                            expect = Some MSG_KEXINIT }
   | msg -> Error ("unhandled msg: " ^ Fmt.to_to_string pp_message msg)
