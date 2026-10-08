@@ -137,7 +137,7 @@ let adjust_window t len =
   let* () = guard (win >= 0 && win <= Ssh.max_win) "window overflow" in
   let data = t.tosend in
   let t = { t with tosend = ""; them = { t.them with win } } in
-  output_data ~flush:true t data
+  output_data ~flush:false t data
 
 (*
  * Channel database

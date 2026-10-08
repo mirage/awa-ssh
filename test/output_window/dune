@@ -1,0 +1,4 @@
+(test
+ (name test_output_window)
+ (package awa)
+ (libraries awa))
