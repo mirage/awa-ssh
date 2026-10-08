@@ -614,13 +614,14 @@ let input_msg t msg now =
     let* c =
       guard_some (Channel.lookup recp_channel t.channels) "no such channel"
     in
-    let* c, data, adjust = Channel.input_data c data in
-    let channels = Channel.update c t.channels in
-    let t = { t with channels } in
-    let e = (Channel_data (Channel.id c, data)) in
-    (match adjust with
-     | None -> make_event t (Channel_data (Channel.id c, data))
-     | Some adjust -> make_reply_with_event t adjust e)
+    (match Channel.input_packet c data with
+     | Error msg -> make_disconnect t DISCONNECT_PROTOCOL_ERROR msg
+     | Ok (c, data, adjust) ->
+       let t = { t with channels = Channel.update c t.channels } in
+       let e = Channel_data (Channel.id c, data) in
+       (match adjust with
+        | None -> make_event t e
+        | Some adjust -> make_reply_with_event t adjust e))
   | Msg_channel_window_adjust (recp_channel, len) ->
     let* c =
       guard_some (Channel.lookup recp_channel t.channels) "no such channel"
