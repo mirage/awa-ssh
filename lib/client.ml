@@ -364,7 +364,7 @@ let open_channel_success t us our_id their_id win max_pkt _data =
 
 let channel_data t id data =
   let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
-  let* c, data, adjust = Channel.input_data c data in
+  let* c, data, adjust = Channel.input_packet c data in
   let channels = Channel.update c t.channels in
   let out = match adjust with None -> [] | Some e -> [ e ] in
   Ok ({ t with channels }, out, Channel.id c, data)
@@ -475,11 +475,17 @@ let input_msg t msg now =
     Log.info (fun m -> m "ignoring debug %s (lang %s)" msg lang);
     Ok (t, [], [])
   | Established, Msg_channel_data (id, data) ->
-    let* t, out, id, data = channel_data t id data in
-    Ok (t, out, [ `Channel_data (id, data) ])
+    (match channel_data t id data with
+     | Ok (t, out, id, data) -> Ok (t, out, [ `Channel_data (id, data) ])
+     | Error msg ->
+       Ok (t, [ Msg_disconnect (DISCONNECT_PROTOCOL_ERROR, msg, "") ],
+           [ `Disconnected ]))
   | Established, Msg_channel_extended_data (id, 1, data) ->
-    let* t, out, id, data = channel_data t id data in
-    Ok (t, out, [ `Channel_stderr (id, data) ])
+    (match channel_data t id data with
+     | Ok (t, out, id, data) -> Ok (t, out, [ `Channel_stderr (id, data) ])
+     | Error msg ->
+       Ok (t, [ Msg_disconnect (DISCONNECT_PROTOCOL_ERROR, msg, "") ],
+           [ `Disconnected ]))
   | Established, Msg_channel_window_adjust (id, len) ->
     let* c = guard_some (Channel.lookup id t.channels) "no such channel" in
     let* c, msgs = Channel.adjust_window c len in
