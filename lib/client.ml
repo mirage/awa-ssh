@@ -67,7 +67,8 @@ type state =
   | Kex of kex_state
   | Eckex of eckex_state
   | Gex of gex_state
-  | Newkeys_before_auth of Kex.keys * Kex.keys
+  | Newkeys_before_auth of Kex.keys * Kex.keys  (* Initial KEX... *)
+  | Newkeys_before_resume of Kex.keys * Kex.keys  (* ...and every time after. *)
   | Requested_service of string
   | Userauth_initial
   | Userauth_password
@@ -79,6 +80,8 @@ type state =
 type t = {
   state : state ;
   session_id     : string option;
+  client_version : string;
+  server_version : string option;
   keys_ctos      : Kex.keys;
   keys_stoc      : Kex.keys;
   keying         : bool;
@@ -116,7 +119,7 @@ let output_msg t msg =
   debug_msg ">>>" msg;
   (* Do state transitions *)
   match t.state with
-  | Newkeys_before_auth (my_keys, _) ->
+  | Newkeys_before_auth (my_keys, _) | Newkeys_before_resume (my_keys, _) ->
     Log.debug (fun m -> m "rotating ctos keys");
     let t' = rotate_keys_ctos t my_keys in
     t', buf
@@ -130,19 +133,23 @@ let output_msgs t msgs =
   in
   t', List.rev data
 
+let hostkey_algs = function
+  | `No_authentication -> Hostkey.supported_algs
+  | `Key Hostkey.Rsa_pub _ -> Hostkey.algs_of_typ `Rsa
+  | `Key Hostkey.Ed25519_pub _ -> Hostkey.algs_of_typ `Ed25519
+  | `Fingerprint (typ, _) -> Hostkey.algs_of_typ typ
+
 let make authenticator ~user auth_method =
   let open Ssh in
-  let hostkey_algs = match authenticator with
-    | `No_authentication -> Hostkey.supported_algs
-    | `Key Hostkey.Rsa_pub _ -> Hostkey.algs_of_typ `Rsa
-    | `Key Hostkey.Ed25519_pub _ -> Hostkey.algs_of_typ `Ed25519
-    | `Fingerprint (typ, _) -> Hostkey.algs_of_typ typ
+  let client_kexinit =
+    Kex.make_kexinit (hostkey_algs authenticator) Kex.supported ()
   in
-  let client_kexinit = Kex.make_kexinit hostkey_algs Kex.supported () in
   let banner_msg = Ssh.Msg_version version_banner in
   let kex_msg = Ssh.Msg_kexinit client_kexinit in
   let t = { state = Init (version_banner, client_kexinit);
             session_id = None;
+            client_version = version_banner;
+            server_version = None;
             keys_ctos = Kex.make_plaintext ();
             keys_stoc = Kex.make_plaintext ();
             keying = true;
@@ -193,13 +200,19 @@ let handle_kexinit t c_v ckex s_v skex =
 let dh_reply t now ~h (neg : Kex.negotiation) shared k_s (alg, signed) =
   if Keys.hostkey_matches t.authenticator k_s && alg = neg.server_host_key_alg && Hostkey.verify alg k_s ~unsigned:h ~signed then begin
     Log.info (fun m -> m "verified kexdh_reply!");
+    let first_kex = t.session_id = None in
     let session_id = match t.session_id with None -> h | Some x -> x in
     let* new_keys_ctos, new_keys_stoc, key_eol =
       Kex.Dh.derive_keys shared h session_id neg now
     in
-    Ok ({ t with
-          state = Newkeys_before_auth (new_keys_ctos, new_keys_stoc) ;
-          session_id = Some session_id ; key_eol = Some key_eol },
+    let state =
+      if first_kex then
+        Newkeys_before_auth (new_keys_ctos, new_keys_stoc)
+      else
+        Newkeys_before_resume (new_keys_ctos, new_keys_stoc)
+    in
+    Ok ({ t with state ; session_id = Some session_id ;
+                 key_eol = Some key_eol },
         [ Ssh.Msg_newkeys ], [])
   end else
     Error "couldn't verify kex"
@@ -244,21 +257,10 @@ let handle_kexdh_gex_reply t now v_c ckex v_s skex neg min n max p g secret my_p
       ~v_c ~v_s ~i_c:(Wire.blob_of_kexinit ckex) ~i_s:skex.Ssh.rawkex
       ~k_s ~min ~n ~max ~p ~g ~e:my_pub ~f:theirs ~k:shared
   in
-  if Keys.hostkey_matches t.authenticator k_s && alg = neg.server_host_key_alg && Hostkey.verify alg k_s ~unsigned:h ~signed then begin
-    Log.info (fun m -> m "verified kexdh_reply!");
-    let session_id = match t.session_id with None -> h | Some x -> x in
-    let* new_keys_ctos, new_keys_stoc, key_eol =
-      Kex.Dh.derive_keys shared h session_id neg now
-    in
-    Ok ({ t with
-          state = Newkeys_before_auth (new_keys_ctos, new_keys_stoc) ;
-          session_id = Some session_id ; key_eol = Some key_eol },
-        [ Ssh.Msg_newkeys ], [])
-  end else
-    Error "couldn't verify kex"
+  dh_reply t now ~h neg shared k_s (alg, signed)
 
 let handle_newkeys_before_auth t keys =
-  Log.debug (fun m -> m "rotating stoc keys");
+  Log.debug (fun m -> m "rotating stoc keys, before userauth");
   let t' = rotate_keys_stoc t keys in
   let service = "ssh-userauth" in
   Ok ({ t' with state = Requested_service service },
@@ -373,9 +375,29 @@ let input_msg t msg now =
   let open Ssh in
   match t.state, msg with
   | Init (cv, ckex), Msg_version v ->
-    Ok ({ t with state = Received_version (cv, ckex, v) }, [], [])
+    Ok ({ t with state = Received_version (cv, ckex, v);
+                 server_version = Some v }, [], [])
   | Received_version (cv, ckex, sv), Msg_kexinit skex ->
     handle_kexinit t cv ckex sv skex
+  | Established, Msg_kexinit skex ->
+    let* server_version = guard_some t.server_version "trying to rekey, but no server version" in
+    let ckex = Kex.make_kexinit (hostkey_algs t.authenticator) Kex.supported () in
+    let* t, msgs, events =
+      handle_kexinit { t with keying = true } t.client_version ckex
+        server_version skex
+    in
+    Ok (t, Ssh.Msg_kexinit ckex :: msgs, events)
+  | (Requested_service _ | Userauth_initial | Userauth_password
+    | Userauth_publickey _ | Userauth_keyboard_interactive _
+    | Opening_channel _), Msg_kexinit _ ->
+    (* The SSH protocol technically allows a rekey during userauth, but in
+       practice, SSH clients choose to fail on this (some servers are more
+       lenient). *)
+    Error "received rekeying attempt before the session is established"
+  | (Kex _ | Eckex _ | Gex _
+    | Newkeys_before_auth _ | Newkeys_before_resume _), Msg_kexinit _ ->
+    (* RFC 4253 §7.1 allows only one KEXINIT per exchange. *)
+    Error "received a second KEXINIT during a key exchange"
   | Kex (Negotiated_kex (cv, ckex, sv, skex, neg, sec, mypub)),
     Msg_kex (i, d) ->
     begin
@@ -411,6 +433,9 @@ let input_msg t msg now =
     end
   | Newkeys_before_auth (_, keys), Msg_newkeys ->
     handle_newkeys_before_auth t keys
+  | Newkeys_before_resume (_, keys), Msg_newkeys ->
+    Log.debug (fun m -> m "rotating stoc keys, resuming the session");
+    Ok ({ (rotate_keys_stoc t keys) with state = Established }, [], [])
   | Requested_service s, Msg_service_accept s' when s = s' ->
     service_accepted t s
   | Userauth_initial, Msg_userauth_failure (methods, _) ->

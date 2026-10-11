@@ -1,0 +1,4 @@
+(test
+ (name test_rekey)
+ (package awa)
+ (libraries awa mirage-mtime mirage-crypto-rng.unix))
