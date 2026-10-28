@@ -67,31 +67,34 @@ let maybe_split off data =
   else
     data, 0
 
-(* Returns new t, data normalized, and adjust window if <> zero *)
-let input_data t data =
-  (* Normalize data, discard if greater than window *)
-  let len = min (String.length data) t.us.win in
-  let data, left = maybe_split len data in
-  if left > 0 then
-    Log.warn (fun m -> m "channel input_data: discarding %d bytes (window size)"
-                 left);
-  let new_win = t.us.win - len in
-  let* () = guard (new_win >= 0) "window underflow" in
-  let win, adjust =
-    if new_win < Ssh.channel_win_adj_threshold then
-      Ssh.channel_win_len, Ssh.channel_win_len - new_win
-    else
-      new_win, 0
+(* Refill our window once it drops below the threshold, meant to be called
+   after decreasing our window internally. FIXME: currently, it is called
+   as soon as we receive data. Eventually, this should be called only after
+   the local process has consumed some amount; likely needs API changes. *)
+let replenish t =
+  if t.us.win < Ssh.channel_win_adj_threshold then
+    let adjust = Ssh.channel_win_len - t.us.win in
+    { t with us = { t.us with win = Ssh.channel_win_len } },
+    Some (Ssh.Msg_channel_window_adjust (t.them.id, adjust))
+  else
+    t, None
+
+let input_packet t data =
+  let len = String.length data in
+  let* () =
+    guard (len <= t.us.max_pkt)
+      (Printf.sprintf "received packet of %d bytes on channel %u, over the \
+                       %d we advertised as our maximum size"
+         len t.us.id t.us.max_pkt)
   in
-  let* () = guard (adjust >= 0) "adjust underflow" in
-  let t = { t with us = { t.us with win } } in
-  let msg =
-    if adjust <> 0 then
-      Some (Ssh.Msg_channel_window_adjust (t.them.id, adjust))
-    else
-      None
+  let* () =
+    guard (len <= t.us.win)
+      (Printf.sprintf "received packet of %d bytes on channel %u with only \
+                       %d of window left"
+         len t.us.id t.us.win)
   in
-  Ok (t, data, msg)
+  let t, adjust = replenish { t with us = { t.us with win = t.us.win - len } } in
+  Ok (t, data, adjust)
 
 let output_data ~flush t data =
   let fragment data =

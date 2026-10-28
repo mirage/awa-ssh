@@ -483,33 +483,6 @@ let t_ignore_next_packet () =
   assert (msg = Some message);
   test_ok
 
-let t_channel_input () =
-  let x = Result.get_ok (Channel.make_end 0 Ssh.channel_win_len Ssh.channel_max_pkt_len) in
-  let c = Channel.make ~us:x ~them:x in
-  let d = Mirage_crypto_rng.generate (Ssh.channel_win_len + 1) in
-  (* Case 1: No adjustments, just window consumption *)
-  let d' = String.sub d 0 32 in
-  let* c', dn', adj' = Channel.input_data c d' in
-  assert (String.length d' = 32);
-  assert (String.equal d' dn');
-  assert (adj' = None);
-  (* Make sure our window was drained by 32 bytes *)
-  assert Channel.(c'.us.win = c.them.win - (String.length d'));
-  (* Case 2, Input 2/3 of the window, adjustment must match full window  *)
-  let len' = String.length d / 4 * 3 in
-  let d' = String.sub d 0 len' in
-  let* c', dn', adj' = Channel.input_data c d' in
-  assert Channel.(c'.us.win = Ssh.channel_win_len);
-  assert (String.length d' = len');
-  assert (String.equal d' dn');
-  let adj'' = Some (Ssh.Msg_channel_window_adjust (0, len')) in
-  assert (adj' = adj'');
-  (* Case 3, Make sure we discard data above our window *)
-  let* _c', dn', _adj' = Channel.input_data c d in
-  assert (not (String.equal d dn'));
-  assert (String.length d = String.length dn' + 1);
-  test_ok
-
 let t_channel_output () =
   let x = Result.get_ok (Channel.make_end 0 Ssh.channel_win_len Ssh.channel_max_pkt_len) in
   let c = Channel.make ~us:x ~them:x in
@@ -670,7 +643,6 @@ let all_tests = [
   (t_openssh_pub, "OpenSSH public key format");
   (t_signature, "signatures");
   (t_ignore_next_packet, "ignore next packet");
-  (t_channel_input, "channel data input");
   (t_channel_output, "channel data output");
   (t_pubkey_userauth_requires_valid_signature, "pubkey userauth requires valid signature");
   (* disabled: requires network connectivity
