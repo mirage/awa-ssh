@@ -471,6 +471,13 @@ let input_msg t msg now =
        and we do not implement it yet. *)
     let msgs = if want_reply then [ Ssh.Msg_request_failure ] else [] in
     Ok (t, msgs, [])
+  | _, Msg_unknown id ->
+    (* RFC 4253 §11.4: MUST answer unrecognised message with UNIMPLEMENTED, giving the sequence
+       number of the unrecognised message. *)
+    let seq = Kex.last_seq t.keys_stoc in
+    Log.warn (fun m -> m "received unknown message ID %d (seq: %u), \
+                          replying that it is unimplemented" id seq);
+    Ok (t, [ Msg_unimplemented seq ], [])
   | _, Msg_ignore _ ->
     Log.debug (fun m -> m "received ignore message, ignoring");
     Ok (t, [], [])
